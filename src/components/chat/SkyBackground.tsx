@@ -243,26 +243,24 @@ const SkyBackground: React.FC = () => {
         ))}
 
       {/* Foreground silhouettes with crossfade */}
-      <div className="absolute bottom-0 left-0 right-0" style={{ height: "42%", pointerEvents: "none" }}>
-        <img
-          src={fgDay}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-bottom transition-opacity duration-[5000ms]"
-          style={{ opacity: fgDayOpacity }}
-        />
-        <img
-          src={fgDusk}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-bottom transition-opacity duration-[5000ms]"
-          style={{ opacity: fgDuskOpacity }}
-        />
-        <img
-          src={fgNight}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover object-bottom transition-opacity duration-[5000ms]"
-          style={{ opacity: fgNightOpacity }}
-        />
-      </div>
+      <img
+        src={fgDay}
+        alt=""
+        className="absolute bottom-0 left-0 w-full pointer-events-none transition-opacity duration-[5000ms]"
+        style={{ opacity: fgDayOpacity }}
+      />
+      <img
+        src={fgDusk}
+        alt=""
+        className="absolute bottom-0 left-0 w-full pointer-events-none transition-opacity duration-[5000ms]"
+        style={{ opacity: fgDuskOpacity }}
+      />
+      <img
+        src={fgNight}
+        alt=""
+        className="absolute bottom-0 left-0 w-full pointer-events-none transition-opacity duration-[5000ms]"
+        style={{ opacity: fgNightOpacity }}
+      />
 
       <style>{`
         @keyframes twinkle {
