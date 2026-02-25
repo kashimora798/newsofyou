@@ -15,10 +15,14 @@ import fgDay from "@/assets/sky/foreground_day.png";
 import fgDusk from "@/assets/sky/foreground_dusk.png";
 import fgNight from "@/assets/sky/foreground_night.png";
 
+// Realistic cloud images
+import cloud1 from "@/assets/sky/cloud1.png";
+import cloud2 from "@/assets/sky/cloud2.png";
+
 const MOON_PHASES = [moonNew, moonWaxCres, moonFirstQ, moonWaxGib, moonFull, moonWanGib, moonThirdQ, moonWanCres];
 
 function getMoonPhase(date: Date): number {
-  const knownNewMoon = new Date(2000, 0, 6, 18, 14); // Jan 6, 2000 18:14 UTC
+  const knownNewMoon = new Date(2000, 0, 6, 18, 14);
   const synodicMonth = 29.53058867;
   const diffMs = date.getTime() - knownNewMoon.getTime();
   const diffDays = diffMs / 86400000;
@@ -26,7 +30,6 @@ function getMoonPhase(date: Date): number {
   return Math.floor(cyclePos / (synodicMonth / 8)) % 8;
 }
 
-// Kanpur, Rooma coordinates
 const LAT = 26.46;
 const LNG = 80.35;
 
@@ -66,7 +69,34 @@ function getSkyGradient(altitude: number) {
   return { top: "hsl(240,80%,5%)", bottom: "hsl(240,60%,10%)" };
 }
 
+// Sun appearance based on altitude
+function getSunStyle(altitude: number) {
+  if (altitude > 30) {
+    return { size: 35, color: "hsl(45,100%,88%)", glow: "hsla(45,100%,75%,0.35)", glowSize: 80 };
+  }
+  if (altitude > 10) {
+    return { size: 40, color: "hsl(40,100%,65%)", glow: "hsla(38,100%,60%,0.45)", glowSize: 100 };
+  }
+  if (altitude > 0) {
+    return { size: 48, color: "hsl(25,100%,55%)", glow: "hsla(20,100%,50%,0.55)", glowSize: 130 };
+  }
+  return { size: 50, color: "hsl(15,100%,50%)", glow: "hsla(10,100%,45%,0.6)", glowSize: 140 };
+}
+
 const STAR_COUNT = 50;
+
+// Cloud instances using the two cloud images
+const CLOUD_INSTANCES = [
+  // Back layer — smaller, slower, lower opacity
+  { id: 1, img: "cloud1", x: -10, y: 8, scale: 0.5, speed: 120, baseOpacity: 0.25 },
+  { id: 2, img: "cloud2", x: 30, y: 15, scale: 0.45, speed: 130, baseOpacity: 0.2 },
+  // Front layer — larger, faster, higher opacity
+  { id: 3, img: "cloud1", x: 55, y: 10, scale: 0.8, speed: 80, baseOpacity: 0.45 },
+  { id: 4, img: "cloud2", x: 5, y: 22, scale: 0.7, speed: 90, baseOpacity: 0.4 },
+  { id: 5, img: "cloud1", x: 75, y: 18, scale: 0.6, speed: 100, baseOpacity: 0.3 },
+];
+
+const CLOUD_IMAGES = { cloud1, cloud2 };
 
 const SkyBackground: React.FC = () => {
   const [now, setNow] = useState(() => new Date());
@@ -79,6 +109,7 @@ const SkyBackground: React.FC = () => {
   const { altitude, azimuth } = useMemo(() => getSunAltitudeAndAzimuth(now), [now]);
   const sky = useMemo(() => getSkyGradient(altitude), [altitude]);
   const moonPhaseIndex = useMemo(() => getMoonPhase(now), [now]);
+  const sunStyle = useMemo(() => getSunStyle(altitude), [altitude]);
 
   const isSunUp = altitude > -6;
   const isMoonVisible = !isSunUp;
@@ -87,6 +118,7 @@ const SkyBackground: React.FC = () => {
   const isNight = altitude < -6;
   const isDusk = altitude >= -6 && altitude <= 0;
   const starOpacity = isNight ? 1 : isDusk ? 1 - (altitude + 6) / 6 : 0;
+  const cloudOpacity = altitude > 0 ? 1 : altitude > -6 ? (altitude + 6) / 6 : 0;
 
   // Foreground opacity logic
   const fgDayOpacity = altitude > 10 ? 1 : altitude > 0 ? altitude / 10 : 0;
@@ -98,7 +130,7 @@ const SkyBackground: React.FC = () => {
       Array.from({ length: STAR_COUNT }, (_, i) => ({
         id: i,
         x: Math.random() * 100,
-        y: Math.random() * 60,
+        y: Math.random() * 55,
         size: 1 + Math.random() * 2,
         delay: Math.random() * 3,
         speed: 2 + Math.random() * 2,
@@ -106,22 +138,13 @@ const SkyBackground: React.FC = () => {
     []
   );
 
-  const clouds = useMemo(
-    () => [
-      { id: 1, baseX: 10, y: 20, scale: 1, speed: 0.3 },
-      { id: 2, baseX: 45, y: 14, scale: 0.7, speed: 0.2 },
-      { id: 3, baseX: 75, y: 28, scale: 0.85, speed: 0.25 },
-    ],
-    []
-  );
-
-  const sunColor = altitude > 15 ? "hsl(45,100%,70%)" : altitude > 0 ? "hsl(35,100%,60%)" : "hsl(20,100%,50%)";
-  const sunGlow = altitude > 15 ? "hsla(42,100%,65%,0.4)" : altitude > 0 ? "hsla(30,100%,60%,0.5)" : "hsla(15,100%,50%,0.6)";
-
   return (
     <div
       className="absolute inset-0 overflow-hidden transition-colors duration-[5000ms]"
-      style={{ background: `linear-gradient(to bottom, ${sky.top}, ${sky.bottom})` }}
+      style={{
+        background: `linear-gradient(to bottom, ${sky.top}, ${sky.bottom})`,
+        animation: "skyShimmer 20s ease-in-out infinite",
+      }}
     >
       {/* Stars */}
       {starOpacity > 0 &&
@@ -147,25 +170,31 @@ const SkyBackground: React.FC = () => {
           className="absolute transition-all duration-[30000ms] ease-linear"
           style={{ left: `${celestialX}%`, top: `${celestialY}%`, transform: "translate(-50%, -50%)" }}
         >
+          {/* Outer glow */}
           <div
             className="absolute rounded-full"
             style={{
-              width: 100, height: 100, left: -30, top: -30,
-              background: `radial-gradient(circle, ${sunGlow} 0%, transparent 70%)`,
+              width: sunStyle.glowSize,
+              height: sunStyle.glowSize,
+              left: -(sunStyle.glowSize - sunStyle.size) / 2,
+              top: -(sunStyle.glowSize - sunStyle.size) / 2,
+              background: `radial-gradient(circle, ${sunStyle.glow} 0%, transparent 70%)`,
             }}
           />
+          {/* Sun disc */}
           <div
             className="rounded-full"
             style={{
-              width: 40, height: 40,
-              background: `radial-gradient(circle at 35% 35%, hsl(45,100%,85%), ${sunColor})`,
-              boxShadow: `0 0 30px 10px ${sunGlow}, 0 0 80px 30px ${sunGlow.replace("0.4", "0.15")}`,
+              width: sunStyle.size,
+              height: sunStyle.size,
+              background: `radial-gradient(circle at 35% 35%, hsl(45,100%,92%), ${sunStyle.color})`,
+              boxShadow: `0 0 ${sunStyle.size}px ${sunStyle.size / 3}px ${sunStyle.glow}, 0 0 ${sunStyle.size * 2}px ${sunStyle.size}px ${sunStyle.glow.replace(/[\d.]+\)$/, "0.12)")}`,
             }}
           />
         </div>
       )}
 
-      {/* Moon - realistic phase image */}
+      {/* Moon */}
       {isMoonVisible && (
         <div
           className="absolute transition-all duration-[30000ms] ease-linear"
@@ -175,12 +204,10 @@ const SkyBackground: React.FC = () => {
             transform: "translate(-50%, -50%)",
           }}
         >
-          {/* Glow aura */}
           <div
             className="absolute rounded-full"
             style={{
-              width: 80, height: 80,
-              left: -16, top: -16,
+              width: 80, height: 80, left: -16, top: -16,
               background: "radial-gradient(circle, hsla(210,50%,85%,0.25) 0%, hsla(210,50%,80%,0.08) 50%, transparent 70%)",
             }}
           />
@@ -189,8 +216,7 @@ const SkyBackground: React.FC = () => {
             alt="Moon"
             className="rounded-full"
             style={{
-              width: 48, height: 48,
-              objectFit: "cover",
+              width: 48, height: 48, objectFit: "cover",
               filter: "brightness(1.1) contrast(1.05)",
               boxShadow: "0 0 20px 8px hsla(210,50%,80%,0.3), 0 0 60px 20px hsla(210,50%,80%,0.1)",
             }}
@@ -198,30 +224,26 @@ const SkyBackground: React.FC = () => {
         </div>
       )}
 
-      {/* Clouds */}
-      {altitude > -2 &&
-        clouds.map((cloud) => (
-          <div
-            key={cloud.id}
-            className="absolute"
+      {/* Realistic cloud layers */}
+      {cloudOpacity > 0 &&
+        CLOUD_INSTANCES.map((c) => (
+          <img
+            key={c.id}
+            src={CLOUD_IMAGES[c.img as keyof typeof CLOUD_IMAGES]}
+            alt=""
+            className="absolute pointer-events-none"
             style={{
-              left: `${cloud.baseX}%`,
-              top: `${cloud.y}%`,
-              opacity: Math.min(0.5, (altitude + 2) / 20),
-              transform: `scale(${cloud.scale})`,
-              animation: `drift ${80 / cloud.speed}s linear infinite`,
+              top: `${c.y}%`,
+              width: `${c.scale * 280}px`,
+              opacity: c.baseOpacity * cloudOpacity,
+              animation: `cloudDrift ${c.speed}s linear infinite`,
+              animationDelay: `${-(c.x / 100) * c.speed}s`,
             }}
-          >
-            <svg width="120" height="40" viewBox="0 0 120 40" fill="none">
-              <ellipse cx="60" cy="25" rx="50" ry="15" fill="white" opacity="0.8" />
-              <ellipse cx="40" cy="18" rx="30" ry="18" fill="white" opacity="0.9" />
-              <ellipse cx="75" cy="20" rx="25" ry="14" fill="white" opacity="0.7" />
-            </svg>
-          </div>
+          />
         ))}
 
       {/* Foreground silhouettes with crossfade */}
-      <div className="absolute bottom-0 left-0 right-0" style={{ height: "35%", pointerEvents: "none" }}>
+      <div className="absolute bottom-0 left-0 right-0" style={{ height: "42%", pointerEvents: "none" }}>
         <img
           src={fgDay}
           alt=""
@@ -247,9 +269,13 @@ const SkyBackground: React.FC = () => {
           0%, 100% { opacity: 0.3; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.3); }
         }
-        @keyframes drift {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(100vw); }
+        @keyframes cloudDrift {
+          0% { left: -20%; }
+          100% { left: 110%; }
+        }
+        @keyframes skyShimmer {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.02); }
         }
       `}</style>
     </div>
