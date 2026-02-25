@@ -246,20 +246,20 @@ const SkyBackground: React.FC = () => {
       <img
         src={fgDay}
         alt=""
-        className="absolute bottom-0 left-0 w-full pointer-events-none transition-opacity duration-[5000ms]"
-        style={{ opacity: fgDayOpacity, height: "45%", objectFit: "cover", objectPosition: "bottom center" }}
+        className="absolute bottom-0 left-0 w-full h-auto pointer-events-none transition-opacity duration-[5000ms]"
+        style={{ opacity: fgDayOpacity }}
       />
       <img
         src={fgDusk}
         alt=""
-        className="absolute bottom-0 left-0 w-full pointer-events-none transition-opacity duration-[5000ms]"
-        style={{ opacity: fgDuskOpacity, height: "45%", objectFit: "cover", objectPosition: "bottom center" }}
+        className="absolute bottom-0 left-0 w-full h-auto pointer-events-none transition-opacity duration-[5000ms]"
+        style={{ opacity: fgDuskOpacity }}
       />
       <img
         src={fgNight}
         alt=""
-        className="absolute bottom-0 left-0 w-full pointer-events-none transition-opacity duration-[5000ms]"
-        style={{ opacity: fgNightOpacity, height: "45%", objectFit: "cover", objectPosition: "bottom center" }}
+        className="absolute bottom-0 left-0 w-full h-auto pointer-events-none transition-opacity duration-[5000ms]"
+        style={{ opacity: fgNightOpacity }}
       />
 
       <style>{`
