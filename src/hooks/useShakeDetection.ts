@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-export function useShakeDetection(threshold = 15, cooldownMs = 5000) {
+export function useShakeDetection(threshold = 35, cooldownMs = 5000) {
   const [shakeDetected, setShakeDetected] = useState(false);
   const lastShakeRef = useRef(0);
   const lastAccelRef = useRef({ x: 0, y: 0, z: 0 });
