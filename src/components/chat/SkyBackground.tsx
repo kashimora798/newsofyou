@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useMemo } from "react";
 
 // Moon phase images
-import moonNew from "@/assets/moon/new_moon.jpg";
-import moonWaxCres from "@/assets/moon/waxing_crescent.jpg";
-import moonFirstQ from "@/assets/moon/first_quarter.jpg";
-import moonWaxGib from "@/assets/moon/waxing_gibbous.jpg";
-import moonFull from "@/assets/moon/full_moon.jpg";
-import moonWanGib from "@/assets/moon/waning_gibbous.jpg";
-import moonThirdQ from "@/assets/moon/third_quarter.jpg";
-import moonWanCres from "@/assets/moon/waning_crescent.jpg";
+import moonNew from "@/assets/moon/new_moon.png";
+import moonWaxCres from "@/assets/moon/waxing_crescent.png";
+import moonFirstQ from "@/assets/moon/first_quarter.png";
+import moonWaxGib from "@/assets/moon/waxing_gibbous.png";
+import moonFull from "@/assets/moon/full_moon.png";
+import moonWanGib from "@/assets/moon/waning_gibbous.png";
+import moonThirdQ from "@/assets/moon/third_quarter.png";
+import moonWanCres from "@/assets/moon/waning_crescent.png";
 
 // Foreground silhouette images
 import fgDay from "@/assets/sky/foreground_day.png";
