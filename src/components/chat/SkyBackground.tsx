@@ -217,6 +217,8 @@ const SkyBackground: React.FC = () => {
             className=""
             style={{
               width: 48, height: 48, objectFit: "cover",
+              borderRadius: "50%",
+              border: "0.5px solid hsla(210,50%,80%,0.4)",
               filter: "brightness(1.1) contrast(1.05)",
               boxShadow: "0 0 20px 8px hsla(210,50%,80%,0.3), 0 0 60px 20px hsla(210,50%,80%,0.1)",
             }}
