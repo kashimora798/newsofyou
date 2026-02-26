@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail } from "lucide-react";
+import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import MediaPanel from "./MediaPanel";
 import ReplyPreview from "./ReplyPreview";
@@ -239,6 +239,16 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             >
               <Mail className="h-5 w-5 text-muted-foreground" />
               <span className="text-[9px] text-muted-foreground">Letter</span>
+            </button>
+            <button
+              onClick={() => {
+                (window as any).__skyLanternComposer?.show?.();
+                setShowMore(false);
+              }}
+              className="flex flex-col items-center gap-0.5 p-2 rounded-xl hover:bg-muted/70 transition-colors"
+            >
+              <Flame className="h-5 w-5 text-muted-foreground" />
+              <span className="text-[9px] text-muted-foreground">Lantern</span>
             </button>
             <button onClick={() => setShowMore(false)} className="ml-auto h-6 w-6 flex items-center justify-center rounded-full bg-muted hover:bg-muted/80 transition-colors">
               <X className="h-3.5 w-3.5 text-muted-foreground" />

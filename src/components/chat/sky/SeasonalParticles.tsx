@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 
 type Season = "spring" | "summer" | "autumn" | "winter";
 
@@ -11,10 +11,10 @@ function getSeason(): Season {
 }
 
 const SEASON_CONFIG: Record<Season, { emoji: string[]; count: number; label: string }> = {
-  spring: { emoji: ["🌸", "🎀", "💮"], count: 18, label: "Cherry blossoms" },
-  summer: { emoji: ["🌺", "🌻", "🌼"], count: 14, label: "Flower petals" },
-  autumn: { emoji: ["🍂", "🍁", "🍃"], count: 16, label: "Falling leaves" },
-  winter: { emoji: ["❄️", "✨", "🤍"], count: 20, label: "Snowflakes" },
+  spring: { emoji: ["🌸", "🎀", "💮"], count: 10, label: "Cherry blossoms" },
+  summer: { emoji: ["🌺", "🌻", "🌼"], count: 8, label: "Flower petals" },
+  autumn: { emoji: ["🍂", "🍁", "🍃"], count: 10, label: "Falling leaves" },
+  winter: { emoji: ["❄️", "✨", "🤍"], count: 12, label: "Snowflakes" },
 };
 
 interface Particle {
@@ -32,10 +32,43 @@ interface SeasonalParticlesProps {
   altitude: number;
 }
 
+// Rare event: particles appear for 30-60s then disappear for 1-3 hours
 const SeasonalParticles: React.FC<SeasonalParticlesProps> = ({ altitude }) => {
   const season = useMemo(() => getSeason(), []);
   const config = SEASON_CONFIG[season];
+  const [active, setActive] = useState(false);
   const [bursts, setBursts] = useState<{ id: number; x: number; y: number; emoji: string }[]>([]);
+  const scheduleRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Schedule rare appearances
+  useEffect(() => {
+    const scheduleNext = () => {
+      // Wait 1-3 hours before showing
+      const waitTime = (60 + Math.random() * 120) * 60 * 1000;
+      scheduleRef.current = setTimeout(() => {
+        setActive(true);
+        // Show for 30-60 seconds
+        const showDuration = (30 + Math.random() * 30) * 1000;
+        setTimeout(() => {
+          setActive(false);
+          scheduleNext();
+        }, showDuration);
+      }, waitTime);
+    };
+
+    // First appearance after 5-15 min
+    const firstDelay = (5 + Math.random() * 10) * 60 * 1000;
+    scheduleRef.current = setTimeout(() => {
+      setActive(true);
+      const showDuration = (30 + Math.random() * 30) * 1000;
+      setTimeout(() => {
+        setActive(false);
+        scheduleNext();
+      }, showDuration);
+    }, firstDelay);
+
+    return () => { if (scheduleRef.current) clearTimeout(scheduleRef.current); };
+  }, []);
 
   const particles = useMemo<Particle[]>(() => {
     return Array.from({ length: config.count }, (_, i) => ({
@@ -44,13 +77,12 @@ const SeasonalParticles: React.FC<SeasonalParticlesProps> = ({ altitude }) => {
       x: Math.random() * 100,
       size: 12 + Math.random() * 10,
       duration: 8 + Math.random() * 6,
-      delay: Math.random() * 10,
+      delay: Math.random() * 5,
       swayAmp: 30 + Math.random() * 60,
       rotation: Math.random() * 360,
     }));
   }, [config]);
 
-  // Reduce opacity at night, increase at day
   const opacity = altitude > 10 ? 0.8 : altitude > 0 ? 0.6 : altitude > -6 ? 0.3 : 0.15;
 
   const handleTap = useCallback((e: React.PointerEvent, particle: Particle) => {
@@ -64,6 +96,8 @@ const SeasonalParticles: React.FC<SeasonalParticlesProps> = ({ altitude }) => {
     setBursts((prev) => [...prev, burst]);
     setTimeout(() => setBursts((prev) => prev.filter((b) => b.id !== burst.id)), 800);
   }, []);
+
+  if (!active) return null;
 
   return (
     <>
@@ -86,22 +120,15 @@ const SeasonalParticles: React.FC<SeasonalParticlesProps> = ({ altitude }) => {
         </span>
       ))}
 
-      {/* Burst effects */}
       {bursts.map((b) => (
         <div key={b.id} className="fixed pointer-events-none" style={{ left: b.x, top: b.y, zIndex: 50 }}>
           {Array.from({ length: 6 }, (_, i) => (
-            <span
-              key={i}
-              className="absolute"
-              style={{
-                fontSize: 14,
-                animation: `particleBurst 0.6s ease-out forwards`,
-                transform: `rotate(${(i / 6) * 360}deg)`,
-                "--angle": `${(i / 6) * 360}deg`,
-              } as React.CSSProperties}
-            >
-              {b.emoji}
-            </span>
+            <span key={i} className="absolute" style={{
+              fontSize: 14,
+              animation: "particleBurst 0.6s ease-out forwards",
+              transform: `rotate(${(i / 6) * 360}deg)`,
+              "--angle": `${(i / 6) * 360}deg`,
+            } as React.CSSProperties}>{b.emoji}</span>
           ))}
         </div>
       ))}

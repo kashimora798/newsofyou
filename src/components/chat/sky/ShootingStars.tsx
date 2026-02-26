@@ -19,14 +19,15 @@ const ShootingStars: React.FC<{ opacity: number }> = ({ opacity }) => {
 
     const spawn = () => {
       const id = Date.now() + Math.random();
+      // Start from wider range across the sky (0-90% horizontally, 2-40% vertically)
       const star: ShootingStar = {
         id,
-        x: 10 + Math.random() * 60,
-        y: 5 + Math.random() * 25,
-        angle: 20 + Math.random() * 25,
-        duration: 1.2 + Math.random() * 1.0,
+        x: Math.random() * 90,
+        y: 2 + Math.random() * 35,
+        angle: 15 + Math.random() * 30,
+        duration: 1.5 + Math.random() * 1.2,
         delay: 0,
-        length: 120 + Math.random() * 100,
+        length: 140 + Math.random() * 120,
         curve: Math.floor(Math.random() * 3),
       };
       setStars((prev) => [...prev, star]);
@@ -88,20 +89,20 @@ const ShootingStars: React.FC<{ opacity: number }> = ({ opacity }) => {
         @keyframes shootArc0 {
           0% { transform: translate(0, 0) rotate(var(--angle)); opacity: 0; }
           8% { opacity: 1; }
-          50% { transform: translate(200px, 30px) rotate(var(--angle)); }
-          100% { transform: translate(400px, 80px) rotate(var(--angle)); opacity: 0; }
+          50% { transform: translate(45vw, 30px) rotate(var(--angle)); }
+          100% { transform: translate(90vw, 80px) rotate(var(--angle)); opacity: 0; }
         }
         @keyframes shootArc1 {
           0% { transform: translate(0, 0) rotate(var(--angle)); opacity: 0; }
           8% { opacity: 1; }
-          50% { transform: translate(180px, 50px) rotate(var(--angle)); }
-          100% { transform: translate(380px, 60px) rotate(var(--angle)); opacity: 0; }
+          50% { transform: translate(40vw, 50px) rotate(var(--angle)); }
+          100% { transform: translate(85vw, 60px) rotate(var(--angle)); opacity: 0; }
         }
         @keyframes shootArc2 {
           0% { transform: translate(0, 0) rotate(var(--angle)); opacity: 0; }
           8% { opacity: 1; }
-          50% { transform: translate(220px, 20px) rotate(var(--angle)); }
-          100% { transform: translate(420px, 90px) rotate(var(--angle)); opacity: 0; }
+          50% { transform: translate(50vw, 20px) rotate(var(--angle)); }
+          100% { transform: translate(95vw, 90px) rotate(var(--angle)); opacity: 0; }
         }
       `}</style>
     </>
