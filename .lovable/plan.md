@@ -1,45 +1,38 @@
 
 
-# Fix Foreground Image Rendering — No Zoom, No Scaling
+# Two New Features: Sky Toggle + Shake Love Animation
 
-## Problem
-The current approach uses `height: 45%` + `object-fit: cover` which zooms and crops the image to fill a fixed area. The user wants the image to scale proportionally by width (`width: 100%`, `height: auto`) with no forced fit, anchored at the bottom.
+## Feature 1: Toggle to hide chat UI and show only the live sky background
 
-## Changes
+**What it does:** A small eye/landscape toggle button in the ChatHeader. When tapped, it hides the message list, input bar, search bar, and connection banner — leaving only the full-screen SkyBackground visible. Tap again to restore the chat.
 
-### 1. Replace night foreground asset
-Copy the uploaded wide image to `src/assets/sky/foreground_night.png`, replacing the existing night foreground.
+**Changes:**
+- **`src/pages/Chat.tsx`** — Add `immersiveMode` state. Pass it to `ChatHeader` as a prop + toggle callback. Conditionally hide `ConnectionBanner`, `SearchBar`, `MessageList`, and `MessageInput` when active. Pass `immersiveMode` to `MessageList` so sky stays visible full-screen.
+- **`src/components/chat/ChatHeader.tsx`** — Add an `Eye`/`EyeOff` toggle icon button next to the search button. Only show when `wallpaper === "sky"`. Props: `immersiveMode`, `onImmersiveToggle`.
 
-### 2. Update foreground image styles in `SkyBackground.tsx` (lines 246-263)
-Remove `height: "45%"`, `objectFit: "cover"`, and `objectPosition: "bottom center"` from all three foreground images. Replace with simple `width: 100%` + `height: auto` styling:
+## Feature 2: Shake-to-love animation with vibration
 
-```tsx
-<img
-  src={fgDay}
-  alt=""
-  className="absolute bottom-0 left-0 w-full h-auto pointer-events-none transition-opacity duration-[5000ms]"
-  style={{ opacity: fgDayOpacity }}
-/>
-<img
-  src={fgDusk}
-  alt=""
-  className="absolute bottom-0 left-0 w-full h-auto pointer-events-none transition-opacity duration-[5000ms]"
-  style={{ opacity: fgDuskOpacity }}
-/>
-<img
-  src={fgNight}
-  alt=""
-  className="absolute bottom-0 left-0 w-full h-auto pointer-events-none transition-opacity duration-[5000ms]"
-  style={{ opacity: fgNightOpacity }}
-/>
-```
+**What it does:** Uses the DeviceMotion API to detect a shake gesture. On shake:
+1. Phone vibrates for 3-4 seconds (pattern vibration)
+2. Full-screen overlay with floating hearts (like leaves blowing in wind — rotating, swaying, drifting across screen with varied sizes and speeds)
+3. Text appears: "Love you [partner name], I know you miss me !!" with a fade-in animation
+4. Auto-dismisses after ~5 seconds
 
-This way: width always fills the viewport, height scales proportionally from the image's natural aspect ratio, anchored at the bottom. No zoom, no crop, no `object-fit`. The wide panoramic night image will naturally be shorter in height on narrow screens and proportionally taller on wide screens — exactly matching its native aspect ratio.
+**Changes:**
+- **`src/hooks/useShakeDetection.ts`** (new) — Custom hook using `devicemotion` event. Detects sharp acceleration changes (threshold ~15). Debounces to prevent repeated triggers. Returns `shakeDetected` boolean + reset function.
+- **`src/components/chat/ShakeLoveOverlay.tsx`** (new) — Full-screen overlay component:
+  - 30-40 heart particles with randomized: start position, size (16-48px), rotation, sway amplitude, fall duration (3-6s), delay
+  - CSS keyframes: `heartFloat` combining translateY (top to bottom), translateX (sine-wave sway), rotate, and opacity fade
+  - Center text with scale-in + fade animation
+  - Vibration via `navigator.vibrate([200, 100, 200, 100, 200, 100, 300, 150, 300, 150, 500])` (~3.5s pattern)
+  - Auto-dismiss after 5 seconds
+- **`src/pages/Chat.tsx`** — Import hook + overlay. Call `useShakeDetection()`, render `<ShakeLoveOverlay>` when triggered, passing `partner?.name`.
 
-### 3. Moon — already fixed
-The `rounded-full` class was already removed in the last edit. No further changes needed.
+## Files to create
+1. `src/hooks/useShakeDetection.ts`
+2. `src/components/chat/ShakeLoveOverlay.tsx`
 
-## Files Modified
-- `src/assets/sky/foreground_night.png` — replaced with wide image
-- `src/components/chat/SkyBackground.tsx` — remove forced height/object-fit from foreground images
+## Files to modify
+1. `src/pages/Chat.tsx`
+2. `src/components/chat/ChatHeader.tsx`
 
