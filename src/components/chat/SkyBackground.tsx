@@ -19,6 +19,14 @@ import fgNight from "@/assets/sky/foreground_night.png";
 import cloud1 from "@/assets/sky/cloud1.png";
 import cloud2 from "@/assets/sky/cloud2.png";
 
+// Sky enhancement components
+import ShootingStars from "./sky/ShootingStars";
+import Fireflies from "./sky/Fireflies";
+import HorizonGlow from "./sky/HorizonGlow";
+import BirdsFlock from "./sky/BirdsFlock";
+import AirplaneTrail from "./sky/AirplaneTrail";
+import AuroraBorealis from "./sky/AuroraBorealis";
+
 const MOON_PHASES = [moonNew, moonWaxCres, moonFirstQ, moonWaxGib, moonFull, moonWanGib, moonThirdQ, moonWanCres];
 
 function getMoonPhase(date: Date): number {
@@ -69,7 +77,6 @@ function getSkyGradient(altitude: number) {
   return { top: "hsl(240,80%,5%)", bottom: "hsl(240,60%,10%)" };
 }
 
-// Sun appearance based on altitude
 function getSunStyle(altitude: number) {
   if (altitude > 30) {
     return { size: 35, color: "hsl(45,100%,88%)", glow: "hsla(45,100%,75%,0.35)", glowSize: 80 };
@@ -83,14 +90,20 @@ function getSunStyle(altitude: number) {
   return { size: 50, color: "hsl(15,100%,50%)", glow: "hsla(10,100%,45%,0.6)", glowSize: 140 };
 }
 
+// Cloud tinting based on sun altitude
+function getCloudFilter(altitude: number): string {
+  if (altitude > 20) return "brightness(1.05)"; // bright white day
+  if (altitude > 5) return "brightness(1) sepia(0.15) saturate(1.3)"; // warm golden
+  if (altitude > 0) return "brightness(0.9) sepia(0.4) saturate(1.6) hue-rotate(-10deg)"; // orange sunset
+  if (altitude > -6) return "brightness(0.6) sepia(0.3) saturate(0.8) hue-rotate(10deg)"; // dusky purple
+  return "brightness(0.3) saturate(0.3)"; // dark night
+}
+
 const STAR_COUNT = 50;
 
-// Cloud instances using the two cloud images
 const CLOUD_INSTANCES = [
-  // Back layer — smaller, slower, lower opacity
   { id: 1, img: "cloud1", x: -10, y: 8, scale: 0.5, speed: 120, baseOpacity: 0.25 },
   { id: 2, img: "cloud2", x: 30, y: 15, scale: 0.45, speed: 130, baseOpacity: 0.2 },
-  // Front layer — larger, faster, higher opacity
   { id: 3, img: "cloud1", x: 55, y: 10, scale: 0.8, speed: 80, baseOpacity: 0.45 },
   { id: 4, img: "cloud2", x: 5, y: 22, scale: 0.7, speed: 90, baseOpacity: 0.4 },
   { id: 5, img: "cloud1", x: 75, y: 18, scale: 0.6, speed: 100, baseOpacity: 0.3 },
@@ -119,6 +132,8 @@ const SkyBackground: React.FC = () => {
   const isDusk = altitude >= -6 && altitude <= 0;
   const starOpacity = isNight ? 1 : isDusk ? 1 - (altitude + 6) / 6 : 0;
   const cloudOpacity = altitude > 0 ? 1 : altitude > -6 ? (altitude + 6) / 6 : 0;
+  const cloudFilter = useMemo(() => getCloudFilter(altitude), [altitude]);
+  const fireflyOpacity = isNight ? 0.9 : isDusk ? 0.5 : 0;
 
   // Foreground opacity logic
   const fgDayOpacity = altitude > 10 ? 1 : altitude > 0 ? altitude / 10 : 0;
@@ -226,23 +241,42 @@ const SkyBackground: React.FC = () => {
         </div>
       )}
 
-      {/* Realistic cloud layers */}
+      {/* Realistic cloud layers with time-based tinting */}
       {cloudOpacity > 0 &&
         CLOUD_INSTANCES.map((c) => (
           <img
             key={c.id}
             src={CLOUD_IMAGES[c.img as keyof typeof CLOUD_IMAGES]}
             alt=""
-            className="absolute pointer-events-none"
+            className="absolute pointer-events-none transition-[filter] duration-[5000ms]"
             style={{
               top: `${c.y}%`,
               width: `${c.scale * 280}px`,
               opacity: c.baseOpacity * cloudOpacity,
               animation: `cloudDrift ${c.speed}s linear infinite`,
               animationDelay: `${-(c.x / 100) * c.speed}s`,
+              filter: cloudFilter,
             }}
           />
         ))}
+
+      {/* Horizon glow */}
+      <HorizonGlow altitude={altitude} />
+
+      {/* Shooting stars at night */}
+      <ShootingStars opacity={starOpacity} />
+
+      {/* Fireflies at dusk/night */}
+      <Fireflies opacity={fireflyOpacity} />
+
+      {/* Birds at dawn/dusk */}
+      <BirdsFlock altitude={altitude} />
+
+      {/* Airplane contrails during day */}
+      <AirplaneTrail isDaytime={altitude > 5} />
+
+      {/* Rare aurora at night */}
+      <AuroraBorealis isNight={isNight} />
 
       {/* Foreground silhouettes with crossfade */}
       <img
