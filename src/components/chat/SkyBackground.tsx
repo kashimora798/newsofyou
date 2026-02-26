@@ -245,13 +245,9 @@ const SkyBackground: React.FC<SkyBackgroundProps> = ({
           <img
             src={MOON_PHASES[moonPhaseIndex]}
             alt="Moon"
-            className=""
             style={{
-              width: 48, height: 48, objectFit: "cover",
-              borderRadius: "50%",
-              border: "none",
-              filter: "brightness(1.1) contrast(1.05)",
-              boxShadow: "0 0 20px 8px hsla(210,50%,80%,0.3), 0 0 60px 20px hsla(210,50%,80%,0.1)",
+              width: 48, height: 48, objectFit: "contain",
+              filter: "brightness(1.1) contrast(1.05) drop-shadow(0 0 12px hsla(210,50%,80%,0.4)) drop-shadow(0 0 40px hsla(210,50%,80%,0.15))",
             }}
           />
         </div>
