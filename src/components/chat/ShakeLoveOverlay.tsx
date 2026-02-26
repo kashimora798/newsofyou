@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import shakeIntroVideo from "@/assets/shake_love_intro.mp4";
 
 interface ShakeLoveOverlayProps {
   partnerName: string;
@@ -19,7 +20,12 @@ interface HeartParticle {
   rotationEnd: number;
 }
 
+type Phase = "video" | "hearts";
+
 const ShakeLoveOverlay: React.FC<ShakeLoveOverlayProps> = ({ partnerName, onDismiss }) => {
+  const [phase, setPhase] = useState<Phase>("video");
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const hearts = useMemo<HeartParticle[]>(() => {
     return Array.from({ length: 35 }, (_, i) => ({
       id: i,
@@ -38,50 +44,86 @@ const ShakeLoveOverlay: React.FC<ShakeLoveOverlayProps> = ({ partnerName, onDism
     if (navigator.vibrate) {
       navigator.vibrate([200, 100, 200, 100, 200, 100, 300, 150, 300, 150, 500]);
     }
-    const timer = setTimeout(onDismiss, 5500);
     return () => {
-      clearTimeout(timer);
       if (navigator.vibrate) navigator.vibrate(0);
     };
-  }, [onDismiss]);
+  }, []);
+
+  // Auto-dismiss after hearts phase
+  useEffect(() => {
+    if (phase !== "hearts") return;
+    const timer = setTimeout(onDismiss, 5500);
+    return () => clearTimeout(timer);
+  }, [phase, onDismiss]);
+
+  const handleVideoEnd = () => {
+    setPhase("hearts");
+  };
+
+  // Fallback: if video fails to load, skip to hearts
+  const handleVideoError = () => {
+    setPhase("hearts");
+  };
 
   return (
     <div
       className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center"
-      onClick={onDismiss}
-      style={{ background: "radial-gradient(ellipse at center, rgba(255,50,100,0.15) 0%, rgba(0,0,0,0.4) 100%)" }}
+      onClick={phase === "hearts" ? onDismiss : undefined}
+      style={{
+        background: phase === "video"
+          ? "black"
+          : "radial-gradient(ellipse at center, rgba(255,50,100,0.15) 0%, rgba(0,0,0,0.4) 100%)",
+      }}
     >
-      {/* Floating hearts */}
-      {hearts.map((h) => (
-        <span
-          key={h.id}
-          className="absolute"
-          style={{
-            left: `${h.startX}%`,
-            top: "-10%",
-            fontSize: `${h.size}px`,
-            animation: `heartFloat ${h.duration}s ease-in-out ${h.delay}s both`,
-            "--sway": `${h.swayAmp}px`,
-            "--rot-start": `${h.rotation}deg`,
-            "--rot-end": `${h.rotationEnd}deg`,
-          } as React.CSSProperties}
-        >
-          {h.emoji}
-        </span>
-      ))}
+      {phase === "video" && (
+        <video
+          ref={videoRef}
+          src={shakeIntroVideo}
+          autoPlay
+          muted
+          playsInline
+          onEnded={handleVideoEnd}
+          onError={handleVideoError}
+          className="w-full h-full object-cover"
+          style={{ position: "absolute", inset: 0 }}
+        />
+      )}
 
-      {/* Center text */}
-      <div
-        className="text-center px-6 z-10"
-        style={{ animation: "loveTextIn 0.8s ease-out 0.5s both" }}
-      >
-        <p className="text-3xl sm:text-4xl font-bold text-white drop-shadow-lg leading-snug">
-          Love you {partnerName} 💕
-        </p>
-        <p className="text-lg sm:text-xl text-white/90 mt-2 drop-shadow-md">
-          I know you miss me !!
-        </p>
-      </div>
+      {phase === "hearts" && (
+        <>
+          {/* Floating hearts */}
+          {hearts.map((h) => (
+            <span
+              key={h.id}
+              className="absolute"
+              style={{
+                left: `${h.startX}%`,
+                top: "-10%",
+                fontSize: `${h.size}px`,
+                animation: `heartFloat ${h.duration}s ease-in-out ${h.delay}s both`,
+                "--sway": `${h.swayAmp}px`,
+                "--rot-start": `${h.rotation}deg`,
+                "--rot-end": `${h.rotationEnd}deg`,
+              } as React.CSSProperties}
+            >
+              {h.emoji}
+            </span>
+          ))}
+
+          {/* Center text */}
+          <div
+            className="text-center px-6 z-10"
+            style={{ animation: "loveTextIn 0.8s ease-out 0.5s both" }}
+          >
+            <p className="text-3xl sm:text-4xl font-bold text-white drop-shadow-lg leading-snug">
+              Love you {partnerName} 💕
+            </p>
+            <p className="text-lg sm:text-xl text-white/90 mt-2 drop-shadow-md">
+              I know you miss me !!
+            </p>
+          </div>
+        </>
+      )}
 
       <style>{`
         @keyframes heartFloat {
