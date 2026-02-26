@@ -1,19 +1,41 @@
+## Interactive & Intimate Sky Enhancements
 
+### 3. Heart-Shaped Cloud
 
-## Fine-tune Shooting Stars
+Occasionally (randomly, ~10% chance), a heart-shaped cloud drifts across the daytime sky. Tapping it triggers a small love animation and sends a notification to the partner: "[Name] caught a heart cloud for you 💕"
 
-### Changes to `src/components/chat/sky/ShootingStars.tsx`:
+### 5. Sky Lanterns (Send Love)
 
-1. **Bright head + fading tail**: Replace the single `div` with a composite element — a bright circular head (3-4px glowing dot) followed by a tapered gradient tail that fades from bright white to transparent.
+A button lets either partner release a glowing sky lantern that floats upward with a warm glow trail. The other partner sees it arrive in their sky. Can attach a short message (max 20 chars) that appears when the lantern is tapped.
 
-2. **Longer animation**: Increase `duration` from `0.6-1.2s` to `1.2-2.2s`. Increase `length` from `60-140px` to `120-220px`. Increase travel distance from `200px` to `400px`.
+### 6. Rainbow After Rain
 
-3. **Parabolic path**: Use a CSS `@keyframes` animation with intermediate keyframes that include `translateY` offsets to create a curved/parabolic arc instead of a straight line. The star will arc downward slightly as it travels.
+Randomly during daytime, a rainbow arc fades in across the sky for 30-60 seconds. Tapping it reveals a random love quote or memory.
 
-4. **Structure**: Each shooting star becomes a small container with:
-   - A bright white head dot with strong `box-shadow` glow
-   - A trailing gradient tail element that tapers in width
-   - The container animated along a parabolic path using multi-step keyframes with `translateX` + `translateY`
+### 7. Falling Leaves / Petals (Seasonal)
 
-5. **Unique curves**: Add a `curve` property to each star instance (random value) that selects from a few keyframe variants for different arc shapes.
+Based on the actual season — cherry blossom petals in spring, golden leaves in autumn, snowflakes in winter, flower petals in summer — gentle particles drift down. Tapping them creates a small burst animation.
 
+### Implementation Priority
+
+**Phase 1 — High impact, self-contained:**
+
+&nbsp;
+
+- Heart-shaped cloud (daytime surprise)
+- Sky lanterns (partner communication)
+
+**Phase 2 — Atmospheric polish:**
+
+- Seasonal particles (petals/leaves/snow)
+- Rainbow events
+
+&nbsp;
+
+### Technical Approach
+
+- Each feature is a separate component in `src/components/chat/sky/`
+- Touch interactions use `onPointerDown` on the sky container
+- Partner sync features use Supabase realtime channels
+- All effects respect the altitude-based day/night system
+- Seasonal detection uses `Date` month checks
