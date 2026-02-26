@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import PresenceStatus from "./PresenceStatus";
-import { Search, ArrowLeft, LogOut } from "lucide-react";
+import { Search, ArrowLeft, LogOut, Eye, EyeOff } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface ChatHeaderProps {
@@ -11,9 +11,12 @@ interface ChatHeaderProps {
   partnerTyping: boolean;
   onSearchToggle?: () => void;
   onProfileToggle?: () => void;
+  immersiveMode?: boolean;
+  onImmersiveToggle?: () => void;
+  showImmersiveButton?: boolean;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle, immersiveMode, onImmersiveToggle, showImmersiveButton }) => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
 
@@ -39,6 +42,11 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         <PresenceStatus partner={partner} partnerTyping={partnerTyping} />
       </div>
 
+      {showImmersiveButton && (
+        <button onClick={onImmersiveToggle} className="p-2 rounded-full hover:bg-muted transition-colors" title="Toggle immersive sky">
+          {immersiveMode ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+        </button>
+      )}
       <button onClick={onSearchToggle} className="p-2 rounded-full hover:bg-muted transition-colors">
         <Search className="h-5 w-5 text-muted-foreground" />
       </button>
