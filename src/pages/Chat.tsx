@@ -10,6 +10,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSearch } from "@/hooks/useSearch";
 import { useMarkSeen } from "@/hooks/useMarkSeen";
 import { useAnimationQueue } from "@/hooks/useAnimationQueue";
+import { useShakeDetection } from "@/hooks/useShakeDetection";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
 import MessageInput from "@/components/chat/MessageInput";
@@ -19,6 +20,8 @@ import ProfilePanel from "@/components/chat/ProfilePanel";
 import LetterComposer from "@/components/chat/LetterComposer";
 import MessageEffects, { detectEffect, type EffectType } from "@/components/chat/MessageEffects";
 import TouchReactionOverlay, { type TouchEmotion, TOUCH_EMOTIONS, type CustomEmotionConfig } from "@/components/chat/TouchReactionOverlay";
+import ShakeLoveOverlay from "@/components/chat/ShakeLoveOverlay";
+import SkyBackground from "@/components/chat/SkyBackground";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
@@ -68,12 +71,14 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const [messageEffects, setMessageEffects] = useState(true);
   const [touchOverlay, setTouchOverlay] = useState<{ emotion: TouchEmotion; senderName: string } | null>(null);
   const [showLetterComposer, setShowLetterComposer] = useState(false);
+  const [immersiveMode, setImmersiveMode] = useState(false);
   const lastTouchReactionId = useRef<string | null>(null);
 
   useOnlineStatus(userId);
   useMarkSeen(userId, messages);
   const { current: pendingAnim, dismiss: dismissPendingAnim } = useAnimationQueue(userId);
   const [queuedKeywordEffect, setQueuedKeywordEffect] = useState<EffectType>(null);
+  const { shakeDetected, reset: resetShake } = useShakeDetection();
 
   // Play pending animations from queue
   useEffect(() => {
@@ -208,42 +213,56 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
 
   return (
     <div className="flex h-dvh bg-background">
-      <div className="flex flex-col flex-1 min-w-0">
-        <ChatHeader
-          partner={partner}
-          partnerTyping={partnerTyping}
-          onSearchToggle={() => { setShowSearch(!showSearch); if (showSearch) clear(); }}
-          onProfileToggle={() => setShowProfile(!showProfile)}
-        />
-        <ConnectionBanner />
-        {showSearch && (
-          <SearchBar
-            query={query}
-            onSearch={search}
-            onClose={() => { setShowSearch(false); clear(); }}
-            resultCount={results.length}
-          />
+      <div className="flex flex-col flex-1 min-w-0 relative">
+        {immersiveMode && wallpaper === "sky" && (
+          <div className="absolute inset-0 z-0">
+            <SkyBackground />
+          </div>
         )}
-        <MessageList
-          messages={displayMessages}
-          currentUserId={userId}
-          loading={loading}
-          loadingMore={loadingMore}
-          hasMore={hasMore}
-          onLoadMore={loadMore}
-          partnerTyping={partnerTyping}
-          onReply={setReplyTo}
-          wallpaper={effectiveWallpaper}
-          useSkyBackground={wallpaper === "sky"}
-        />
-        <MessageInput
-          onSend={handleSend}
-          onTyping={handleTyping}
-          userId={userId}
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-          onOpenLetter={() => setShowLetterComposer(true)}
-        />
+        <div className="relative z-10">
+          <ChatHeader
+            partner={partner}
+            partnerTyping={partnerTyping}
+            onSearchToggle={() => { setShowSearch(!showSearch); if (showSearch) clear(); }}
+            onProfileToggle={() => setShowProfile(!showProfile)}
+            immersiveMode={immersiveMode}
+            onImmersiveToggle={() => setImmersiveMode(!immersiveMode)}
+            showImmersiveButton={wallpaper === "sky"}
+          />
+        </div>
+        {!immersiveMode && (
+          <>
+            <ConnectionBanner />
+            {showSearch && (
+              <SearchBar
+                query={query}
+                onSearch={search}
+                onClose={() => { setShowSearch(false); clear(); }}
+                resultCount={results.length}
+              />
+            )}
+            <MessageList
+              messages={displayMessages}
+              currentUserId={userId}
+              loading={loading}
+              loadingMore={loadingMore}
+              hasMore={hasMore}
+              onLoadMore={loadMore}
+              partnerTyping={partnerTyping}
+              onReply={setReplyTo}
+              wallpaper={effectiveWallpaper}
+              useSkyBackground={wallpaper === "sky"}
+            />
+            <MessageInput
+              onSend={handleSend}
+              onTyping={handleTyping}
+              userId={userId}
+              replyTo={replyTo}
+              onCancelReply={() => setReplyTo(null)}
+              onOpenLetter={() => setShowLetterComposer(true)}
+            />
+          </>
+        )}
       </div>
 
       {showProfile && (
@@ -275,6 +294,13 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
             }
           }}
           onClose={() => setShowLetterComposer(false)}
+        />
+      )}
+
+      {shakeDetected && (
+        <ShakeLoveOverlay
+          partnerName={partner?.name ?? "Love"}
+          onDismiss={resetShake}
         />
       )}
     </div>
