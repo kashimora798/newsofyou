@@ -26,6 +26,10 @@ import HorizonGlow from "./sky/HorizonGlow";
 import BirdsFlock from "./sky/BirdsFlock";
 import AirplaneTrail from "./sky/AirplaneTrail";
 import AuroraBorealis from "./sky/AuroraBorealis";
+import HeartCloud from "./sky/HeartCloud";
+import SkyLanterns from "./sky/SkyLanterns";
+import RainbowArc from "./sky/RainbowArc";
+import SeasonalParticles from "./sky/SeasonalParticles";
 
 const MOON_PHASES = [moonNew, moonWaxCres, moonFirstQ, moonWaxGib, moonFull, moonWanGib, moonThirdQ, moonWanCres];
 
@@ -111,7 +115,19 @@ const CLOUD_INSTANCES = [
 
 const CLOUD_IMAGES = { cloud1, cloud2 };
 
-const SkyBackground: React.FC = () => {
+interface SkyBackgroundProps {
+  userId?: string;
+  partnerUserId?: string;
+  currentUserName?: string;
+  onHeartCloudCaught?: () => void;
+}
+
+const SkyBackground: React.FC<SkyBackgroundProps> = ({
+  userId,
+  partnerUserId,
+  currentUserName = "",
+  onHeartCloudCaught,
+}) => {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -277,6 +293,24 @@ const SkyBackground: React.FC = () => {
 
       {/* Rare aurora at night */}
       <AuroraBorealis isNight={isNight} />
+
+      {/* Heart-shaped cloud (daytime) */}
+      <HeartCloud isDaytime={altitude > 5} onCaught={onHeartCloudCaught} />
+
+      {/* Rainbow arc (daytime) */}
+      <RainbowArc isDaytime={altitude > 5} />
+
+      {/* Seasonal falling particles */}
+      <SeasonalParticles altitude={altitude} />
+
+      {/* Sky lanterns */}
+      {userId && (
+        <SkyLanterns
+          userId={userId}
+          partnerUserId={partnerUserId}
+          currentUserName={currentUserName}
+        />
+      )}
 
       {/* Foreground silhouettes with crossfade */}
       <img
