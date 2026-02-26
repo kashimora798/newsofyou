@@ -216,7 +216,14 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
       <div className="flex flex-col flex-1 min-w-0 relative">
         {immersiveMode && wallpaper === "sky" && (
           <div className="absolute inset-0 z-0">
-            <SkyBackground />
+            <SkyBackground
+              userId={userId}
+              partnerUserId={partner?.user_id}
+              currentUserName={currentUser?.name ?? ""}
+              onHeartCloudCaught={() => {
+                toast({ title: "💕 You caught a heart cloud!" });
+              }}
+            />
           </div>
         )}
         <div className="relative z-10">
