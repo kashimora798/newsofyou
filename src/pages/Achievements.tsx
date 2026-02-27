@@ -66,17 +66,16 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
 
   useEffect(() => {
     const load = async () => {
-      const [statsRes, streakRes, advRes, achStatsRes] = await Promise.all([
+      const [statsRes, advRes, achStatsRes, messagesRes] = await Promise.all([
         supabase.rpc("get_chat_stats" as any),
-        supabase.rpc("get_streak_data" as any),
         supabase.rpc("get_advanced_stats" as any),
         supabase.rpc("get_achievement_stats" as any),
+        supabase.from("messages").select("created_at").order("created_at", { ascending: false }),
       ]);
 
       const s = (statsRes.data as any) ?? {};
       const adv = (advRes.data as any) ?? {};
       const ach = (achStatsRes.data as any) ?? {};
-      const streakDays = Array.isArray(streakRes.data) ? (streakRes.data as string[]) : [];
 
       const total = s.total ?? 0;
       const photos = adv.photos_count ?? 0;
@@ -93,20 +92,23 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
       const voiceNotes = ach.voice_note_count ?? 0;
       const musicLinks = ach.music_link_count ?? 0;
 
-      // Streak calculation
+      // Streak calculation from messages directly
+      const allMessages = messagesRes.data ?? [];
+      const daySet = new Set<string>();
+      for (const msg of allMessages) {
+        daySet.add((msg as any).created_at.slice(0, 10));
+      }
+
       let currentStreak = 0;
-      if (streakDays.length > 0) {
-        const today = new Date().toISOString().slice(0, 10);
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-        if (streakDays[0] === today || streakDays[0] === yesterday) {
-          currentStreak = 1;
-          for (let i = 1; i < streakDays.length; i++) {
-            const prev = new Date(streakDays[i - 1]);
-            const curr = new Date(streakDays[i]);
-            const diff = (prev.getTime() - curr.getTime()) / 86400000;
-            if (Math.abs(diff - 1) < 0.1) currentStreak++;
-            else break;
-          }
+      const checkDate = new Date();
+      checkDate.setHours(0, 0, 0, 0);
+      while (true) {
+        const dateStr = checkDate.toISOString().slice(0, 10);
+        if (daySet.has(dateStr)) {
+          currentStreak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          break;
         }
       }
 
