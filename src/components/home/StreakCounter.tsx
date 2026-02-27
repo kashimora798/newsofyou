@@ -3,12 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getStreakCelebratedDate, setStreakCelebratedDate } from "@/hooks/useSecretAchievements";
 import StreakCelebration from "@/components/home/StreakCelebration";
+import { format } from "date-fns";
 
 const StreakCounter: React.FC = () => {
   const { user } = useAuth();
   const [currentStreak, setCurrentStreak] = useState(0);
   const [longestStreak, setLongestStreak] = useState(0);
   const [todayCount, setTodayCount] = useState(0);
+  const [breakDate, setBreakDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCelebration, setShowCelebration] = useState(false);
 
@@ -16,7 +18,6 @@ const StreakCounter: React.FC = () => {
     if (!user?.id) return;
 
     try {
-      // Fetch all messages ordered by date
       const { data: messages, error } = await supabase
         .from("messages")
         .select("created_at")
@@ -27,9 +28,9 @@ const StreakCounter: React.FC = () => {
         return;
       }
 
-      // Group messages by date (YYYY-MM-DD)
+      // Group messages by date
       const daySet = new Set<string>();
-      let todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = new Date().toISOString().slice(0, 10);
       let todayMsgCount = 0;
 
       for (const msg of messages) {
@@ -40,11 +41,11 @@ const StreakCounter: React.FC = () => {
 
       setTodayCount(todayMsgCount);
 
-      // Calculate current streak: go backwards from today
+      // Current streak: go backwards from today
       let streak = 0;
       const checkDate = new Date();
-      // Set to start of today
       checkDate.setHours(0, 0, 0, 0);
+      let brokeOn: string | null = null;
 
       while (true) {
         const dateStr = checkDate.toISOString().slice(0, 10);
@@ -52,15 +53,16 @@ const StreakCounter: React.FC = () => {
           streak++;
           checkDate.setDate(checkDate.getDate() - 1);
         } else {
+          // This is the date with no messages — streak broke here
+          brokeOn = dateStr;
           break;
         }
       }
 
-      // Calculate longest streak from all days
+      // Longest streak
       const sortedDays = Array.from(daySet).sort();
       let longest = 0;
       let tempStreak = 1;
-
       for (let i = 1; i < sortedDays.length; i++) {
         const prev = new Date(sortedDays[i - 1]);
         const curr = new Date(sortedDays[i]);
@@ -76,6 +78,7 @@ const StreakCounter: React.FC = () => {
 
       setCurrentStreak(streak);
       setLongestStreak(longest);
+      setBreakDate(brokeOn);
 
       // Celebration check
       if (streak > 0 && user?.id) {
@@ -136,6 +139,13 @@ const StreakCounter: React.FC = () => {
               : "💬 Send a message to keep the streak alive!"
             }
           </p>
+
+          {/* Show break date */}
+          {breakDate && (
+            <p className="text-[10px] text-center text-destructive/70 mt-1">
+              📅 No messages on {format(new Date(breakDate + "T00:00:00"), "MMM d, yyyy")} — streak broke here
+            </p>
+          )}
         </div>
       </div>
 
