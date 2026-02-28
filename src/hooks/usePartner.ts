@@ -22,6 +22,9 @@ export function usePartner(currentUserId: string | undefined) {
 
     fetchPartner();
 
+    // Poll partner status every 10s as fallback for dropped realtime
+    const poll = setInterval(fetchPartner, 10000);
+
     const channel = supabase
       .channel("partner-status")
       .on("postgres_changes", {
@@ -34,7 +37,10 @@ export function usePartner(currentUserId: string | undefined) {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
   }, [currentUserId]);
 
   return partner;
