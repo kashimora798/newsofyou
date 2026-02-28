@@ -35,6 +35,7 @@ export function useMessages(userId: string | undefined) {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const oldestRef = useRef<string | null>(null);
+  const messagesRef = useRef<Message[]>([]);
 
   const fetchMessages = useCallback(async () => {
     if (!userId) return;
@@ -122,6 +123,9 @@ export function useMessages(userId: string | undefined) {
     return error;
   }, [userId]);
 
+  // Keep messagesRef in sync for polling
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   // Track unseen message IDs for polling without nesting setMessages
   const unseenIdsRef = useRef<string[]>([]);
 
@@ -136,7 +140,7 @@ export function useMessages(userId: string | undefined) {
     if (!userId) return;
     fetchMessages();
 
-    const channel = supabase
+    let channel = supabase
       .channel("messages-realtime")
       .on("postgres_changes", {
         event: "INSERT",
@@ -160,6 +164,25 @@ export function useMessages(userId: string | undefined) {
       .subscribe((status) => {
         console.log("Realtime subscription status:", status);
       });
+
+    // Fallback: poll for new messages every 5s in case realtime drops
+    const messagePoll = setInterval(async () => {
+      const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+      if (!lastMsg?.created_at) return;
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .gt("created_at", lastMsg.created_at)
+        .order("created_at", { ascending: true })
+        .limit(50);
+      if (data && data.length > 0) {
+        setMessages(prev => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const newOnes = data.filter(m => !existingIds.has(m.id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      }
+    }, 5000);
 
     // Polling fallback for seen/delivered status every 3s
     const statusPoll = setInterval(async () => {
@@ -186,6 +209,7 @@ export function useMessages(userId: string | undefined) {
 
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(messagePoll);
       clearInterval(statusPoll);
     };
   }, [userId, fetchMessages]);
