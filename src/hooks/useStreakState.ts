@@ -1,47 +1,27 @@
 import { supabase } from "@/integrations/supabase/client";
 
-interface StreakState {
+interface StreakData {
   currentStreak: number;
   longestStreak: number;
-  streakBrokenOn: string | null; // YYYY-MM-DD date the streak broke
-  lastCheckedDate: string; // YYYY-MM-DD last date we ran the full check
-}
-
-const STORAGE_KEY = (uid: string) => `streak_state_${uid}`;
-
-function getStoredState(userId: string): StreakState | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY(userId));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeState(userId: string, state: StreakState) {
-  localStorage.setItem(STORAGE_KEY(userId), JSON.stringify(state));
+  streakBrokenOn: string | null;
+  todayCount: number;
 }
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function yesterdayStr(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+function daysBetween(a: string, b: string): number {
+  const da = new Date(a + "T00:00:00").getTime();
+  const db = new Date(b + "T00:00:00").getTime();
+  return Math.round((db - da) / 86400000);
 }
 
 /**
- * Full recalculation from all messages. Only runs once, then results are cached.
+ * One-time full scan to find streak_broken_on date.
+ * Scans backwards from today to find the first gap day.
  */
-async function fullRecalculate(): Promise<{ daySet: Set<string> }> {
+async function findStreakBreakDate(): Promise<{ brokenOn: string | null; streak: number; longest: number }> {
   const { data: messages } = await supabase
     .from("messages")
     .select("created_at")
@@ -53,23 +33,21 @@ async function fullRecalculate(): Promise<{ daySet: Set<string> }> {
       daySet.add(msg.created_at.slice(0, 10));
     }
   }
-  return { daySet };
-}
 
-function calcStreakFromDaySet(daySet: Set<string>): StreakState {
+  if (daySet.size === 0) return { brokenOn: null, streak: 0, longest: 0 };
+
   const today = todayStr();
-
   // Current streak: go backwards from today
   let streak = 0;
-  const checkDate = new Date();
-  checkDate.setHours(0, 0, 0, 0);
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
   let brokenOn: string | null = null;
 
   while (true) {
-    const dateStr = checkDate.toISOString().slice(0, 10);
+    const dateStr = d.toISOString().slice(0, 10);
     if (daySet.has(dateStr)) {
       streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
+      d.setDate(d.getDate() - 1);
     } else {
       brokenOn = dateStr;
       break;
@@ -77,108 +55,175 @@ function calcStreakFromDaySet(daySet: Set<string>): StreakState {
   }
 
   // Longest streak
-  const sortedDays = Array.from(daySet).sort();
+  const sorted = Array.from(daySet).sort();
   let longest = 0;
-  let tempStreak = 1;
-  for (let i = 1; i < sortedDays.length; i++) {
-    const prev = new Date(sortedDays[i - 1]);
-    const curr = new Date(sortedDays[i]);
-    const diff = (curr.getTime() - prev.getTime()) / 86400000;
-    if (diff === 1) {
-      tempStreak++;
+  let temp = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    if (daysBetween(sorted[i - 1], sorted[i]) === 1) {
+      temp++;
     } else {
-      longest = Math.max(longest, tempStreak);
-      tempStreak = 1;
+      longest = Math.max(longest, temp);
+      temp = 1;
     }
   }
-  longest = Math.max(longest, tempStreak);
+  longest = Math.max(longest, temp);
 
-  return {
-    currentStreak: streak,
-    longestStreak: longest,
-    streakBrokenOn: brokenOn,
-    lastCheckedDate: today,
-  };
+  return { brokenOn, streak, longest };
 }
 
 /**
- * Smart streak calculator:
- * - On first run: full recalculation, stores result
- * - On subsequent runs: only checks if today has messages (quick query)
- * - Only recalculates fully if the stored state is stale (> 1 day old)
+ * Main entry: get streak data from user_status columns.
+ * If columns are empty (first time), does a one-time full scan and stores results.
+ * On subsequent calls, just checks if today has messages and updates streak accordingly.
  */
-export async function getStreakData(userId: string): Promise<StreakState & { todayCount: number }> {
+export async function getStreakData(userId: string): Promise<StreakData> {
   const today = todayStr();
-  const stored = getStoredState(userId);
 
-  // Quick check: how many messages today?
+  // Get stored streak data from user_status
+  const { data: status } = await supabase
+    .from("user_status")
+    .select("streak_broken_on, current_streak, longest_streak" as any)
+    .eq("user_id", userId)
+    .single();
+
+  const storedBrokenOn = (status as any)?.streak_broken_on ?? null;
+  const storedStreak = (status as any)?.current_streak ?? 0;
+  const storedLongest = (status as any)?.longest_streak ?? 0;
+
+  // Quick: count today's messages
   const { count: todayCount } = await supabase
     .from("messages")
     .select("id", { count: "exact", head: true })
     .gte("created_at", today + "T00:00:00")
-    .lt("created_at", addDays(today, 1) + "T00:00:00");
+    .lt("created_at", today + "T23:59:59.999");
 
   const tCount = todayCount ?? 0;
 
-  // If we have stored state from today, just use it (update todayCount)
-  if (stored && stored.lastCheckedDate === today) {
-    // But update current streak if today now has messages and it didn't before
-    if (tCount > 0 && stored.streakBrokenOn === today) {
-      // Today now has messages! Streak extends by 1
-      const updated: StreakState = {
-        ...stored,
-        currentStreak: stored.currentStreak + 1,
-        longestStreak: Math.max(stored.longestStreak, stored.currentStreak + 1),
-        streakBrokenOn: null, // No break visible (streak is active through today)
-        lastCheckedDate: today,
-      };
-      // Find the actual break: check day before the old streak start
-      // The old streakBrokenOn was today, meaning streak was 0 or didn't include today
-      // Now we need to find the real break date by going back from yesterday
-      const { daySet } = await fullRecalculate();
-      const fresh = calcStreakFromDaySet(daySet);
-      storeState(userId, fresh);
-      return { ...fresh, todayCount: tCount };
-    }
-    return { ...stored, todayCount: tCount };
+  // FIRST TIME: no streak_broken_on stored → do one-time full scan
+  if (!storedBrokenOn && storedStreak === 0) {
+    const { brokenOn, streak, longest } = await findStreakBreakDate();
+    await supabase
+      .from("user_status")
+      .update({
+        streak_broken_on: brokenOn,
+        current_streak: streak,
+        longest_streak: longest,
+      } as any)
+      .eq("user_id", userId);
+    return { currentStreak: streak, longestStreak: longest, streakBrokenOn: brokenOn, todayCount: tCount };
   }
 
-  // If stored state is from yesterday and today has messages, we can do a quick update
-  if (stored && stored.lastCheckedDate === yesterdayStr() && tCount > 0) {
-    // Yesterday's state + today has messages = streak continues
-    if (stored.currentStreak > 0) {
-      const updated: StreakState = {
-        currentStreak: stored.currentStreak + 1,
-        longestStreak: Math.max(stored.longestStreak, stored.currentStreak + 1),
-        streakBrokenOn: stored.streakBrokenOn,
-        lastCheckedDate: today,
-      };
-      storeState(userId, updated);
-      return { ...updated, todayCount: tCount };
+  // CASE 1: streak_broken_on is today (no messages yet today when last checked)
+  if (storedBrokenOn === today) {
+    if (tCount > 0) {
+      // Today now has messages! Extend streak
+      const newStreak = storedStreak + 1;
+      const newLongest = Math.max(storedLongest, newStreak);
+      // Find new break: it's the day before the old break chain started
+      // Since storedBrokenOn was today and storedStreak was the streak up to yesterday,
+      // the real break is now further back. We need to check yesterday-storedStreak-1 day.
+      // But simpler: the previous brokenOn was one day before the streak started.
+      // streak was X days ending yesterday, break was today. Now streak is X+1 ending today.
+      // The break date stays the same as whatever broke before the old streak.
+      // We need the date before the streak started = today - newStreak days
+      const breakD = new Date();
+      breakD.setDate(breakD.getDate() - newStreak);
+      const newBrokenOn = breakD.toISOString().slice(0, 10);
+
+      await supabase
+        .from("user_status")
+        .update({
+          current_streak: newStreak,
+          longest_streak: newLongest,
+          streak_broken_on: newBrokenOn,
+        } as any)
+        .eq("user_id", userId);
+      return { currentStreak: newStreak, longestStreak: newLongest, streakBrokenOn: newBrokenOn, todayCount: tCount };
+    }
+    // Still no messages today, streak hasn't changed
+    return { currentStreak: storedStreak, longestStreak: storedLongest, streakBrokenOn: storedBrokenOn, todayCount: 0 };
+  }
+
+  // CASE 2: streak_broken_on is yesterday (yesterday had no messages → streak broke yesterday)
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  if (storedBrokenOn && daysBetween(storedBrokenOn, today) > 1 && storedBrokenOn !== yesterdayStr) {
+    // Check if days were missed between stored break and today
+    // The break date is old, check if streak continued or broke since
+    // Check if yesterday had messages
+    const { count: yesterdayCount } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", yesterdayStr + "T00:00:00")
+      .lt("created_at", yesterdayStr + "T23:59:59.999");
+
+    if ((yesterdayCount ?? 0) === 0) {
+      // Yesterday had no messages → streak broke yesterday
+      const newStreak = tCount > 0 ? 1 : 0;
+      const brokenDate = tCount > 0 ? yesterdayStr : today;
+      await supabase
+        .from("user_status")
+        .update({
+          current_streak: newStreak,
+          streak_broken_on: brokenDate,
+          longest_streak: storedLongest,
+        } as any)
+        .eq("user_id", userId);
+      return { currentStreak: newStreak, longestStreak: storedLongest, streakBrokenOn: brokenDate, todayCount: tCount };
     }
   }
 
-  // Full recalculation needed
-  const { daySet } = await fullRecalculate();
-  const state = calcStreakFromDaySet(daySet);
-  storeState(userId, state);
-  return { ...state, todayCount: tCount };
+  // CASE 3: Normal day, streak is ongoing
+  if (tCount > 0) {
+    // Today has messages, check if we already counted today
+    // If broken_on date + streak days = yesterday, we need to add today
+    const streakEndDate = new Date(storedBrokenOn + "T00:00:00");
+    streakEndDate.setDate(streakEndDate.getDate() + storedStreak);
+    const streakEndStr = streakEndDate.toISOString().slice(0, 10);
+
+    if (streakEndStr !== today) {
+      // Haven't counted today yet
+      const newStreak = storedStreak + 1;
+      const newLongest = Math.max(storedLongest, newStreak);
+      await supabase
+        .from("user_status")
+        .update({
+          current_streak: newStreak,
+          longest_streak: newLongest,
+        } as any)
+        .eq("user_id", userId);
+      return { currentStreak: newStreak, longestStreak: newLongest, streakBrokenOn: storedBrokenOn, todayCount: tCount };
+    }
+  } else {
+    // No messages today yet - streak_broken_on should be today if not already set
+    // But don't update yet, the day isn't over
+  }
+
+  return { currentStreak: storedStreak, longestStreak: storedLongest, streakBrokenOn: storedBrokenOn, todayCount: tCount };
 }
 
 /**
- * Force a full recalculation (e.g., when user suspects data is stale)
+ * Force full recalculation (e.g. user suspects stale data)
  */
-export async function forceRecalculateStreak(userId: string): Promise<StreakState & { todayCount: number }> {
-  const today = todayStr();
-  const { daySet } = await fullRecalculate();
-  const state = calcStreakFromDaySet(daySet);
-  storeState(userId, state);
+export async function forceRecalculateStreak(userId: string): Promise<StreakData> {
+  const { brokenOn, streak, longest } = await findStreakBreakDate();
+  await supabase
+    .from("user_status")
+    .update({
+      streak_broken_on: brokenOn,
+      current_streak: streak,
+      longest_streak: longest,
+    } as any)
+    .eq("user_id", userId);
 
+  const today = todayStr();
   const { count } = await supabase
     .from("messages")
     .select("id", { count: "exact", head: true })
     .gte("created_at", today + "T00:00:00")
-    .lt("created_at", addDays(today, 1) + "T00:00:00");
+    .lt("created_at", today + "T23:59:59.999");
 
-  return { ...state, todayCount: count ?? 0 };
+  return { currentStreak: streak, longestStreak: longest, streakBrokenOn: brokenOn, todayCount: count ?? 0 };
 }
