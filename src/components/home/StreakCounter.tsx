@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getStreakCelebratedDate, setStreakCelebratedDate } from "@/hooks/useSecretAchievements";
 import StreakCelebration from "@/components/home/StreakCelebration";
+import { getStreakData } from "@/hooks/useStreakState";
 import { format } from "date-fns";
 
 const StreakCounter: React.FC = () => {
@@ -18,70 +18,15 @@ const StreakCounter: React.FC = () => {
     if (!user?.id) return;
 
     try {
-      const { data: messages, error } = await supabase
-        .from("messages")
-        .select("created_at")
-        .order("created_at", { ascending: false });
-
-      if (error || !messages || messages.length === 0) {
-        setLoading(false);
-        return;
-      }
-
-      // Group messages by date
-      const daySet = new Set<string>();
-      const todayStr = new Date().toISOString().slice(0, 10);
-      let todayMsgCount = 0;
-
-      for (const msg of messages) {
-        const day = msg.created_at.slice(0, 10);
-        daySet.add(day);
-        if (day === todayStr) todayMsgCount++;
-      }
-
-      setTodayCount(todayMsgCount);
-
-      // Current streak: go backwards from today
-      let streak = 0;
-      const checkDate = new Date();
-      checkDate.setHours(0, 0, 0, 0);
-      let brokeOn: string | null = null;
-
-      while (true) {
-        const dateStr = checkDate.toISOString().slice(0, 10);
-        if (daySet.has(dateStr)) {
-          streak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          // This is the date with no messages — streak broke here
-          brokeOn = dateStr;
-          break;
-        }
-      }
-
-      // Longest streak
-      const sortedDays = Array.from(daySet).sort();
-      let longest = 0;
-      let tempStreak = 1;
-      for (let i = 1; i < sortedDays.length; i++) {
-        const prev = new Date(sortedDays[i - 1]);
-        const curr = new Date(sortedDays[i]);
-        const diff = (curr.getTime() - prev.getTime()) / 86400000;
-        if (diff === 1) {
-          tempStreak++;
-        } else {
-          longest = Math.max(longest, tempStreak);
-          tempStreak = 1;
-        }
-      }
-      longest = Math.max(longest, tempStreak);
-
-      setCurrentStreak(streak);
-      setLongestStreak(longest);
-      setBreakDate(brokeOn);
+      const data = await getStreakData(user.id);
+      setCurrentStreak(data.currentStreak);
+      setLongestStreak(data.longestStreak);
+      setTodayCount(data.todayCount);
+      setBreakDate(data.streakBrokenOn);
 
       // Celebration check
-      if (streak > 0 && user?.id) {
+      if (data.currentStreak > 0) {
+        const todayStr = new Date().toISOString().slice(0, 10);
         const lastCelebratedDate = await getStreakCelebratedDate(user.id);
         if (lastCelebratedDate !== todayStr) {
           setShowCelebration(true);
@@ -97,7 +42,7 @@ const StreakCounter: React.FC = () => {
 
   useEffect(() => {
     calculate();
-    const interval = setInterval(calculate, 30000);
+    const interval = setInterval(calculate, 60000); // Check every 60s instead of 30s
     return () => clearInterval(interval);
   }, [calculate]);
 
@@ -140,7 +85,6 @@ const StreakCounter: React.FC = () => {
             }
           </p>
 
-          {/* Show break date */}
           {breakDate && (
             <p className="text-[10px] text-center text-destructive/70 mt-1">
               📅 No messages on {format(new Date(breakDate + "T00:00:00"), "MMM d, yyyy")} — streak broke here

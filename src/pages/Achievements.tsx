@@ -66,11 +66,10 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
 
   useEffect(() => {
     const load = async () => {
-      const [statsRes, advRes, achStatsRes, messagesRes] = await Promise.all([
+      const [statsRes, advRes, achStatsRes] = await Promise.all([
         supabase.rpc("get_chat_stats" as any),
         supabase.rpc("get_advanced_stats" as any),
         supabase.rpc("get_achievement_stats" as any),
-        supabase.from("messages").select("created_at").order("created_at", { ascending: false }),
       ]);
 
       const s = (statsRes.data as any) ?? {};
@@ -92,25 +91,9 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
       const voiceNotes = ach.voice_note_count ?? 0;
       const musicLinks = ach.music_link_count ?? 0;
 
-      // Streak calculation from messages directly
-      const allMessages = messagesRes.data ?? [];
-      const daySet = new Set<string>();
-      for (const msg of allMessages) {
-        daySet.add((msg as any).created_at.slice(0, 10));
-      }
-
-      let currentStreak = 0;
-      const checkDate = new Date();
-      checkDate.setHours(0, 0, 0, 0);
-      while (true) {
-        const dateStr = checkDate.toISOString().slice(0, 10);
-        if (daySet.has(dateStr)) {
-          currentStreak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          break;
-        }
-      }
+      // Streak from cached/smart calculator
+      const streakData = await (await import("@/hooks/useStreakState")).getStreakData(userId);
+      const currentStreak = streakData.currentStreak;
 
       // Days together
       let daysTogether = 0;
