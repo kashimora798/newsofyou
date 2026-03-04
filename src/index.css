@@ -271,3 +271,166 @@
   from { transform: scale(0.92); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   PARALLEL UNIVERSE MODE — Chat Theme Skins
+   ══════════════════════════════════════════════════════════ */
+
+/* ── SPY DOCUMENTS ── */
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+
+.theme-spy {
+  --bubble-own: 0 0% 18%;
+  --bubble-own-foreground: 45 20% 85%;
+  --bubble-partner: 0 0% 12%;
+  --bubble-partner-foreground: 45 15% 80%;
+  --chat-bg: 0 0% 8%;
+  --card: 0 0% 10%;
+  --card-foreground: 45 15% 80%;
+  --border: 0 0% 20%;
+  --foreground: 45 15% 80%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 45 10% 55%;
+  font-family: 'Special Elite', 'Courier New', monospace !important;
+}
+.theme-spy * {
+  font-family: inherit !important;
+}
+.theme-spy .rounded-2xl {
+  border-radius: 4px !important;
+}
+.theme-spy [class*="bg-bubble-own"] {
+  border: 1px dashed hsl(45 20% 30%);
+}
+.theme-spy [class*="bg-bubble-partner"] {
+  border: 1px dashed hsl(0 60% 35%);
+}
+
+/* ── GEOCITIES '98 ── */
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+
+.theme-geocities {
+  --bubble-own: 240 100% 85%;
+  --bubble-own-foreground: 240 100% 15%;
+  --bubble-partner: 60 100% 90%;
+  --bubble-partner-foreground: 0 0% 10%;
+  --chat-bg: 210 50% 92%;
+  --card: 0 0% 95%;
+  --card-foreground: 0 0% 10%;
+  --border: 210 60% 70%;
+  --foreground: 0 0% 10%;
+  --muted: 210 40% 88%;
+  --muted-foreground: 210 20% 40%;
+  --primary: 280 80% 55%;
+  font-family: 'Comic Neue', 'Comic Sans MS', cursive !important;
+}
+.theme-geocities * {
+  font-family: inherit !important;
+}
+.theme-geocities [class*="bg-bubble-own"],
+.theme-geocities [class*="bg-bubble-partner"] {
+  border: 3px solid hsl(280 80% 55%);
+  box-shadow: 4px 4px 0 hsl(280 80% 35%);
+  border-radius: 0 !important;
+}
+
+/* ── GAMEBOY ── */
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
+
+.theme-gameboy {
+  --bubble-own: 80 30% 30%;
+  --bubble-own-foreground: 80 60% 85%;
+  --bubble-partner: 80 25% 22%;
+  --bubble-partner-foreground: 80 60% 80%;
+  --chat-bg: 80 40% 72%;
+  --card: 80 35% 65%;
+  --card-foreground: 80 60% 10%;
+  --border: 80 30% 50%;
+  --foreground: 80 60% 10%;
+  --muted: 80 30% 60%;
+  --muted-foreground: 80 40% 25%;
+  --primary: 80 50% 35%;
+  --primary-foreground: 80 60% 90%;
+  font-family: 'Silkscreen', monospace !important;
+}
+.theme-gameboy * {
+  font-family: inherit !important;
+  image-rendering: pixelated;
+}
+.theme-gameboy [class*="bg-bubble-own"],
+.theme-gameboy [class*="bg-bubble-partner"] {
+  border: 2px solid hsl(80 50% 20%);
+  border-radius: 2px !important;
+  box-shadow: 2px 2px 0 hsl(80 50% 20%);
+}
+
+/* ── HORROR ARG ── */
+@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap');
+
+.theme-horror {
+  --bubble-own: 0 0% 8%;
+  --bubble-own-foreground: 0 80% 55%;
+  --bubble-partner: 0 0% 5%;
+  --bubble-partner-foreground: 120 80% 50%;
+  --chat-bg: 0 0% 3%;
+  --card: 0 0% 6%;
+  --card-foreground: 0 0% 70%;
+  --border: 0 0% 15%;
+  --foreground: 0 0% 70%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 40%;
+  --primary: 0 80% 45%;
+  --primary-foreground: 0 0% 100%;
+  font-family: 'Share Tech Mono', monospace !important;
+}
+.theme-horror * {
+  font-family: inherit !important;
+}
+.theme-horror header h2,
+.theme-horror h1, .theme-horror h3 {
+  font-family: 'Creepster', cursive !important;
+  letter-spacing: 2px;
+}
+.theme-horror [class*="bg-bubble-partner"] {
+  animation: horror-flicker 4s infinite;
+}
+
+@keyframes horror-flicker {
+  0%, 95%, 100% { opacity: 1; }
+  96% { opacity: 0.6; }
+  97% { opacity: 1; }
+  98% { opacity: 0.4; }
+}
+
+/* ── ROMANCE NOVEL ── */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital@0;1&display=swap');
+
+.theme-romance {
+  --bubble-own: 340 40% 90%;
+  --bubble-own-foreground: 340 30% 20%;
+  --bubble-partner: 30 50% 93%;
+  --bubble-partner-foreground: 30 40% 20%;
+  --chat-bg: 35 40% 92%;
+  --card: 30 35% 95%;
+  --card-foreground: 340 30% 20%;
+  --border: 340 25% 82%;
+  --foreground: 340 30% 20%;
+  --muted: 30 30% 88%;
+  --muted-foreground: 340 15% 50%;
+  --primary: 340 55% 55%;
+  --primary-foreground: 0 0% 100%;
+  font-family: 'Lora', Georgia, serif !important;
+}
+.theme-romance * {
+  font-family: inherit !important;
+}
+.theme-romance header h2,
+.theme-romance h1, .theme-romance h3 {
+  font-family: 'Playfair Display', serif !important;
+  font-style: italic;
+}
+.theme-romance [class*="bg-bubble-own"],
+.theme-romance [class*="bg-bubble-partner"] {
+  border-radius: 20px !important;
+  box-shadow: 0 2px 12px hsl(340 55% 55% / 0.12);
+}

@@ -24,6 +24,7 @@ import ShakeLoveOverlay from "@/components/chat/ShakeLoveOverlay";
 import SkyBackground from "@/components/chat/SkyBackground";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { getThemeById } from "@/lib/chatThemes";
 import type { Tables } from "@/integrations/supabase/types";
 
 const DYNAMIC_WALLPAPERS: Record<string, string> = {
@@ -72,6 +73,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const [touchOverlay, setTouchOverlay] = useState<{ emotion: TouchEmotion; senderName: string } | null>(null);
   const [showLetterComposer, setShowLetterComposer] = useState(false);
   const [immersiveMode, setImmersiveMode] = useState(false);
+  const [chatTheme, setChatTheme] = useState("default");
   const lastTouchReactionId = useRef<string | null>(null);
 
   useOnlineStatus(userId);
@@ -111,6 +113,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
         setWallpaper((data as any).wallpaper_url ?? "none");
         setDynamicWallpaper((data as any).dynamic_wallpaper ?? false);
         setMessageEffects((data as any).message_effects ?? true);
+        setChatTheme((data as any).chat_theme ?? "default");
       }
     };
     loadSettings();
@@ -211,8 +214,10 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return last.content ?? null;
   }, [messages, userId]);
 
+  const themeConfig = getThemeById(chatTheme);
+
   return (
-    <div className="flex h-dvh bg-background">
+    <div className={`flex h-dvh bg-background ${themeConfig.cssClass}`}>
       <div className="flex flex-col flex-1 min-w-0 relative">
         {immersiveMode && wallpaper === "sky" && (
           <div className="absolute inset-0 z-0">

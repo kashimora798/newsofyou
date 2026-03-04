@@ -17,6 +17,7 @@ import AiSummary from "@/components/home/AiSummary";
 import DailyQuestion from "@/components/home/DailyQuestion";
 import Tamagotchi from "@/components/home/Tamagotchi";
 import AchievementWidget from "@/components/home/AchievementWidget";
+import SoulmateClock from "@/components/home/SoulmateClock";
 
 const Home: React.FC = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -148,6 +149,9 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
 
         {/* AI Chat Summary */}
         <AiSummary />
+
+        {/* Soulmate Clock */}
+        <SoulmateClock userId={userId} partnerOnline={partner?.is_online} partnerName={partner?.name ?? undefined} />
 
         {/* Streak Counter */}
         <StreakCounter />
