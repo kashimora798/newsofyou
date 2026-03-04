@@ -1,68 +1,41 @@
+## Interactive & Intimate Sky Enhancements
 
+### 3. Heart-Shaped Cloud
 
-# Red String of Fate — Login Screen Redesign
+Occasionally (randomly, ~10% chance), a heart-shaped cloud drifts across the daytime sky. Tapping it triggers a small love animation and sends a notification to the partner: "[Name] caught a heart cloud for you 💕"
 
-## What We're Building
+### 5. Sky Lanterns (Send Love)
 
-A cinematic, immersive login experience that replaces the current standard form with an animated "Red String of Fate" concept. Since this is a **web app** (not native iOS/Android), we'll adapt the concept for touch/mouse interactions using CSS animations and canvas/SVG — no WebGL needed for elegance.
+A button lets either partner release a glowing sky lantern that floats upward with a warm glow trail. The other partner sees it arrive in their sky. Can attach a short message (max 20 chars) that appears when the lantern is tapped.
 
-## Realistic Scope (Web App Constraints)
+### 6. Rainbow After Rain
 
-- **No native haptics** — Web Vibration API is limited (Android Chrome only, no iOS). We'll rely on visual/audio cues instead.
-- **No biometric auth** — Web doesn't support fingerprint scanning. We keep email/password but hide it behind the ritual.
-- **No gyroscope tilt** — DeviceOrientation requires HTTPS + permissions; we'll use mouse/touch position instead.
-- **Partner awareness IS possible** — We already have `usePartner` + realtime status. We can show partner's online state on the login screen.
+Randomly during daytime, a rainbow arc fades in across the sky for 30-60 seconds. Tapping it reveals a random love quote or memory.
 
-## Design: 3 Phases
+### 7. Falling Leaves / Petals (Seasonal)
 
-### Phase 1: Ambient State (Page Load)
-- Pure black (`#000`) fullscreen background
-- A single glowing red thread (SVG path with glow filter) drifts gently using CSS keyframe animation
-- Thread responds to mouse/touch position (parallax offset) for that "alive" feeling
-- No text, no UI — just the string floating
+Based on the actual season — cherry blossom petals in spring, golden leaves in autumn, snowflakes in winter, flower petals in summer — gentle particles drift down. Tapping them creates a small burst animation.
 
-### Phase 2: The Reveal (Tap/Click the Pulse)
-- A subtle glowing red pulse dot sits at the bottom center
-- On tap/click, the string animates toward the dot and coils into a fingerprint-like spiral pattern
-- The login form fades in elegantly over the black background — email + password inputs styled as minimal glowing outlines (red/crimson accent, no backgrounds)
-- The string stays wrapped around the form area
+### Implementation Priority
 
-### Phase 3: The Pull (After Authentication)
-- On successful sign-in, instead of a boring redirect:
-  - The string goes taut (straightens, glows brighter)
-  - Screen "splits" with a zoom/tunnel animation (CSS transform + opacity)
-  - Navigates to `/home`
+**Phase 1 — High impact, self-contained:**
 
-### Dynamic States (Partner Awareness)
-- **Partner online**: String glows bright crimson, pulses rhythmically — subtle text "They're waiting..." fades in
-- **Partner offline**: String is dim, translucent, drifts slowly
-- **Long absence**: String appears nearly invisible, rebuilds glow on interaction
+&nbsp;
 
-## Technical Approach
+- Heart-shaped cloud (daytime surprise)
+- Sky lanterns (partner communication)
 
-### Files to Create
-1. **`src/components/login/RedString.tsx`** — The animated SVG string component with mouse-follow physics
-2. **`src/components/login/PulsePoint.tsx`** — The glowing entry point at bottom
-3. **`src/components/login/LoginTransition.tsx`** — The "pull & snap" exit animation
-4. **`src/pages/Login.tsx`** — Rewrite to orchestrate the 3 phases
+**Phase 2 — Atmospheric polish:**
 
-### Files to Edit
-1. **`src/index.css`** — Add keyframes for string drift, glow pulse, tunnel zoom, form fade-in
+- Seasonal particles (petals/leaves/snow)
+- Rainbow events
 
-### Key Implementation Details
+&nbsp;
 
-- **String animation**: SVG `<path>` with animated `d` attribute using sine-wave offsets, plus a red `drop-shadow` glow filter. Mouse/touch events offset control points for interactivity.
-- **Partner status on login**: We can't use `usePartner` (requires auth). Instead, query `user_status` table anonymously — this needs an RLS policy allowing anon reads of `is_online` only, OR we skip this and show it post-auth during the transition phase.
-- **Form reveal**: The email/password fields appear after tapping the pulse — styled with transparent backgrounds, thin red borders, white text on black.
-- **Transition**: On auth success, a 1.2s CSS animation plays (string tightens → screen splits → navigate). Chat data preloads during this via `queryClient.prefetchQuery`.
-- **No heavy dependencies**: Pure CSS animations + inline SVG. No canvas library needed.
+### Technical Approach
 
-### Simplified Partner Detection Alternative
-Since RLS blocks anon access, we check partner status **after** auth succeeds but **before** the transition animation plays. This lets us show "They're waiting..." during the pull animation — still magical, zero security compromise.
-
-## What This Won't Include (Native-Only)
-- Haptic vibration (no reliable web API on iOS)
-- Biometric fingerprint overlay (no web API)
-- Lock-screen "tug" notifications (requires native push)
-- True gyroscope tilt (would need permission prompt, unreliable)
-
+- Each feature is a separate component in `src/components/chat/sky/`
+- Touch interactions use `onPointerDown` on the sky container
+- Partner sync features use Supabase realtime channels
+- All effects respect the altitude-based day/night system
+- Seasonal detection uses `Date` month checks
