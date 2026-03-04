@@ -106,7 +106,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     const loadSettings = async () => {
       const { data } = await supabase
         .from("chat_user_settings")
-        .select("wallpaper_url, dynamic_wallpaper, message_effects")
+        .select("wallpaper_url, dynamic_wallpaper, message_effects, chat_theme")
         .eq("user_id", userId)
         .maybeSingle();
       if (data) {
@@ -217,7 +217,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const themeConfig = getThemeById(chatTheme);
 
   return (
-    <div className={`flex h-dvh bg-background ${themeConfig.cssClass}`}>
+    <div className={`flex h-dvh ${themeConfig.cssClass}`} style={{ background: themeConfig.cssClass ? 'hsl(var(--chat-bg))' : undefined }}>
       <div className="flex flex-col flex-1 min-w-0 relative">
         {immersiveMode && wallpaper === "sky" && (
           <div className="absolute inset-0 z-0">

@@ -280,6 +280,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
 
 .theme-spy {
+  --background: 0 0% 8%;
   --bubble-own: 0 0% 18%;
   --bubble-own-foreground: 45 20% 85%;
   --bubble-partner: 0 0% 12%;
@@ -291,6 +292,9 @@
   --foreground: 45 15% 80%;
   --muted: 0 0% 15%;
   --muted-foreground: 45 10% 55%;
+  --input: 0 0% 15%;
+  --popover: 0 0% 10%;
+  --popover-foreground: 45 15% 80%;
   font-family: 'Special Elite', 'Courier New', monospace !important;
 }
 .theme-spy * {
@@ -310,6 +314,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
 
 .theme-geocities {
+  --background: 210 50% 92%;
   --bubble-own: 240 100% 85%;
   --bubble-own-foreground: 240 100% 15%;
   --bubble-partner: 60 100% 90%;
@@ -322,6 +327,9 @@
   --muted: 210 40% 88%;
   --muted-foreground: 210 20% 40%;
   --primary: 280 80% 55%;
+  --input: 210 40% 88%;
+  --popover: 0 0% 95%;
+  --popover-foreground: 0 0% 10%;
   font-family: 'Comic Neue', 'Comic Sans MS', cursive !important;
 }
 .theme-geocities * {
@@ -338,6 +346,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
 
 .theme-gameboy {
+  --background: 80 40% 72%;
   --bubble-own: 80 30% 30%;
   --bubble-own-foreground: 80 60% 85%;
   --bubble-partner: 80 25% 22%;
@@ -351,6 +360,9 @@
   --muted-foreground: 80 40% 25%;
   --primary: 80 50% 35%;
   --primary-foreground: 80 60% 90%;
+  --input: 80 30% 60%;
+  --popover: 80 35% 65%;
+  --popover-foreground: 80 60% 10%;
   font-family: 'Silkscreen', monospace !important;
 }
 .theme-gameboy * {
@@ -368,6 +380,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap');
 
 .theme-horror {
+  --background: 0 0% 3%;
   --bubble-own: 0 0% 8%;
   --bubble-own-foreground: 0 80% 55%;
   --bubble-partner: 0 0% 5%;
@@ -381,6 +394,9 @@
   --muted-foreground: 0 0% 40%;
   --primary: 0 80% 45%;
   --primary-foreground: 0 0% 100%;
+  --input: 0 0% 10%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 0 0% 70%;
   font-family: 'Share Tech Mono', monospace !important;
 }
 .theme-horror * {
@@ -406,6 +422,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital@0;1&display=swap');
 
 .theme-romance {
+  --background: 35 40% 92%;
   --bubble-own: 340 40% 90%;
   --bubble-own-foreground: 340 30% 20%;
   --bubble-partner: 30 50% 93%;
@@ -419,6 +436,9 @@
   --muted-foreground: 340 15% 50%;
   --primary: 340 55% 55%;
   --primary-foreground: 0 0% 100%;
+  --input: 30 30% 88%;
+  --popover: 30 35% 95%;
+  --popover-foreground: 340 30% 20%;
   font-family: 'Lora', Georgia, serif !important;
 }
 .theme-romance * {
