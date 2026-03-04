@@ -17,9 +17,12 @@ interface MessageInputProps {
   replyTo: Tables<"messages"> | null;
   onCancelReply: () => void;
   onOpenLetter?: () => void;
+  placeholder?: string;
+  secretPlaceholder?: string;
+  sendLabel?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -294,7 +297,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             value={text}
             onChange={(e) => { setText(e.target.value); adjustHeight(); onTyping(); }}
             onKeyDown={handleKeyDown}
-            placeholder={secretMode ? "Write a secret message..." : "Type a message..."}
+            placeholder={secretMode ? secretPlaceholder : placeholder}
             rows={1}
             className={`w-full resize-none rounded-2xl border-0 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 scrollbar-thin ${
               secretMode ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/50"

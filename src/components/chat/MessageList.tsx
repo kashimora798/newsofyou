@@ -22,10 +22,11 @@ interface MessageListProps {
   onReply: (message: Tables<"messages">) => void;
   wallpaper?: string | null;
   useSkyBackground?: boolean;
+  typingText?: string;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
-  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground,
+  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground, typingText,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -135,7 +136,7 @@ const MessageList: React.FC<MessageListProps> = ({
           );
         })}
 
-        {partnerTyping && <TypingIndicator />}
+        {partnerTyping && <TypingIndicator themeText={typingText} />}
         <div ref={bottomRef} />
       </div>
 

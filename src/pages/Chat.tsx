@@ -11,6 +11,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { useMarkSeen } from "@/hooks/useMarkSeen";
 import { useAnimationQueue } from "@/hooks/useAnimationQueue";
 import { useShakeDetection } from "@/hooks/useShakeDetection";
+import { useThemeEffects } from "@/hooks/useThemeEffects";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
 import MessageInput from "@/components/chat/MessageInput";
@@ -22,6 +23,8 @@ import MessageEffects, { detectEffect, type EffectType } from "@/components/chat
 import TouchReactionOverlay, { type TouchEmotion, TOUCH_EMOTIONS, type CustomEmotionConfig } from "@/components/chat/TouchReactionOverlay";
 import ShakeLoveOverlay from "@/components/chat/ShakeLoveOverlay";
 import SkyBackground from "@/components/chat/SkyBackground";
+import ThemeAmbientLayer from "@/components/chat/ThemeAmbientLayer";
+import ThemeSurprises from "@/components/chat/ThemeSurprises";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { getThemeById } from "@/lib/chatThemes";
@@ -82,6 +85,9 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const [queuedKeywordEffect, setQueuedKeywordEffect] = useState<EffectType>(null);
   const { shakeDetected, reset: resetShake } = useShakeDetection();
 
+  const themeConfig = getThemeById(chatTheme);
+  const themeEffects = useThemeEffects(chatTheme);
+
   // Play pending animations from queue
   useEffect(() => {
     if (!pendingAnim) return;
@@ -120,7 +126,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   }, [userId]);
 
   const effectiveWallpaper = useMemo(() => {
-    if (wallpaper === "sky") return null; // Sky background component handles this
+    if (wallpaper === "sky") return null;
     if (dynamicWallpaper) return DYNAMIC_WALLPAPERS[getTimeOfDay()];
     return wallpaper === "none" ? null : wallpaper;
   }, [wallpaper, dynamicWallpaper]);
@@ -146,7 +152,6 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     await setTyping(false);
     const error = await sendMessage(content, currentUser?.name ?? "Unknown", extras);
 
-    // Queue animation for offline partner
     if (!error && partner && !partner.is_online) {
       const msgType = extras?.message_type;
       if (msgType === "touch_reaction") {
@@ -177,13 +182,11 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return messages;
   }, [messages, results, query]);
 
-  // Initialize lastTouchReactionId to the last message on first load so we don't replay old reactions
   const initializedTouchRef = useRef(false);
 
   useEffect(() => {
     if (messages.length === 0) return;
     if (!initializedTouchRef.current) {
-      // On first load, just record the last message id — don't trigger overlay
       initializedTouchRef.current = true;
       lastTouchReactionId.current = messages[messages.length - 1].id;
       return;
@@ -214,10 +217,12 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return last.content ?? null;
   }, [messages, userId]);
 
-  const themeConfig = getThemeById(chatTheme);
-
   return (
     <div className={`flex h-dvh ${themeConfig.cssClass}`} style={{ background: themeConfig.cssClass ? 'hsl(var(--chat-bg))' : undefined }}>
+      {/* Theme ambient effects */}
+      <ThemeAmbientLayer ambient={themeEffects.ambient} />
+      <ThemeSurprises surprise={themeEffects.surprises} interval={themeEffects.surpriseInterval} />
+
       <div className="flex flex-col flex-1 min-w-0 relative">
         {immersiveMode && wallpaper === "sky" && (
           <div className="absolute inset-0 z-0">
@@ -240,6 +245,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
             immersiveMode={immersiveMode}
             onImmersiveToggle={() => setImmersiveMode(!immersiveMode)}
             showImmersiveButton={wallpaper === "sky"}
+            themeEffects={themeEffects}
           />
         </div>
         {!immersiveMode && (
@@ -264,6 +270,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
               onReply={setReplyTo}
               wallpaper={effectiveWallpaper}
               useSkyBackground={wallpaper === "sky"}
+              typingText={themeEffects.typingText}
             />
             <MessageInput
               onSend={handleSend}
@@ -272,6 +279,9 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
               replyTo={replyTo}
               onCancelReply={() => setReplyTo(null)}
               onOpenLetter={() => setShowLetterComposer(true)}
+              placeholder={themeEffects.inputPlaceholder}
+              secretPlaceholder={themeEffects.secretPlaceholder}
+              sendLabel={themeEffects.sendLabel}
             />
           </>
         )}

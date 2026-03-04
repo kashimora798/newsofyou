@@ -7,6 +7,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { checkNewYear, useWaiterAchievement } from "@/hooks/useSecretAchievements";
+import { getThemeById } from "@/lib/chatThemes";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatLastSeen } from "@/lib/dateUtils";
 import { LogOut, Loader2 } from "lucide-react";
@@ -42,8 +43,23 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const unreadCount = useUnreadCount(userId);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastMessageTime, setLastMessageTime] = useState<string | null>(null);
+  const [chatTheme, setChatTheme] = useState("default");
 
   useOnlineStatus(userId);
+  useWaiterAchievement(userId, partner?.is_online);
+
+  // Load chat theme
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("chat_user_settings")
+        .select("chat_theme")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (data) setChatTheme((data as any).chat_theme ?? "default");
+    };
+    load();
+  }, [userId]);
   useWaiterAchievement(userId, partner?.is_online);
 
   // Check NYE achievement on load
@@ -72,8 +88,10 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
     fetchLast();
   }, [userId]);
 
+  const themeConfig = getThemeById(chatTheme);
+
   return (
-    <div className="flex flex-col h-dvh bg-background">
+    <div className={`flex flex-col h-dvh bg-background ${themeConfig.cssClass}`}>
       {/* Header */}
       <header className="px-5 pt-6 pb-4 bg-card border-b border-border shrink-0">
         <div className="flex items-center justify-between">
