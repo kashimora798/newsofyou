@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail } from "lucide-react";
 import { useTheme } from "next-themes";
 import BottomNav from "@/components/layout/BottomNav";
+import ThemePicker from "@/components/settings/ThemePicker";
 
 const SettingsPage: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -56,6 +57,7 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   const [wallpaper, setWallpaper] = useState("none");
   const [dynamicWallpaper, setDynamicWallpaper] = useState(false);
   const [messageEffects, setMessageEffects] = useState(true);
+  const [chatTheme, setChatTheme] = useState("default");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -72,6 +74,7 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
         setWallpaper(data.wallpaper_url ?? "none");
         setDynamicWallpaper((data as any).dynamic_wallpaper ?? false);
         setMessageEffects((data as any).message_effects ?? true);
+        setChatTheme((data as any).chat_theme ?? "default");
         if (data.theme !== "system") setTheme(data.theme);
       }
     };
@@ -409,6 +412,15 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
             </button>
           </div>
         </div>
+
+        {/* Parallel Universe Mode */}
+        <ThemePicker
+          value={chatTheme}
+          onChange={(id) => {
+            setChatTheme(id);
+            saveSettings({ chat_theme: id });
+          }}
+        />
 
         {/* Info */}
         <div className="bg-card rounded-2xl border border-border p-4">
