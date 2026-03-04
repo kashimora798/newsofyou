@@ -1,41 +1,74 @@
-## Interactive & Intimate Sky Enhancements
+# Feature Analysis & Implementation Plan
 
-### 3. Heart-Shaped Cloud
+These are ambitious features. Let me assess each for feasibility in a web app (React/Vite/Supabase) and recommend a phased approach.
 
-Occasionally (randomly, ~10% chance), a heart-shaped cloud drifts across the daytime sky. Tapping it triggers a small love animation and sends a notification to the partner: "[Name] caught a heart cloud for you 💕"
+## Feature Feasibility Assessment
 
-### 5. Sky Lanterns (Send Love)
 
-A button lets either partner release a glowing sky lantern that floats upward with a warm glow trail. The other partner sees it arrive in their sky. Can attach a short message (max 20 chars) that appears when the lantern is tapped.
+| Feature                              | Complexity | Web Feasible?                                                         | Priority                |
+| ------------------------------------ | ---------- | --------------------------------------------------------------------- | ----------------------- |
+| Parallel Universe Mode (theme skins) | Medium     | Yes                                                                   | High — fun, doable      |
+| Voice Waves → Art                    | Very High  | Partial — Web Audio API works, but persistent art timeline is complex | Low                     |
+| Shared Dream Canvas                  | High       | Yes — HTML Canvas + Supabase realtime                                 | Medium                  |
+| Soulmate Clock                       | Low-Medium | Yes — track overlap time in DB                                        | High — elegant & simple |
+| Conversation Chapters                | Medium     | Yes — AI/keyword grouping of messages                                 | Medium                  |
+| Doodle Reply                         | Medium     | Yes — canvas drawing, save as image                                   | Medium                  |
+| Custom Reaction Combos               | Low        | Partially exists already (custom touch reactions)                     | High — extend existing  |
 
-### 6. Rainbow After Rain
 
-Randomly during daytime, a rainbow arc fades in across the sky for 30-60 seconds. Tapping it reveals a random love quote or memory.
+## Recommended Build Order (by impact-to-effort ratio)
 
-### 7. Falling Leaves / Petals (Seasonal)
+### 1. Parallel Universe Mode (Chat Theme Skins)
 
-Based on the actual season — cherry blossom petals in spring, golden leaves in autumn, snowflakes in winter, flower petals in summer — gentle particles drift down. Tapping them creates a small burst animation.
+- Add a `chat_theme` column to `chat_user_settings` (or use existing wallpaper system)
+- Create 5-6 theme presets: "Spy Documents" (monospace, redacted look), "GeoCities 98" (comic sans, under-construction gifs, visitor counter), "GameBoy" (green monochrome, pixel font), "Horror ARG" (glitch text, static noise), "Romance Novel" (script font, parchment bg, rose petals)
+- Each theme = a CSS class applied to the chat container that overrides fonts, colors, bubble styles, and background
+- Theme picker in Settings or as a quick-toggle button in ChatHeader
+- Store selection per-user in `chat_user_settings`
 
-### Implementation Priority
+### 2. Soulmate Clock
 
-**Phase 1 — High impact, self-contained:**
+- Track concurrent online time: when both users have `is_online = true`, a Supabase edge function or client-side interval increments a shared counter in a new `couple_stats` table (`concurrent_seconds INTEGER`)
+- Client polls every 30s: if both online, increment locally and sync
+- Display as a beautiful analog clock component on the Home page showing "time spent together"
+- Format as days/hours/minutes
 
-&nbsp;
+### 3. Custom Reaction Combos (Extend Existing)
 
-- Heart-shaped cloud (daytime surprise)
-- Sky lanterns (partner communication)
+- Already have `custom_touch_reactions` table and picker
+- Extend to allow custom **message reactions** (not just touch reactions): add a `custom_message_reactions` table with `emoji`, `label`, `animation_type`, `sound_url`
+- Show custom reactions in the QuickReactionBar alongside default emojis
+- Each custom reaction can trigger a mini CSS animation (bounce, sparkle, shake) on the message bubble
 
-**Phase 2 — Atmospheric polish:**
+### 4. Doodle Reply
 
-- Seasonal particles (petals/leaves/snow)
-- Rainbow events
+- Add a mini canvas (HTML5 Canvas) overlay triggered from the reply menu
+- User draws with finger/mouse, saves as PNG data URL
+- Send as a message with `message_type: "doodle"` and the image stored in Supabase Storage
+- Render in MessageBubble like an image but with a "✏️ Doodle" label
 
-&nbsp;
+### 5. Conversation Chapters
 
-### Technical Approach
+- Group messages by date ranges + topic detection (simple keyword matching or AI via edge function)
+- Add a "Chapters" view accessible from ChatHeader that shows timeline blocks
+- Each chapter = clickable, scrolls to that section in chat
+- Bookmarkable chapters stored in a `bookmarked_chapters` table
 
-- Each feature is a separate component in `src/components/chat/sky/`
-- Touch interactions use `onPointerDown` on the sky container
-- Partner sync features use Supabase realtime channels
-- All effects respect the altitude-based day/night system
-- Seasonal detection uses `Date` month checks
+### 6. Shared Dream Canvas
+
+- A dedicated page (`/canvas`) with an infinite HTML5 Canvas
+- Both users can draw, add text, paste images
+- Supabase Realtime broadcasts strokes/objects live
+- Canvas state persisted as JSON in a `shared_canvas` table
+- This is the most complex feature — essentially building a mini collaborative whiteboard
+
+### 7. Voice Waves → Art
+
+- Requires Web Audio API to analyze audio messages and generate waveform visualizations
+- Each voice message gets a unique SVG wave pattern rendered alongside the audio player
+- A "Sound Gallery" page that stitches all voice wave patterns into a scrollable art timeline
+- Most complex, least essential — save for later
+
+## What I'd Build First
+
+I recommend starting with **Parallel Universe Mode** and **Soulmate Clock** — they're the most delightful, most feasible, and most unique. The theme skins transform the entire chat feel instantly, and the Soulmate Clock is a beautiful emotional feature that's technically simple.
