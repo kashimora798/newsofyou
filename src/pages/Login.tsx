@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ type Phase = "ambient" | "reveal" | "pull";
 const Login: React.FC = () => {
   const { user, signIn, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [phase, setPhase] = useState<Phase>("ambient");
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
@@ -23,12 +24,6 @@ const Login: React.FC = () => {
   const [partnerOnline, setPartnerOnline] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Already logged in
-  if (!authLoading && user) return <Navigate to="/home" replace />;
-
-  // Track mouse/touch position
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -38,14 +33,11 @@ const Login: React.FC = () => {
     });
   }, []);
 
-  // Phase 1 → Phase 2: Pulse tapped
   const handlePulseTap = useCallback(() => {
     setPhase("reveal");
-    // Delay form appearance for coil animation
     setTimeout(() => setFormVisible(true), 600);
   }, []);
 
-  // Phase 2 → Phase 3: Auth success
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -58,7 +50,6 @@ const Login: React.FC = () => {
       return;
     }
 
-    // Check partner status after auth (no RLS issue now)
     try {
       const { supabase } = await import("@/integrations/supabase/client");
       const { data: session } = await supabase.auth.getSession();
@@ -82,7 +73,9 @@ const Login: React.FC = () => {
     navigate("/home");
   }, [navigate]);
 
-  // Loading state
+  // Early returns AFTER all hooks
+  if (!authLoading && user) return <Navigate to="/home" replace />;
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "#000" }}>
@@ -116,7 +109,6 @@ const Login: React.FC = () => {
           }`}
         >
           <form onSubmit={handleSubmit} className="w-full max-w-xs space-y-5">
-            {/* Minimal branding */}
             <p
               className="text-center text-xs tracking-[0.4em] uppercase mb-8 opacity-50"
               style={{ color: "#cc3344", fontFamily: "'Quicksand', sans-serif" }}
@@ -198,16 +190,16 @@ const Login: React.FC = () => {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="absolute rounded-full animate-[float-particle_8s_ease-in-out_infinite]"
+              className="absolute rounded-full"
               style={{
-                width: 2 + Math.random() * 2,
-                height: 2 + Math.random() * 2,
+                width: 2 + i * 0.5,
+                height: 2 + i * 0.5,
                 background: "#cc1133",
-                opacity: 0.15 + Math.random() * 0.15,
-                left: `${15 + Math.random() * 70}%`,
-                top: `${20 + Math.random() * 60}%`,
+                opacity: 0.15 + i * 0.03,
+                left: `${15 + i * 12}%`,
+                top: `${25 + i * 8}%`,
+                animation: `float-particle ${6 + i * 0.8}s ease-in-out infinite`,
                 animationDelay: `${i * 1.3}s`,
-                animationDuration: `${6 + Math.random() * 4}s`,
               }}
             />
           ))}
