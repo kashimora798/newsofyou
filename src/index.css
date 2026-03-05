@@ -439,6 +439,10 @@
   --input: 30 30% 88%;
   --popover: 30 35% 95%;
   --popover-foreground: 340 30% 20%;
+  background-image: url('/images/parchment.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   font-family: 'Lora', Georgia, serif !important;
 }
 .theme-romance * {
