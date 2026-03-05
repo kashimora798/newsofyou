@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import rosePetal1 from "@/assets/themes/rose_petal1.png";
+import rosePetal2 from "@/assets/themes/rose_petal2.png";
 
 interface ThemeAmbientLayerProps {
   ambient: "none" | "petals" | "static" | "scanlines" | "sparkles" | "redlines";
@@ -6,59 +8,48 @@ interface ThemeAmbientLayerProps {
 
 const ThemeAmbientLayer: React.FC<ThemeAmbientLayerProps> = ({ ambient }) => {
   if (ambient === "none") return null;
-
-  if (ambient === "scanlines") {
-    return <div className="theme-scanlines pointer-events-none fixed inset-0 z-[9998]" />;
-  }
-
-  if (ambient === "static") {
-    return <div className="theme-static pointer-events-none fixed inset-0 z-[9998]" />;
-  }
-
-  if (ambient === "redlines") {
-    return <div className="theme-redlines pointer-events-none fixed inset-0 z-[9998]" />;
-  }
-
-  if (ambient === "sparkles") {
-    return <SparkleParticles />;
-  }
-
-  if (ambient === "petals") {
-    return <FallingPetals />;
-  }
-
+  if (ambient === "scanlines") return <div className="theme-scanlines pointer-events-none fixed inset-0 z-[9998]" />;
+  if (ambient === "static") return <div className="theme-static pointer-events-none fixed inset-0 z-[9998]" />;
+  if (ambient === "redlines") return <div className="theme-redlines pointer-events-none fixed inset-0 z-[9998]" />;
+  if (ambient === "sparkles") return <SparkleParticles />;
+  if (ambient === "petals") return <FallingPetals />;
   return null;
 };
 
+const PETAL_IMAGES = [rosePetal1, rosePetal2];
+
 const FallingPetals: React.FC = () => {
   const [petals] = useState(() =>
-    Array.from({ length: 8 }, (_, i) => ({
+    Array.from({ length: 10 }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
       delay: Math.random() * 8,
       duration: 6 + Math.random() * 6,
-      size: 14 + Math.random() * 10,
+      size: 20 + Math.random() * 18,
       rotation: Math.random() * 360,
+      img: PETAL_IMAGES[i % 2],
     }))
   );
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[9998] overflow-hidden">
       {petals.map((p) => (
-        <div
+        <img
           key={p.id}
+          src={p.img}
+          alt=""
           className="absolute theme-petal"
           style={{
             left: `${p.left}%`,
-            top: "-30px",
+            top: "-40px",
             animationDelay: `${p.delay}s`,
             animationDuration: `${p.duration}s`,
-            fontSize: `${p.size}px`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
             transform: `rotate(${p.rotation}deg)`,
+            objectFit: "contain",
           }}
-        >
-          🌹
-        </div>
+        />
       ))}
     </div>
   );
