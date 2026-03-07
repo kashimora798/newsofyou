@@ -208,6 +208,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         </div>
       </div>
 
+      <ComplimentPopup />
       <BottomNav />
     </div>
   );
