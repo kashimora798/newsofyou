@@ -163,7 +163,11 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         {/* To-Do Lists */}
         <TodoWidget />
 
-        {/* Daily AI Question */}
+        {/* Reminders */}
+        <ReminderWidget />
+
+        {/* Calendar Countdown */}
+        <CalendarWidget />
         <DailyQuestion />
 
         {/* Relationship Tamagotchi */}
