@@ -16,6 +16,7 @@ import CustomStickers from "./pages/CustomStickers";
 import CustomTouchReactions from "./pages/CustomTouchReactions";
 import Achievements from "./pages/Achievements";
 import LetterCollection from "./pages/LetterCollection";
+import TodoList from "./pages/TodoList";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ const App = () => (
               <Route path="/custom-touch-reactions" element={<CustomTouchReactions />} />
               <Route path="/achievements" element={<Achievements />} />
               <Route path="/letter-collection" element={<LetterCollection />} />
+              <Route path="/todos" element={<TodoList />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
