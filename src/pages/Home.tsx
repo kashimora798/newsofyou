@@ -19,6 +19,7 @@ import DailyQuestion from "@/components/home/DailyQuestion";
 import Tamagotchi from "@/components/home/Tamagotchi";
 import AchievementWidget from "@/components/home/AchievementWidget";
 import SoulmateClock from "@/components/home/SoulmateClock";
+import TodoWidget from "@/components/home/TodoWidget";
 
 const Home: React.FC = () => {
   const { user, loading: authLoading, signOut } = useAuth();
