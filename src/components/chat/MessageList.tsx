@@ -145,6 +145,7 @@ const MessageList: React.FC<MessageListProps> = ({
 
       {showScrollBtn && <ScrollToBottom onClick={() => scrollToBottom()} />}
       {lightboxSrc && <ImageLightbox src={lightboxSrc} type={lightboxType} onClose={() => setLightboxSrc(null)} />}
+      {bookmarkMsg && <BookmarkDialog message={bookmarkMsg} onClose={() => setBookmarkMsg(null)} />}
     </div>
   );
 };
