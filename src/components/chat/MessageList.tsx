@@ -36,6 +36,7 @@ const MessageList: React.FC<MessageListProps> = ({
   const prevLengthRef = useRef(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [lightboxType, setLightboxType] = useState<"image" | "video">("image");
+  const [bookmarkMsg, setBookmarkMsg] = useState<Tables<"messages"> | null>(null);
 
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   const { reactions, toggleReaction } = useReactions(messageIds);
