@@ -132,6 +132,7 @@ const MessageList: React.FC<MessageListProps> = ({
                   onImageClick={(url) => { setLightboxSrc(url); setLightboxType("image"); }}
                   onVideoClick={(url) => { setLightboxSrc(url); setLightboxType("video"); }}
                   onScrollToMessage={scrollToMessage}
+                  onBookmark={(msg) => setBookmarkMsg(msg)}
                 />
               </div>
             </React.Fragment>
