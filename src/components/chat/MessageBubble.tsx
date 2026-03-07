@@ -22,6 +22,7 @@ interface MessageBubbleProps {
   onImageClick?: (url: string) => void;
   onVideoClick?: (url: string) => void;
   onScrollToMessage?: (id: string) => void;
+  onBookmark?: (message: Tables<"messages">) => void;
 }
 
 const SWIPE_THRESHOLD = 60;
