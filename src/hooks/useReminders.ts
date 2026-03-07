@@ -21,7 +21,7 @@ export function useReminders() {
   const fetchReminders = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("reminders")
       .select("*")
       .or(`user_id.eq.${user.id},target_user_id.eq.${user.id}`)
@@ -44,7 +44,7 @@ export function useReminders() {
 
   const addReminder = useCallback(async (title: string, remindAt: string, targetUserId?: string, note?: string) => {
     if (!user) return;
-    await supabase.from("reminders").insert({
+    await (supabase as any).from("reminders").insert({
       user_id: user.id,
       target_user_id: targetUserId || user.id,
       title,
@@ -54,11 +54,11 @@ export function useReminders() {
   }, [user]);
 
   const completeReminder = useCallback(async (id: string) => {
-    await supabase.from("reminders").update({ is_completed: true }).eq("id", id);
+    await (supabase as any).from("reminders").update({ is_completed: true }).eq("id", id);
   }, []);
 
   const deleteReminder = useCallback(async (id: string) => {
-    await supabase.from("reminders").delete().eq("id", id);
+    await (supabase as any).from("reminders").delete().eq("id", id);
   }, []);
 
   return { reminders, loading, addReminder, completeReminder, deleteReminder };

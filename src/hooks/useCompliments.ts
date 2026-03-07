@@ -20,7 +20,7 @@ export function useCompliments() {
   const fetchCompliments = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("compliments")
       .select("*")
       .eq("user_id", user.id)
@@ -30,10 +30,9 @@ export function useCompliments() {
     setLoading(false);
   }, [user]);
 
-  // Fetch a random undelivered compliment FOR you (from partner)
   const fetchRandomForMe = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("compliments")
       .select("*")
       .neq("user_id", user.id)
@@ -43,8 +42,7 @@ export function useCompliments() {
     if (data && data.length > 0) {
       const c = data[0] as Compliment;
       setRandomCompliment(c);
-      // Mark as delivered
-      await supabase.from("compliments").update({ is_delivered: true, delivered_at: new Date().toISOString() }).eq("id", c.id);
+      await (supabase as any).from("compliments").update({ is_delivered: true, delivered_at: new Date().toISOString() }).eq("id", c.id);
     } else {
       setRandomCompliment(null);
     }
@@ -52,18 +50,14 @@ export function useCompliments() {
 
   useEffect(() => { fetchCompliments(); }, [fetchCompliments]);
 
-  // Check for random compliment on mount (with chance)
   useEffect(() => {
     if (!user) return;
-    // 30% chance to show a compliment on each visit
-    if (Math.random() < 0.3) {
-      fetchRandomForMe();
-    }
+    if (Math.random() < 0.3) fetchRandomForMe();
   }, [user, fetchRandomForMe]);
 
   const addCompliment = useCallback(async (content: string) => {
     if (!user) return;
-    await supabase.from("compliments").insert({
+    await (supabase as any).from("compliments").insert({
       user_id: user.id,
       content,
     });
@@ -71,7 +65,7 @@ export function useCompliments() {
   }, [user, fetchCompliments]);
 
   const deleteCompliment = useCallback(async (id: string) => {
-    await supabase.from("compliments").delete().eq("id", id);
+    await (supabase as any).from("compliments").delete().eq("id", id);
     setCompliments((prev) => prev.filter((c) => c.id !== id));
   }, []);
 

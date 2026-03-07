@@ -20,7 +20,7 @@ export function useSharedCalendar() {
   const fetchEvents = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("shared_events")
       .select("*")
       .order("event_date", { ascending: true });
@@ -42,7 +42,7 @@ export function useSharedCalendar() {
 
   const addEvent = useCallback(async (title: string, eventDate: string, emoji?: string, description?: string) => {
     if (!user) return;
-    await supabase.from("shared_events").insert({
+    await (supabase as any).from("shared_events").insert({
       user_id: user.id,
       title,
       event_date: eventDate,
@@ -52,7 +52,7 @@ export function useSharedCalendar() {
   }, [user]);
 
   const deleteEvent = useCallback(async (id: string) => {
-    await supabase.from("shared_events").delete().eq("id", id);
+    await (supabase as any).from("shared_events").delete().eq("id", id);
   }, []);
 
   return { events, loading, addEvent, deleteEvent };
