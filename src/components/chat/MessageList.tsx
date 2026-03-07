@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import MessageBubble from "./MessageBubble";
+import BookmarkDialog from "./BookmarkDialog";
 import DateSeparator from "./DateSeparator";
 import TypingIndicator from "./TypingIndicator";
 import ScrollToBottom from "./ScrollToBottom";
