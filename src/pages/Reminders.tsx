@@ -131,7 +131,4 @@ const ReminderCard: React.FC<{
   </div>
 );
 
-// Need this import for parseISO in ReminderCard
-import { parseISO } from "date-fns";
-
 export default Reminders;
