@@ -157,6 +157,9 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
           )}
         </button>
 
+        {/* To-Do Lists */}
+        <TodoWidget />
+
         {/* Daily AI Question */}
         <DailyQuestion />
 
