@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import MessageBubble from "./MessageBubble";
+import BookmarkDialog from "./BookmarkDialog";
 import DateSeparator from "./DateSeparator";
 import TypingIndicator from "./TypingIndicator";
 import ScrollToBottom from "./ScrollToBottom";
@@ -35,6 +36,7 @@ const MessageList: React.FC<MessageListProps> = ({
   const prevLengthRef = useRef(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [lightboxType, setLightboxType] = useState<"image" | "video">("image");
+  const [bookmarkMsg, setBookmarkMsg] = useState<Tables<"messages"> | null>(null);
 
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   const { reactions, toggleReaction } = useReactions(messageIds);
@@ -130,6 +132,7 @@ const MessageList: React.FC<MessageListProps> = ({
                   onImageClick={(url) => { setLightboxSrc(url); setLightboxType("image"); }}
                   onVideoClick={(url) => { setLightboxSrc(url); setLightboxType("video"); }}
                   onScrollToMessage={scrollToMessage}
+                  onBookmark={(msg) => setBookmarkMsg(msg)}
                 />
               </div>
             </React.Fragment>
@@ -142,6 +145,7 @@ const MessageList: React.FC<MessageListProps> = ({
 
       {showScrollBtn && <ScrollToBottom onClick={() => scrollToBottom()} />}
       {lightboxSrc && <ImageLightbox src={lightboxSrc} type={lightboxType} onClose={() => setLightboxSrc(null)} />}
+      {bookmarkMsg && <BookmarkDialog message={bookmarkMsg} onClose={() => setBookmarkMsg(null)} />}
     </div>
   );
 };

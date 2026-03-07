@@ -20,6 +20,9 @@ import Tamagotchi from "@/components/home/Tamagotchi";
 import AchievementWidget from "@/components/home/AchievementWidget";
 import SoulmateClock from "@/components/home/SoulmateClock";
 import TodoWidget from "@/components/home/TodoWidget";
+import ReminderWidget from "@/components/home/ReminderWidget";
+import CalendarWidget from "@/components/home/CalendarWidget";
+import ComplimentPopup from "@/components/home/ComplimentPopup";
 
 const Home: React.FC = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -160,7 +163,11 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         {/* To-Do Lists */}
         <TodoWidget />
 
-        {/* Daily AI Question */}
+        {/* Reminders */}
+        <ReminderWidget />
+
+        {/* Calendar Countdown */}
+        <CalendarWidget />
         <DailyQuestion />
 
         {/* Relationship Tamagotchi */}
@@ -180,6 +187,24 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
 
         {/* On This Day */}
         <OnThisDay />
+
+        {/* Quick Links */}
+        <div className="bg-card rounded-2xl border border-border p-4">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick Links</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { path: "/bookmarks", emoji: "📌", label: "Bookmarks" },
+              { path: "/reminders", emoji: "🔔", label: "Reminders" },
+              { path: "/calendar", emoji: "📅", label: "Calendar" },
+              { path: "/compliments", emoji: "💌", label: "Compliments" },
+            ].map((link) => (
+              <button key={link.path} onClick={() => navigate(link.path)} className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl hover:bg-muted transition-colors text-left">
+                <span className="text-lg">{link.emoji}</span>
+                <span className="text-xs font-medium text-foreground">{link.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Quick Stats */}
         <div className="bg-card rounded-2xl border border-border p-4">
@@ -201,6 +226,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         </div>
       </div>
 
+      <ComplimentPopup />
       <BottomNav />
     </div>
   );

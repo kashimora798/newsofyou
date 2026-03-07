@@ -17,6 +17,10 @@ import CustomTouchReactions from "./pages/CustomTouchReactions";
 import Achievements from "./pages/Achievements";
 import LetterCollection from "./pages/LetterCollection";
 import TodoList from "./pages/TodoList";
+import Bookmarks from "./pages/Bookmarks";
+import Reminders from "./pages/Reminders";
+import SharedCalendar from "./pages/SharedCalendar";
+import ComplimentBox from "./pages/ComplimentBox";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +47,10 @@ const App = () => (
               <Route path="/achievements" element={<Achievements />} />
               <Route path="/letter-collection" element={<LetterCollection />} />
               <Route path="/todos" element={<TodoList />} />
+              <Route path="/bookmarks" element={<Bookmarks />} />
+              <Route path="/reminders" element={<Reminders />} />
+              <Route path="/calendar" element={<SharedCalendar />} />
+              <Route path="/compliments" element={<ComplimentBox />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

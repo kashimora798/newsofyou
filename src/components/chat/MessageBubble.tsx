@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Check, CheckCheck, Copy, Star, Reply, Info, SmilePlus, Music } from "lucide-react";
+import { Check, CheckCheck, Copy, Star, Reply, Info, SmilePlus, Music, Bookmark } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
 import FileBubble from "./FileBubble";
@@ -22,12 +22,13 @@ interface MessageBubbleProps {
   onImageClick?: (url: string) => void;
   onVideoClick?: (url: string) => void;
   onScrollToMessage?: (id: string) => void;
+  onBookmark?: (message: Tables<"messages">) => void;
 }
 
 const SWIPE_THRESHOLD = 60;
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage,
+  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -252,6 +253,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             {message.content && (
               <button onClick={handleCopy} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
                 <Copy className="h-3.5 w-3.5 text-muted-foreground" /> Copy
+              </button>
+            )}
+            {onBookmark && (
+              <button onClick={() => { onBookmark(message); setShowMsgInfo(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
+                <Bookmark className="h-3.5 w-3.5 text-muted-foreground" /> Remember This
               </button>
             )}
             <div className="border-t border-border my-1" />
