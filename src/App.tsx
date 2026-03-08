@@ -52,6 +52,7 @@ const App = () => (
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/calendar" element={<SharedCalendar />} />
               <Route path="/compliments" element={<ComplimentBox />} />
+              <Route path="/daily-checklist" element={<DailyChecklist />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

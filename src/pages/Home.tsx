@@ -201,6 +201,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
               { path: "/reminders", emoji: "🔔", label: "Reminders" },
               { path: "/calendar", emoji: "📅", label: "Calendar" },
               { path: "/compliments", emoji: "💌", label: "Compliments" },
+              { path: "/daily-checklist", emoji: "✅", label: "Checklist" },
             ].map((link) => (
               <button key={link.path} onClick={() => navigate(link.path)} className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl hover:bg-muted transition-colors text-left">
                 <span className="text-lg">{link.emoji}</span>
