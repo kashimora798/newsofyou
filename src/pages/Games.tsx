@@ -10,6 +10,7 @@ import GameInvite from "@/components/games/GameInvite";
 import GameLobbyCard from "@/components/games/GameLobbyCard";
 import ActiveGameCard from "@/components/games/ActiveGameCard";
 import TicTacToe from "@/components/games/TicTacToe";
+import WordChain from "@/components/games/WordChain";
 import type { GameSession } from "@/hooks/useGameSessions";
 import { formatDistanceToNow } from "date-fns";
 
@@ -53,9 +54,9 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
   const [activeSession, setActiveSession] = useState<GameSession | null>(null);
 
-  const handleChallenge = async () => {
+  const handleChallenge = async (gameType = "tic_tac_toe") => {
     if (!partner?.user_id) return;
-    await createGame(partner.user_id, "tic_tac_toe");
+    await createGame(partner.user_id, gameType);
   };
 
   const handlePlayAgain = async (opponentId: string) => {
@@ -65,9 +66,10 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
   // If playing a game, show game view
   if (activeSession) {
+    const GameComponent = activeSession.game_type === "word_chain" ? WordChain : TicTacToe;
     return (
       <div className="flex flex-col h-dvh bg-background">
-        <TicTacToe
+        <GameComponent
           session={activeSession}
           userId={userId}
           partnerName={partner?.name ?? undefined}
@@ -86,20 +88,19 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
       label: "Tic Tac Toe",
       description: "Classic 3×3 grid — first to three in a row wins!",
       color: "bg-primary/10 text-primary",
-      onChallenge: handleChallenge,
+      onChallenge: () => handleChallenge("tic_tac_toe"),
     },
     {
       icon: BookOpen,
       label: "Word Chain",
       description: "Take turns saying words starting with the last letter",
       color: "bg-emerald-500/10 text-emerald-500",
-      onChallenge: () => {},
-      comingSoon: true,
+      onChallenge: () => handleChallenge("word_chain"),
     },
     {
       icon: HelpCircle,
-      label: "Love Quiz",
-      description: "How well do you know each other?",
+      label: "Trivia Duel",
+      description: "Test your knowledge against each other!",
       color: "bg-pink-500/10 text-pink-500",
       onChallenge: () => {},
       comingSoon: true,

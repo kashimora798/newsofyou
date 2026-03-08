@@ -64,6 +64,8 @@ export function useGameSessions(userId: string) {
       const boardState =
         gameType === "tic_tac_toe"
           ? ["", "", "", "", "", "", "", "", ""]
+          : gameType === "word_chain"
+          ? { words: [], scores: {}, lastLetter: "" }
           : [];
 
       const { data, error } = await supabase
