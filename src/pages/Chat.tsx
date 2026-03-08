@@ -307,7 +307,13 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
               <SearchBar
                 query={query}
                 onSearch={search}
-                onClose={() => { setShowSearch(false); clear(); }}
+                onClose={() => {
+                  setShowSearch(false);
+                  clear();
+                  document.querySelectorAll(".search-highlight-active").forEach((e) => {
+                    e.classList.remove("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
+                  });
+                }}
                 resultCount={results.length}
                 currentIndex={currentIndex}
                 onNext={goNext}
