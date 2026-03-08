@@ -1060,6 +1060,7 @@ export type Database = {
           created_at: string
           event_1111: boolean | null
           event_jinx: boolean | null
+          event_midnightgamer: boolean | null
           event_newyear: boolean | null
           event_timecapsule: boolean | null
           event_timetraveler: boolean | null
@@ -1076,6 +1077,7 @@ export type Database = {
           created_at?: string
           event_1111?: boolean | null
           event_jinx?: boolean | null
+          event_midnightgamer?: boolean | null
           event_newyear?: boolean | null
           event_timecapsule?: boolean | null
           event_timetraveler?: boolean | null
@@ -1092,6 +1094,7 @@ export type Database = {
           created_at?: string
           event_1111?: boolean | null
           event_jinx?: boolean | null
+          event_midnightgamer?: boolean | null
           event_newyear?: boolean | null
           event_timecapsule?: boolean | null
           event_timetraveler?: boolean | null

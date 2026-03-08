@@ -159,6 +159,16 @@ export async function markTimeCapsule(userId: string) {
 }
 
 // ──────────────────────────────────────────────
+// 7. Midnight Gamer - game move between 0-4 AM
+// ──────────────────────────────────────────────
+export async function checkMidnightGamer(userId: string) {
+  const hour = new Date().getHours();
+  if (hour >= 0 && hour < 4) {
+    await setAchievementFlag(userId, "event_midnightgamer", true);
+  }
+}
+
+// ──────────────────────────────────────────────
 // Streak celebration tracking (server-synced)
 // ──────────────────────────────────────────────
 export async function getStreakCelebratedDate(userId: string): Promise<string | null> {
