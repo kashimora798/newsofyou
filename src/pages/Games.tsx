@@ -11,6 +11,7 @@ import GameLobbyCard from "@/components/games/GameLobbyCard";
 import ActiveGameCard from "@/components/games/ActiveGameCard";
 import TicTacToe from "@/components/games/TicTacToe";
 import WordChain from "@/components/games/WordChain";
+import Hangman from "@/components/games/Hangman";
 import type { GameSession } from "@/hooks/useGameSessions";
 import { formatDistanceToNow } from "date-fns";
 
@@ -66,7 +67,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
   // If playing a game, show game view
   if (activeSession) {
-    const GameComponent = activeSession.game_type === "word_chain" ? WordChain : TicTacToe;
+    const GameComponent = activeSession.game_type === "word_chain" ? WordChain : activeSession.game_type === "hangman" ? Hangman : TicTacToe;
     return (
       <div className="flex flex-col h-dvh bg-background">
         <GameComponent
@@ -99,11 +100,10 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
     },
     {
       icon: HelpCircle,
-      label: "Trivia Duel",
-      description: "Test your knowledge against each other!",
+      label: "Hangman",
+      description: "Pick a word and challenge your friend to guess it!",
       color: "bg-pink-500/10 text-pink-500",
-      onChallenge: () => {},
-      comingSoon: true,
+      onChallenge: () => handleChallenge("hangman"),
     },
   ];
 
@@ -207,8 +207,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
                     description={g.description}
                     color={g.color}
                     onChallenge={g.onChallenge}
-                    disabled={g.comingSoon || !partner?.user_id}
-                    comingSoon={g.comingSoon}
+                    disabled={!partner?.user_id}
                   />
                 ))}
               </div>
