@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { format, isToday, parseISO } from "date-fns";
-import { ArrowLeft, Plus, Trash2, RotateCcw, Loader2, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, RotateCcw, Loader2, CheckCircle2, Circle, BarChart3 } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
+import WeeklyChart from "@/components/checklist/WeeklyChart";
 
 const motivationalText = (completed: number, total: number) => {
   if (total === 0) return "No tasks yet — add some! ✨";
@@ -150,6 +151,15 @@ const ChecklistView: React.FC<{ userId: string }> = ({ userId }) => {
             ))}
             {partnerItems.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No tasks yet</p>}
           </div>
+        </div>
+
+        {/* Weekly Productivity Chart */}
+        <div className="bg-card rounded-2xl border border-border p-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Weekly Completion Rate
+          </h2>
+          <WeeklyChart />
         </div>
 
         {/* Missed / Incomplete */}
