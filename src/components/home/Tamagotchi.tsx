@@ -67,7 +67,7 @@ const Tamagotchi: React.FC = () => {
     <div className="relative inline-block">
       <button
         onClick={() => setShowTooltip(!showTooltip)}
-        className={`relative bg-card border border-border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all active:scale-95 w-full ${stage.animation}`}
+        className={`relative glass rounded-2xl p-4 hover:shadow-lg hover:shadow-primary/5 transition-all active:scale-95 w-full ${stage.animation}`}
       >
         <div className="flex items-center gap-3">
           <div className="text-4xl">{stage.emoji}</div>
