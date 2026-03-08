@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePartner } from "@/hooks/usePartner";
 import { useGameSessions } from "@/hooks/useGameSessions";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Gamepad2, Grid3X3, BookOpen, HelpCircle, Trophy, Swords } from "lucide-react";
+import { Loader2, Gamepad2, Grid3X3, BookOpen, HelpCircle, Trophy, Swords, LayoutGrid } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
 import GameInvite from "@/components/games/GameInvite";
 import GameLobbyCard from "@/components/games/GameLobbyCard";
