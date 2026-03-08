@@ -5,6 +5,7 @@ import { usePartner } from "@/hooks/usePartner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Progress } from "@/components/ui/progress";
 import { ClipboardCheck, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion";
 
 const DailyChecklistWidget: React.FC = () => {
   const navigate = useNavigate();
@@ -16,9 +17,11 @@ const DailyChecklistWidget: React.FC = () => {
   const partnerPct = partnerProgress.total > 0 ? Math.round((partnerProgress.completed / partnerProgress.total) * 100) : 0;
 
   return (
-    <button
+    <motion.button
       onClick={() => navigate("/daily-checklist")}
-      className="w-full glass rounded-2xl p-4 text-left hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 active:scale-[0.98] group"
+      whileHover={{ y: -2, boxShadow: "0 8px 30px -8px hsl(var(--primary) / 0.12)" }}
+      whileTap={{ scale: 0.98 }}
+      className="w-full glass rounded-2xl p-4 text-left transition-colors group"
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -47,7 +50,7 @@ const DailyChecklistWidget: React.FC = () => {
           <span className="text-[9px] text-muted-foreground mt-1 block">{partnerProgress.completed}/{partnerProgress.total} done</span>
         </div>
       </div>
-    </button>
+    </motion.button>
   );
 };
 

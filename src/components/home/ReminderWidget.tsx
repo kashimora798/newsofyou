@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useReminders } from "@/hooks/useReminders";
 import { Bell, Clock, ChevronRight } from "lucide-react";
 import { format, parseISO, isPast } from "date-fns";
+import { motion } from "framer-motion";
 
 const ReminderWidget: React.FC = () => {
   const { reminders } = useReminders();
@@ -15,7 +16,12 @@ const ReminderWidget: React.FC = () => {
   if (active.length === 0) return null;
 
   return (
-    <button onClick={() => navigate("/reminders")} className="w-full glass rounded-2xl p-4 text-left hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 active:scale-[0.98] group">
+    <motion.button
+      onClick={() => navigate("/reminders")}
+      whileHover={{ y: -2, boxShadow: "0 8px 30px -8px hsl(var(--primary) / 0.12)" }}
+      whileTap={{ scale: 0.98 }}
+      className="w-full glass rounded-2xl p-4 text-left transition-colors group"
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10">
@@ -25,7 +31,13 @@ const ReminderWidget: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           {overdue.length > 0 && (
-            <span className="text-[10px] font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">{overdue.length} overdue</span>
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="text-[10px] font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded-full"
+            >
+              {overdue.length} overdue
+            </motion.span>
           )}
           <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
         </div>
@@ -40,7 +52,7 @@ const ReminderWidget: React.FC = () => {
       {active.length > upcoming.length && (
         <p className="text-[10px] text-primary mt-1 font-medium">+{active.length - upcoming.length} more</p>
       )}
-    </button>
+    </motion.button>
   );
 };
 
