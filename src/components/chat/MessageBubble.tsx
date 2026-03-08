@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Check, CheckCheck, Copy, Star, Reply, Info, SmilePlus, Music, Bookmark } from "lucide-react";
+import { Check, CheckCheck, Copy, Star, Reply, Info, SmilePlus, Music, Bookmark, Pin } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
 import FileBubble from "./FileBubble";
