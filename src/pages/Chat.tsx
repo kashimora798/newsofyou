@@ -71,7 +71,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const [replyTo, setReplyTo] = useState<Tables<"messages"> | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const { results, searching, query, search, clear } = useSearch();
+  const { results, searching, query, search, clear, currentIndex, goNext, goPrev, currentResult } = useSearch();
   const [wallpaper, setWallpaper] = useState<string | null>(null);
   const [dynamicWallpaper, setDynamicWallpaper] = useState(false);
   const [messageEffects, setMessageEffects] = useState(true);
@@ -181,10 +181,22 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return error;
   };
 
-  const displayMessages = useMemo(() => {
-    if (query && results.length > 0) return results.reverse();
-    return messages;
-  }, [messages, results, query]);
+  // Highlight matched message IDs for the message list
+  const highlightedMessageIds = useMemo(() => {
+    if (!query) return new Set<string>();
+    return new Set(results.map((r) => r.id));
+  }, [results, query]);
+
+  // Scroll to current search result
+  useEffect(() => {
+    if (!currentResult) return;
+    const el = document.getElementById(`msg-${currentResult.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/40", "bg-primary/5");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/40", "bg-primary/5"), 2500);
+    }
+  }, [currentResult]);
 
   const initializedTouchRef = useRef(false);
 
@@ -274,10 +286,14 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
                 onSearch={search}
                 onClose={() => { setShowSearch(false); clear(); }}
                 resultCount={results.length}
+                currentIndex={currentIndex}
+                onNext={goNext}
+                onPrev={goPrev}
+                searching={searching}
               />
             )}
             <MessageList
-              messages={displayMessages}
+              messages={messages}
               currentUserId={userId}
               loading={loading}
               loadingMore={loadingMore}
