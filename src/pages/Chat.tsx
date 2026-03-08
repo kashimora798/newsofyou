@@ -187,16 +187,31 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return new Set(results.map((r) => r.id));
   }, [results, query]);
 
-  // Scroll to current search result
+  // Scroll to current search result — keyed on currentIndex
   useEffect(() => {
     if (!currentResult) return;
-    const el = document.getElementById(`msg-${currentResult.id}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-primary/40", "bg-primary/5");
-      setTimeout(() => el.classList.remove("ring-2", "ring-primary/40", "bg-primary/5"), 2500);
+    const scrollToResult = () => {
+      const el = document.getElementById(`msg-${currentResult.id}`);
+      if (el) {
+        // Remove previous highlights
+        document.querySelectorAll(".search-highlight-active").forEach((e) => {
+          e.classList.remove("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
+        });
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
+        return true;
+      }
+      return false;
+    };
+
+    // Try immediately
+    if (!scrollToResult()) {
+      // Message not in DOM — need to load more messages until we find it
+      // For now, try after a short delay (message might be rendering)
+      const t = setTimeout(() => scrollToResult(), 200);
+      return () => clearTimeout(t);
     }
-  }, [currentResult]);
+  }, [currentIndex, currentResult]);
 
   const initializedTouchRef = useRef(false);
 
