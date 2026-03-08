@@ -21,6 +21,7 @@ import Bookmarks from "./pages/Bookmarks";
 import Reminders from "./pages/Reminders";
 import SharedCalendar from "./pages/SharedCalendar";
 import ComplimentBox from "./pages/ComplimentBox";
+import DailyChecklist from "./pages/DailyChecklist";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/calendar" element={<SharedCalendar />} />
               <Route path="/compliments" element={<ComplimentBox />} />
+              <Route path="/daily-checklist" element={<DailyChecklist />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

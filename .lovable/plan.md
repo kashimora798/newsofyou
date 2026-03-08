@@ -1,74 +1,74 @@
+# Feature Analysis & Implementation Plan
+
+These are ambitious features. Let me assess each for feasibility in a web app (React/Vite/Supabase) and recommend a phased approach.
+
+## Feature Feasibility Assessment
 
 
-# Daily Checklist with Calendar History & Productivity Dashboard
+| Feature                              | Complexity | Web Feasible?                                                         | Priority                |
+| ------------------------------------ | ---------- | --------------------------------------------------------------------- | ----------------------- |
+| Parallel Universe Mode (theme skins) | Medium     | Yes                                                                   | High — fun, doable      |
+| Voice Waves → Art                    | Very High  | Partial — Web Audio API works, but persistent art timeline is complex | Low                     |
+| Shared Dream Canvas                  | High       | Yes — HTML Canvas + Supabase realtime                                 | Medium                  |
+| Soulmate Clock                       | Low-Medium | Yes — track overlap time in DB                                        | High — elegant & simple |
+| Conversation Chapters                | Medium     | Yes — AI/keyword grouping of messages                                 | Medium                  |
+| Doodle Reply                         | Medium     | Yes — canvas drawing, save as image                                   | Medium                  |
+| Custom Reaction Combos               | Low        | Partially exists already (custom touch reactions)                     | High — extend existing  |
 
-## Overview
-A daily checklist system where both partners create daily tasks, see each other's progress in real-time, browse past days via a calendar, and track missed/incomplete tasks. Includes a productivity summary widget on the home screen.
 
-## Database
+## Recommended Build Order (by impact-to-effort ratio)
 
-**New table: `daily_checklists`**
-- `id` uuid PK default gen_random_uuid()
-- `user_id` uuid NOT NULL (references auth.users on delete cascade)
-- `title` text NOT NULL
-- `is_completed` boolean DEFAULT false
-- `checklist_date` date NOT NULL DEFAULT CURRENT_DATE
-- `completed_at` timestamptz
-- `created_at` timestamptz DEFAULT now()
+### 1. Parallel Universe Mode (Chat Theme Skins)
 
-**RLS (permissive):**
-- SELECT: all authenticated (both partners see each other's lists)
-- INSERT/UPDATE/DELETE: `auth.uid() = user_id`
+- Add a `chat_theme` column to `chat_user_settings` (or use existing wallpaper system)
+- Create 5-6 theme presets: "Spy Documents" (monospace, redacted look), "GeoCities 98" (comic sans, under-construction gifs, visitor counter), "GameBoy" (green monochrome, pixel font), "Horror ARG" (glitch text, static noise), "Romance Novel" (script font, parchment bg, rose petals)
+- Each theme = a CSS class applied to the chat container that overrides fonts, colors, bubble styles, and background
+- Theme picker in Settings or as a quick-toggle button in ChatHeader
+- Store selection per-user in `chat_user_settings`
 
-**Realtime:** add to `supabase_realtime` publication.
+### 2. Soulmate Clock
 
-## New Files
+- Track concurrent online time: when both users have `is_online = true`, a Supabase edge function or client-side interval increments a shared counter in a new `couple_stats` table (`concurrent_seconds INTEGER`)
+- Client polls every 30s: if both online, increment locally and sync
+- Display as a beautiful analog clock component on the Home page showing "time spent together"
+- Format as days/hours/minutes
 
-### `src/hooks/useDailyChecklist.ts`
-- Accepts a `date` parameter (defaults to today)
-- Fetches all checklist items for that date (both users)
-- CRUD: `addItem(title)`, `toggleItem(id)`, `deleteItem(id)`
-- Realtime subscription on `daily_checklists`
-- Returns `{ myItems, partnerItems, loading, addItem, toggleItem, deleteItem, myProgress, partnerProgress }`
-- Progress = `{ completed: number, total: number }`
+### 3. Custom Reaction Combos (Extend Existing)
 
-### `src/pages/DailyChecklist.tsx`
-Three sections in a single scrollable page:
+- Already have `custom_touch_reactions` table and picker
+- Extend to allow custom **message reactions** (not just touch reactions): add a `custom_message_reactions` table with `emoji`, `label`, `animation_type`, `sound_url`
+- Show custom reactions in the QuickReactionBar alongside default emojis
+- Each custom reaction can trigger a mini CSS animation (bounce, sparkle, shake) on the message bubble
 
-1. **Calendar Navigator** — Uses the existing `Calendar` component (DayPicker) at the top. Dates with checklist data get dot indicators. Selecting a date shows that day's checklists. Today is default.
+### 4. Doodle Reply
 
-2. **Dual Checklist View** (for selected date):
-   - **"Your Checklist"** — editable (add/check/delete) with a `Progress` bar, motivational text ("3/5 — Keep going!", "5/5 — All done! 🎉")
-   - **"Partner's Checklist"** — read-only view with progress bar, shows partner's name
+- Add a mini canvas (HTML5 Canvas) overlay triggered from the reply menu
+- User draws with finger/mouse, saves as PNG data URL
+- Send as a message with `message_type: "doodle"` and the image stored in Supabase Storage
+- Render in MessageBubble like an image but with a "✏️ Doodle" label
 
-3. **Missed/Incomplete Section** — Shows all incomplete items from past dates (not today), grouped by date. Each item shows the date it was from. Option to "carry forward" an item to today.
+### 5. Conversation Chapters
 
-**Past dates:** checklist is read-only (no adding/editing). Only today is editable.
+- Group messages by date ranges + topic detection (simple keyword matching or AI via edge function)
+- Add a "Chapters" view accessible from ChatHeader that shows timeline blocks
+- Each chapter = clickable, scrolls to that section in chat
+- Bookmarkable chapters stored in a `bookmarked_chapters` table
 
-### `src/components/home/DailyChecklistWidget.tsx`
-- Compact home widget showing today's progress for both partners
-- Two mini progress bars side-by-side: "You: 3/5 ✅ | Partner: 2/4 ✅"
-- Tapping navigates to `/daily-checklist`
+### 6. Shared Dream Canvas
 
-## Modified Files
+- A dedicated page (`/canvas`) with an infinite HTML5 Canvas
+- Both users can draw, add text, paste images
+- Supabase Realtime broadcasts strokes/objects live
+- Canvas state persisted as JSON in a `shared_canvas` table
+- This is the most complex feature — essentially building a mini collaborative whiteboard
 
-### `src/App.tsx`
-- Add route `/daily-checklist` → `DailyChecklist`
+### 7. Voice Waves → Art
 
-### `src/pages/Home.tsx`
-- Add `DailyChecklistWidget` component
-- Add "Daily Checklist" to Quick Links grid
+- Requires Web Audio API to analyze audio messages and generate waveform visualizations
+- Each voice message gets a unique SVG wave pattern rendered alongside the audio player
+- A "Sound Gallery" page that stitches all voice wave patterns into a scrollable art timeline
+- Most complex, least essential — save for later
 
-## UI Design
-- Calendar at top with dot modifiers on days that have data
-- Progress bars using existing `Progress` component
-- Consistent card styling with the rest of the app (rounded-2xl, border, bg-card)
-- Motivational status text changes based on completion percentage
-- Missed tasks shown with a red/amber indicator and the original date
+## What I'd Build First
 
-## Technical Notes
-- The calendar date dots require a separate lightweight query to fetch distinct dates that have checklist entries
-- "Carry forward" duplicates the item with today's date
-- All queries filter by `checklist_date` for efficient day-based lookups
-- Partner detection reuses the existing `usePartner` hook
-
+I recommend starting with **Parallel Universe Mode** and **Soulmate Clock** — they're the most delightful, most feasible, and most unique. The theme skins transform the entire chat feel instantly, and the Soulmate Clock is a beautiful emotional feature that's technically simple.
