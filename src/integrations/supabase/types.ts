@@ -32,8 +32,44 @@ export type Database = {
         }
         Relationships: []
       }
+      bookmarks: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          message_id: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          message_id: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          message_id?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookmarks_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_user_settings: {
         Row: {
+          chat_theme: string | null
           created_at: string
           dynamic_wallpaper: boolean
           font_size: string
@@ -45,6 +81,7 @@ export type Database = {
           wallpaper_url: string | null
         }
         Insert: {
+          chat_theme?: string | null
           created_at?: string
           dynamic_wallpaper?: boolean
           font_size?: string
@@ -56,6 +93,7 @@ export type Database = {
           wallpaper_url?: string | null
         }
         Update: {
+          chat_theme?: string | null
           created_at?: string
           dynamic_wallpaper?: boolean
           font_size?: string
@@ -65,6 +103,51 @@ export type Database = {
           updated_at?: string
           user_id?: string
           wallpaper_url?: string | null
+        }
+        Relationships: []
+      }
+      compliments: {
+        Row: {
+          content: string
+          created_at: string
+          delivered_at: string | null
+          id: string
+          is_delivered: boolean
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          is_delivered?: boolean
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          is_delivered?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      couple_stats: {
+        Row: {
+          concurrent_seconds: number | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          concurrent_seconds?: number | null
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          concurrent_seconds?: number | null
+          id?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -709,6 +792,39 @@ export type Database = {
           },
         ]
       }
+      reminders: {
+        Row: {
+          created_at: string
+          id: string
+          is_completed: boolean
+          note: string | null
+          remind_at: string
+          target_user_id: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          note?: string | null
+          remind_at: string
+          target_user_id?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          note?: string | null
+          remind_at?: string
+          target_user_id?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       scheduled_messages: {
         Row: {
           content: string | null
@@ -742,6 +858,36 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_events: {
+        Row: {
+          created_at: string
+          description: string | null
+          emoji: string | null
+          event_date: string
+          id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          emoji?: string | null
+          event_date: string
+          id?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          emoji?: string | null
+          event_date?: string
+          id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       starred_messages: {
         Row: {
           created_at: string
@@ -770,6 +916,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      todo_items: {
+        Row: {
+          assigned_to: string | null
+          completed_at: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          is_completed: boolean
+          is_shared: boolean
+          notes: string | null
+          priority: Database["public"]["Enums"]["todo_priority"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          is_completed?: boolean
+          is_shared?: boolean
+          notes?: string | null
+          priority?: Database["public"]["Enums"]["todo_priority"]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          is_completed?: boolean
+          is_shared?: boolean
+          notes?: string | null
+          priority?: Database["public"]["Enums"]["todo_priority"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       typing_status: {
         Row: {
@@ -850,6 +1041,7 @@ export type Database = {
         Row: {
           activity_state: string | null
           bio: string | null
+          current_streak: number | null
           custom_status: string | null
           daliyPopUPMsgs: string | null
           id: string
@@ -857,14 +1049,17 @@ export type Database = {
           is_typing: boolean | null
           isOnboardComplete: boolean | null
           last_seen: string | null
+          longest_streak: number | null
           name: string | null
           profileurl: string | null
+          streak_broken_on: string | null
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
           activity_state?: string | null
           bio?: string | null
+          current_streak?: number | null
           custom_status?: string | null
           daliyPopUPMsgs?: string | null
           id?: string
@@ -872,14 +1067,17 @@ export type Database = {
           is_typing?: boolean | null
           isOnboardComplete?: boolean | null
           last_seen?: string | null
+          longest_streak?: number | null
           name?: string | null
           profileurl?: string | null
+          streak_broken_on?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
           activity_state?: string | null
           bio?: string | null
+          current_streak?: number | null
           custom_status?: string | null
           daliyPopUPMsgs?: string | null
           id?: string
@@ -887,8 +1085,10 @@ export type Database = {
           is_typing?: boolean | null
           isOnboardComplete?: boolean | null
           last_seen?: string | null
+          longest_streak?: number | null
           name?: string | null
           profileurl?: string | null
+          streak_broken_on?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -979,6 +1179,10 @@ export type Database = {
       get_chat_stats: { Args: never; Returns: Json }
       get_on_this_day: { Args: never; Returns: Json }
       get_streak_data: { Args: never; Returns: Json }
+      increment_concurrent_seconds: {
+        Args: { seconds_to_add: number }
+        Returns: undefined
+      }
       update_user_and_message_status: {
         Args: {
           p_is_online?: boolean
@@ -994,7 +1198,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      todo_priority: "low" | "medium" | "high"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1121,6 +1325,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      todo_priority: ["low", "medium", "high"],
+    },
   },
 } as const

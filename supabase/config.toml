@@ -1,13 +1,1 @@
 project_id = "itjukxjshcobpibmbrzq"
-
-[functions.fetch-link-preview]
-verify_jwt = false
-
-[functions.send-scheduled-messages]
-verify_jwt = false
-
-[functions.ai-chat-summary]
-verify_jwt = false
-
-[functions.ai-daily-question]
-verify_jwt = false
