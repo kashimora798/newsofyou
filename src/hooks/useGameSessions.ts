@@ -138,6 +138,8 @@ export function useGameSessions(userId: string) {
         .update(update)
         .eq("id", sessionId);
       if (error) console.error("Move error:", error);
+      // Secret achievement: Midnight Gamer
+      checkMidnightGamer(userId);
     },
     []
   );
