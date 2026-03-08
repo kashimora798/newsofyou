@@ -52,7 +52,7 @@ const StreakCounter: React.FC = () => {
 
   return (
     <>
-      <div className="bg-card rounded-2xl border border-border p-4">
+      <div className="glass rounded-2xl p-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Daily Streak
         </h3>
