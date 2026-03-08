@@ -70,6 +70,8 @@ export function useGameSessions(userId: string) {
           ? { word: "", guessed: [], setter: "", phase: "setting" }
           : gameType === "bingo"
           ? { gridSize: 5, phase: "setup", boards: {}, calledNumbers: [], readyPlayers: [], linesToWin: 5 }
+          : gameType === "quick_draw"
+          ? { phase: "choosing", drawer: userId, word: "", strokes: [], guesses: [], guessed: false, round: 1, totalRounds: 6, scores: {} }
           : [];
 
       const { data, error } = await supabase
