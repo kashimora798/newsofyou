@@ -19,7 +19,7 @@ import DailyQuestion from "@/components/home/DailyQuestion";
 import Tamagotchi from "@/components/home/Tamagotchi";
 import AchievementWidget from "@/components/home/AchievementWidget";
 import SoulmateClock from "@/components/home/SoulmateClock";
-import TodoWidget from "@/components/home/TodoWidget";
+
 import ReminderWidget from "@/components/home/ReminderWidget";
 import CalendarWidget from "@/components/home/CalendarWidget";
 import ComplimentPopup from "@/components/home/ComplimentPopup";
@@ -164,8 +164,6 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         {/* Daily Checklist */}
         <DailyChecklistWidget />
 
-        {/* To-Do Lists */}
-        <TodoWidget />
 
         {/* Reminders */}
         <ReminderWidget />
