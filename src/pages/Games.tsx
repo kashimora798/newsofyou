@@ -11,6 +11,7 @@ import GameLobbyCard from "@/components/games/GameLobbyCard";
 import ActiveGameCard from "@/components/games/ActiveGameCard";
 import TicTacToe from "@/components/games/TicTacToe";
 import WordChain from "@/components/games/WordChain";
+import Hangman from "@/components/games/Hangman";
 import type { GameSession } from "@/hooks/useGameSessions";
 import { formatDistanceToNow } from "date-fns";
 
