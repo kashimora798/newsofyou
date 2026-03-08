@@ -29,7 +29,7 @@ interface MessageBubbleProps {
 
 const SWIPE_THRESHOLD = 60;
 
-const MessageBubble: React.FC<MessageBubbleProps> = memo(({
+const MessageBubble: React.FC<MessageBubbleProps> = ({
   message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, isPinned,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
