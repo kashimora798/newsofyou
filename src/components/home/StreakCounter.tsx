@@ -42,7 +42,7 @@ const StreakCounter: React.FC = () => {
 
   useEffect(() => {
     calculate();
-    const interval = setInterval(calculate, 60000); // Check every 60s instead of 30s
+    const interval = setInterval(calculate, 300000); // Check every 5 min (was 60s)
     return () => clearInterval(interval);
   }, [calculate]);
 
