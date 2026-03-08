@@ -86,6 +86,8 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const { current: pendingAnim, dismiss: dismissPendingAnim } = useAnimationQueue(userId);
   const [queuedKeywordEffect, setQueuedKeywordEffect] = useState<EffectType>(null);
   const { shakeDetected, reset: resetShake } = useShakeDetection();
+  const { pinnedMessages, pinMessage, unpinMessage, isMessagePinned } = usePinnedMessages();
+  const messageListRef = useRef<{ scrollToMessage: (id: string) => void } | null>(null);
 
   const themeConfig = getThemeById(chatTheme);
   const themeEffects = useThemeEffects(chatTheme);
