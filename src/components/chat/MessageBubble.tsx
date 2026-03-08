@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, memo } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
@@ -29,7 +29,7 @@ interface MessageBubbleProps {
 
 const SWIPE_THRESHOLD = 60;
 
-const MessageBubble: React.FC<MessageBubbleProps> = memo(({
+const MessageBubble: React.FC<MessageBubbleProps> = ({
   message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, isPinned,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
@@ -366,9 +366,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = memo(({
       </div>
     </div>
   );
-});
+};
 
-MessageBubble.displayName = "MessageBubble";
 
 // Status row — shared between bubble types
 const StatusRow: React.FC<{ isOwn: boolean; message: Tables<"messages"> }> = ({ isOwn, message }) => (

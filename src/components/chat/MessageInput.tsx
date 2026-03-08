@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, memo } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,7 +23,7 @@ interface MessageInputProps {
   sendLabel?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = memo(({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -313,9 +313,8 @@ const MessageInput: React.FC<MessageInputProps> = memo(({ onSend, onTyping, user
       </div>
     </div>
   );
-});
+};
 
-MessageInput.displayName = "MessageInput";
 
 const MoreBtn: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
   <motion.button
