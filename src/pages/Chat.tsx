@@ -14,6 +14,7 @@ import { useShakeDetection } from "@/hooks/useShakeDetection";
 import { useThemeEffects } from "@/hooks/useThemeEffects";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
+import PinnedMessagesBar from "@/components/chat/PinnedMessagesBar";
 import MessageInput from "@/components/chat/MessageInput";
 import SearchBar from "@/components/chat/SearchBar";
 import ConnectionBanner from "@/components/chat/ConnectionBanner";
