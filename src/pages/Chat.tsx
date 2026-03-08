@@ -181,10 +181,11 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return error;
   };
 
-  const displayMessages = useMemo(() => {
-    if (query && results.length > 0) return results.reverse();
-    return messages;
-  }, [messages, results, query]);
+  // Highlight matched message IDs for the message list
+  const highlightedMessageIds = useMemo(() => {
+    if (!query) return new Set<string>();
+    return new Set(results.map((r) => r.id));
+  }, [results, query]);
 
   const initializedTouchRef = useRef(false);
 
