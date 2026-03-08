@@ -24,6 +24,8 @@ interface MessageListProps {
   wallpaper?: string | null;
   useSkyBackground?: boolean;
   typingText?: string;
+  onPin?: (message: Tables<"messages">) => void;
+  isMessagePinned?: (messageId: string) => boolean;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
