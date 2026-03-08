@@ -71,7 +71,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const [replyTo, setReplyTo] = useState<Tables<"messages"> | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const { results, searching, query, search, clear, currentIndex, goNext, goPrev, currentResult } = useSearch();
+  const { results, searching, query, search, clear } = useSearch();
   const [wallpaper, setWallpaper] = useState<string | null>(null);
   const [dynamicWallpaper, setDynamicWallpaper] = useState(false);
   const [messageEffects, setMessageEffects] = useState(true);
