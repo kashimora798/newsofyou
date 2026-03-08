@@ -21,6 +21,7 @@ import Bookmarks from "./pages/Bookmarks";
 import Reminders from "./pages/Reminders";
 import SharedCalendar from "./pages/SharedCalendar";
 import ComplimentBox from "./pages/ComplimentBox";
+import DailyChecklist from "./pages/DailyChecklist";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
