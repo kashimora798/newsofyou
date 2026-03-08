@@ -66,9 +66,10 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
   // If playing a game, show game view
   if (activeSession) {
+    const GameComponent = activeSession.game_type === "word_chain" ? WordChain : TicTacToe;
     return (
       <div className="flex flex-col h-dvh bg-background">
-        <TicTacToe
+        <GameComponent
           session={activeSession}
           userId={userId}
           partnerName={partner?.name ?? undefined}
