@@ -52,7 +52,11 @@ export function useCompliments() {
 
   useEffect(() => {
     if (!user) return;
-    if (Math.random() < 0.3) fetchRandomForMe();
+    const shown = sessionStorage.getItem("compliment_shown");
+    if (!shown && Math.random() < 0.3) {
+      sessionStorage.setItem("compliment_shown", "true");
+      fetchRandomForMe();
+    }
   }, [user, fetchRandomForMe]);
 
   const addCompliment = useCallback(async (content: string) => {

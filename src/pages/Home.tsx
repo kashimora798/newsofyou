@@ -164,8 +164,6 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         {/* Daily Checklist */}
         <DailyChecklistWidget />
 
-        {/* To-Do Lists */}
-        <TodoWidget />
 
         {/* Reminders */}
         <ReminderWidget />

@@ -47,7 +47,7 @@ const App = () => (
               <Route path="/custom-touch-reactions" element={<CustomTouchReactions />} />
               <Route path="/achievements" element={<Achievements />} />
               <Route path="/letter-collection" element={<LetterCollection />} />
-              <Route path="/todos" element={<TodoList />} />
+              
               <Route path="/bookmarks" element={<Bookmarks />} />
               <Route path="/reminders" element={<Reminders />} />
               <Route path="/calendar" element={<SharedCalendar />} />
