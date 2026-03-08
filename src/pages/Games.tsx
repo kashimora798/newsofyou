@@ -54,9 +54,9 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
   const [activeSession, setActiveSession] = useState<GameSession | null>(null);
 
-  const handleChallenge = async () => {
+  const handleChallenge = async (gameType = "tic_tac_toe") => {
     if (!partner?.user_id) return;
-    await createGame(partner.user_id, "tic_tac_toe");
+    await createGame(partner.user_id, gameType);
   };
 
   const handlePlayAgain = async (opponentId: string) => {
