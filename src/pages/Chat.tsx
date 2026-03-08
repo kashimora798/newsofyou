@@ -182,36 +182,30 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   };
 
   // Highlight matched message IDs for the message list
-  const highlightedMessageIds = useMemo(() => {
-    if (!query) return new Set<string>();
-    return new Set(results.map((r) => r.id));
-  }, [results, query]);
-
-  // Scroll to current search result — keyed on currentIndex
-  useEffect(() => {
-    if (!currentResult) return;
-    const scrollToResult = () => {
-      const el = document.getElementById(`msg-${currentResult.id}`);
+  const scrollToMessage = useCallback((messageId: string) => {
+    // Close search
+    setShowSearch(false);
+    clear();
+    // Scroll to the message
+    const tryScroll = () => {
+      const el = document.getElementById(`msg-${messageId}`);
       if (el) {
-        // Remove previous highlights
         document.querySelectorAll(".search-highlight-active").forEach((e) => {
           e.classList.remove("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
         });
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         el.classList.add("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
+        setTimeout(() => {
+          el.classList.remove("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
+        }, 3000);
         return true;
       }
       return false;
     };
-
-    // Try immediately
-    if (!scrollToResult()) {
-      // Message not in DOM — need to load more messages until we find it
-      // For now, try after a short delay (message might be rendering)
-      const t = setTimeout(() => scrollToResult(), 200);
-      return () => clearTimeout(t);
+    if (!tryScroll()) {
+      setTimeout(tryScroll, 300);
     }
-  }, [currentIndex, currentResult]);
+  }, [clear]);
 
   const initializedTouchRef = useRef(false);
 
