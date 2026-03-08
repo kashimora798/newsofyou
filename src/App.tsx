@@ -16,7 +16,7 @@ import CustomStickers from "./pages/CustomStickers";
 import CustomTouchReactions from "./pages/CustomTouchReactions";
 import Achievements from "./pages/Achievements";
 import LetterCollection from "./pages/LetterCollection";
-import TodoList from "./pages/TodoList";
+
 import Bookmarks from "./pages/Bookmarks";
 import Reminders from "./pages/Reminders";
 import SharedCalendar from "./pages/SharedCalendar";
