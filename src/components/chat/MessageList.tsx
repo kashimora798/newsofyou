@@ -43,7 +43,6 @@ const MessageList: React.FC<MessageListProps> = ({
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   const { reactions, toggleReaction } = useReactions(messageIds);
 
-  // Build reply map
   const replyMap = useMemo(() => {
     const map: Record<string, Tables<"messages">> = {};
     messages.forEach((m) => { map[m.id] = m; });
@@ -110,7 +109,7 @@ const MessageList: React.FC<MessageListProps> = ({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-3 py-2 space-y-1 scrollbar-thin"
+        className="h-full overflow-y-auto px-3 py-3 space-y-1 scrollbar-thin"
       >
         {loadingMore && (
           <div className="flex justify-center py-3">
@@ -123,7 +122,7 @@ const MessageList: React.FC<MessageListProps> = ({
           return (
             <React.Fragment key={msg.id}>
               {showDate && <DateSeparator date={msg.created_at ?? ""} />}
-              <div id={`msg-${msg.id}`} className="transition-all duration-300 rounded-xl group relative">
+              <div id={`msg-${msg.id}`} className="transition-all duration-300 rounded-xl group relative py-[1px]">
                 <MessageBubble
                   message={msg}
                   isOwn={msg.user_id === currentUserId}

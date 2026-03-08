@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from "react";
-import { Check, CheckCheck, Copy, Star, Reply, Info, SmilePlus, Music, Bookmark, Pin } from "lucide-react";
+import React, { useState, useRef, useCallback, memo } from "react";
+import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
 import FileBubble from "./FileBubble";
@@ -29,7 +29,7 @@ interface MessageBubbleProps {
 
 const SWIPE_THRESHOLD = 60;
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({
+const MessageBubble: React.FC<MessageBubbleProps> = memo(({
   message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, isPinned,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
@@ -73,7 +73,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
     const absDx = Math.abs(dx);
 
-    // If vertical movement is dominant, cancel everything
     if (dy > 30) {
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
       setSwipeX(0);
@@ -81,20 +80,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       return;
     }
 
-    // Detect swipe intent: horizontal > 15px and greater than vertical
     if (absDx > 15 && absDx > dy) {
       isSwiping.current = true;
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
-
-      // Own messages swipe left (negative), partner messages swipe right (positive)
       const swipeDir = isOwn ? Math.min(0, dx) : Math.max(0, dx);
-      const clamped = isOwn
-        ? Math.max(swipeDir, -100)
-        : Math.min(swipeDir, 100);
-
+      const clamped = isOwn ? Math.max(swipeDir, -100) : Math.min(swipeDir, 100);
       setSwipeX(clamped);
-
-      // Haptic feedback at threshold
       if (Math.abs(clamped) >= SWIPE_THRESHOLD && !hapticTriggered.current) {
         hapticTriggered.current = true;
         if (navigator.vibrate) navigator.vibrate(20);
@@ -106,16 +97,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const handleTouchEnd = useCallback(() => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
-
     if (isSwiping.current && Math.abs(swipeX) >= SWIPE_THRESHOLD) {
       onReply?.(message);
     }
-
     isSwiping.current = false;
     setSwipeX(0);
   }, [swipeX, message, onReply]);
 
-  // Double click/tap for message info
   const lastTap = useRef(0);
   const handleDoubleTap = useCallback(() => {
     const now = Date.now();
@@ -131,7 +119,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     setShowMsgInfo(false);
   };
 
-  // Group reactions by emoji
   const reactionGroups = reactions.reduce<Record<string, number>>((acc, r) => {
     acc[r.emoji] = (acc[r.emoji] ?? 0) + 1;
     return acc;
@@ -145,29 +132,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     const emotionKey = (message.content ?? "hug") as TouchEmotion;
     const emotionConfig = TOUCH_EMOTIONS[emotionKey] ?? TOUCH_EMOTIONS.hug;
     return (
-      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} animate-fade-in`}>
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
         <div
-          className="rounded-2xl px-5 py-3 shadow-md text-center max-w-[200px]"
-          style={{ background: emotionConfig.color.replace(/[\d.]+\)$/, "0.15)") }}
+          className="rounded-2xl px-5 py-3 text-center max-w-[200px] bubble-shadow-own"
+          style={{ background: emotionConfig.color.replace(/[\d.]+\)$/, "0.12)") }}
         >
           <div className="text-4xl mb-1">{emotionConfig.emoji}</div>
           <p className="text-xs font-semibold text-foreground">
             {isOwn ? "You" : message.username} sent a {emotionConfig.label}
           </p>
-          <div className={`flex items-center gap-1 mt-1 ${isOwn ? "justify-end" : "justify-start"}`}>
-            <span className="text-[10px] text-muted-foreground">{formatMessageTime(message.created_at ?? "")}</span>
-            {isOwn && (
-              <span className="inline-flex">
-                {message.seen ? <CheckCheck className="h-3.5 w-3.5 text-seen" /> : message.delivered ? <CheckCheck className="h-3.5 w-3.5 opacity-50" /> : <Check className="h-3.5 w-3.5 opacity-50" />}
-              </span>
-            )}
-          </div>
+          <StatusRow isOwn={isOwn} message={message} />
         </div>
       </div>
     );
   }
 
-  // Letter — special envelope bubble
+  // Letter
   if (msgType === "letter") {
     return <LetterBubble message={message} isOwn={isOwn} />;
   }
@@ -175,14 +155,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   // Sticker — no bubble bg
   if (hasSticker || msgType === "sticker") {
     return (
-      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} animate-fade-in`}
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}
         onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       >
         <div className="max-w-[160px] relative">
           <img src={(message as any).sticker_url} alt="sticker" className="w-full h-auto" loading="lazy" />
-          <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-start"}`}>
-            <span className="text-[10px] text-muted-foreground">{formatMessageTime(message.created_at ?? "")}</span>
-          </div>
+          <StatusRow isOwn={isOwn} message={message} />
           {showReactions && (
             <QuickReactionBar isOwn={isOwn} onReact={handleReact} onMore={() => { setShowFullEmojiPicker(true); setShowReactions(false); }} onClose={() => setShowReactions(false)} />
           )}
@@ -193,13 +171,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div
-      className={`flex ${isOwn ? "justify-end" : "justify-start"} animate-fade-in relative`}
+      className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"} relative`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onClick={handleDoubleTap}
     >
-      {/* Reaction particle effects */}
       {reactionAnimation && (
         <ReactionParticles emoji={reactionAnimation} isOwn={isOwn} />
       )}
@@ -208,12 +185,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       {showReplyIcon && (
         <div
           className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? "right-2" : "left-2"} z-10 transition-opacity`}
-          style={{
-            opacity: replyIconScale,
-            transform: `translateY(-50%) scale(${replyIconScale})`,
-          }}
+          style={{ opacity: replyIconScale, transform: `translateY(-50%) scale(${replyIconScale})` }}
         >
-          <div className={`h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center ${replyIconScale >= 1 ? "bg-primary/40" : ""}`}>
+          <div className={`h-8 w-8 rounded-full flex items-center justify-center ${replyIconScale >= 1 ? "bg-primary/25" : "bg-primary/15"}`}>
             <Reply className="h-4 w-4 text-primary" />
           </div>
         </div>
@@ -226,12 +200,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           transition: swipeX === 0 ? "transform 0.25s ease-out" : "none",
         }}
       >
-        {/* Quick reaction bar (long press on mobile, hover on desktop) */}
+        {/* Quick reaction bar */}
         {showReactions && (
           <QuickReactionBar isOwn={isOwn} onReact={handleReact} onMore={() => { setShowFullEmojiPicker(true); setShowReactions(false); }} onClose={() => setShowReactions(false)} />
         )}
 
-        {/* Full emoji picker for reactions */}
+        {/* Full emoji picker */}
         {showFullEmojiPicker && (
           <div className={`absolute ${isOwn ? "right-0" : "left-0"} -top-[320px] z-30 w-72`}>
             <div className="relative">
@@ -241,33 +215,23 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Message info popup (double tap) */}
+        {/* Message info popup */}
         {showMsgInfo && (
-          <div className={`absolute ${isOwn ? "right-0" : "left-0"} -top-2 -translate-y-full z-30 bg-card border border-border rounded-xl shadow-lg py-1 min-w-[180px] animate-scale-in`}>
+          <div className={`absolute ${isOwn ? "right-0" : "left-0"} -top-2 -translate-y-full z-30 glass rounded-2xl shadow-lg py-1.5 min-w-[180px] animate-scale-in`}>
             {onReply && (
-              <button onClick={() => { onReply(message); setShowMsgInfo(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
-                <Reply className="h-3.5 w-3.5 text-muted-foreground" /> Reply
-              </button>
+              <InfoBtn icon={<Reply className="h-3.5 w-3.5 text-muted-foreground" />} label="Reply" onClick={() => { onReply(message); setShowMsgInfo(false); }} />
             )}
-            <button onClick={() => { setShowReactions(true); setShowMsgInfo(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
-              <SmilePlus className="h-3.5 w-3.5 text-muted-foreground" /> React
-            </button>
+            <InfoBtn icon={<SmilePlus className="h-3.5 w-3.5 text-muted-foreground" />} label="React" onClick={() => { setShowReactions(true); setShowMsgInfo(false); }} />
             {message.content && (
-              <button onClick={handleCopy} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
-                <Copy className="h-3.5 w-3.5 text-muted-foreground" /> Copy
-              </button>
+              <InfoBtn icon={<Copy className="h-3.5 w-3.5 text-muted-foreground" />} label="Copy" onClick={handleCopy} />
             )}
             {onBookmark && (
-              <button onClick={() => { onBookmark(message); setShowMsgInfo(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
-                <Bookmark className="h-3.5 w-3.5 text-muted-foreground" /> Remember This
-              </button>
+              <InfoBtn icon={<Bookmark className="h-3.5 w-3.5 text-muted-foreground" />} label="Remember This" onClick={() => { onBookmark(message); setShowMsgInfo(false); }} />
             )}
             {onPin && (
-              <button onClick={() => { onPin(message); setShowMsgInfo(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
-                <Pin className="h-3.5 w-3.5 text-muted-foreground" /> {isPinned ? "Unpin Message" : "Pin Message"}
-              </button>
+              <InfoBtn icon={<Pin className="h-3.5 w-3.5 text-muted-foreground" />} label={isPinned ? "Unpin Message" : "Pin Message"} onClick={() => { onPin(message); setShowMsgInfo(false); }} />
             )}
-            <div className="border-t border-border my-1" />
+            <div className="border-t border-border/40 my-1" />
             <div className="px-3 py-2 text-[10px] text-muted-foreground space-y-0.5">
               <p>Sent: {formatFullDate(message.created_at ?? "")}</p>
               {isOwn && message.delivered_at && <p>Delivered: {formatFullDate(message.delivered_at)}</p>}
@@ -279,18 +243,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Bubble */}
         <div
-          className={`rounded-2xl px-3.5 py-2 shadow-sm ${
+          className={`rounded-2xl px-3.5 py-2 ${
             isOwn
-              ? "bg-bubble-own text-bubble-own-foreground rounded-br-md"
-              : "bg-bubble-partner text-bubble-partner-foreground rounded-bl-md"
+              ? "bg-bubble-own text-bubble-own-foreground rounded-br-sm bubble-shadow-own"
+              : "bg-bubble-partner text-bubble-partner-foreground rounded-bl-sm bubble-shadow-partner"
           }`}
-          onMouseEnter={() => { /* desktop hover shows reaction */ }}
         >
           {/* Reply reference */}
           {message.reply_to_id && (
             <div
               onClick={(e) => { e.stopPropagation(); onScrollToMessage?.(message.reply_to_id!); }}
-              className="mb-1.5 px-2.5 py-1.5 rounded-lg bg-muted/50 border-l-2 border-primary text-xs cursor-pointer hover:bg-muted/80 transition-colors"
+              className="mb-1.5 px-2.5 py-1.5 rounded-xl bg-muted/40 border-l-2 border-primary/60 text-xs cursor-pointer hover:bg-muted/60 transition-colors"
             >
               <p className="font-semibold text-primary text-[10px]">{replyToMessage?.username ?? "..."}</p>
               <p className="text-muted-foreground truncate">{replyToMessage?.content || "📎 Attachment"}</p>
@@ -326,8 +289,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           {/* Audio */}
           {msgType === "audio" && (message as any).file_url && (
             <div className="mb-1.5">
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-muted/40">
-                <div className="h-9 w-9 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-muted/30">
+                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Music className="h-4 w-4 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -352,7 +315,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           )}
 
-          {/* Content — secret or normal */}
+          {/* Content */}
           {message.content && msgType === "secret" ? (
             <SecretMessage
               messageId={message.id}
@@ -361,7 +324,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
               isOwn={isOwn}
             />
           ) : message.content ? (
-            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+            <div className="text-[14.5px] whitespace-pre-wrap break-words leading-relaxed">
               {formatMessageContent(message.content)}
             </div>
           ) : null}
@@ -371,14 +334,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             <LinkPreview title={message.link_title} description={message.link_description} image={message.link_image} url={message.link_target_url} />
           )}
 
-          {/* Reactions with animation */}
+          {/* Reactions */}
           {Object.keys(reactionGroups).length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
+            <div className="flex flex-wrap gap-1 mt-1.5">
               {Object.entries(reactionGroups).map(([emoji, count]) => (
                 <button
                   key={emoji}
                   onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
-                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-muted/60 hover:bg-muted text-xs transition-all active:scale-110"
+                  className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-muted/50 hover:bg-muted text-xs transition-all active:scale-110"
                 >
                   <span>{emoji}</span>
                   {count > 1 && <span className="text-muted-foreground">{count}</span>}
@@ -388,23 +351,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
 
           {/* Time + Status */}
-          <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-start"}`}>
-            <span className="text-[10px] opacity-60">{formatMessageTime(message.created_at ?? "")}</span>
-            {isOwn && (
-              <span className="inline-flex">
-                {message.seen ? (
-                  <CheckCheck className="h-3.5 w-3.5 text-seen" />
-                ) : message.delivered ? (
-                  <CheckCheck className="h-3.5 w-3.5 opacity-50" />
-                ) : (
-                  <Check className="h-3.5 w-3.5 opacity-50" />
-                )}
-              </span>
-            )}
-          </div>
+          <StatusRow isOwn={isOwn} message={message} />
         </div>
 
-        {/* Desktop hover: small reply button */}
+        {/* Desktop hover reply */}
         <div className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-8" : "-right-8"} opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex`}>
           <button
             onClick={(e) => { e.stopPropagation(); onReply?.(message); }}
@@ -416,29 +366,56 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
     </div>
   );
-};
+});
 
-// Quick reaction bar component
+MessageBubble.displayName = "MessageBubble";
+
+// Status row — shared between bubble types
+const StatusRow: React.FC<{ isOwn: boolean; message: Tables<"messages"> }> = ({ isOwn, message }) => (
+  <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end" : "justify-start"}`}>
+    <span className="text-[10px] opacity-50">{formatMessageTime(message.created_at ?? "")}</span>
+    {isOwn && (
+      <span className="inline-flex">
+        {message.seen ? (
+          <CheckCheck className="h-3.5 w-3.5 text-seen" />
+        ) : message.delivered ? (
+          <CheckCheck className="h-3.5 w-3.5 opacity-40" />
+        ) : (
+          <Check className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </span>
+    )}
+  </div>
+);
+
+// Info button for context menu
+const InfoBtn: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
+  <button onClick={onClick} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted/50 transition-colors">
+    {icon} {label}
+  </button>
+);
+
+// Quick reaction bar
 const QuickReactionBar: React.FC<{
   isOwn: boolean;
   onReact: (emoji: string) => void;
   onMore: () => void;
   onClose: () => void;
-}> = ({ isOwn, onReact, onMore, onClose }) => (
+}> = ({ isOwn, onReact, onMore }) => (
   <div
-    className={`absolute ${isOwn ? "right-0" : "left-0"} -top-10 flex gap-0.5 bg-card border border-border rounded-full px-1.5 py-1 shadow-lg z-20 animate-scale-in`}
+    className={`absolute ${isOwn ? "right-0" : "left-0"} -top-11 flex gap-0.5 glass rounded-full px-1.5 py-1 shadow-lg z-20 animate-scale-in`}
     onClick={(e) => e.stopPropagation()}
   >
     {QUICK_REACTIONS.map((emoji) => (
       <button
         key={emoji}
         onClick={() => onReact(emoji)}
-        className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted text-lg transition-transform hover:scale-125 active:scale-150"
+        className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted/50 text-lg transition-transform hover:scale-125 active:scale-150"
       >
         {emoji}
       </button>
     ))}
-    <button onClick={onMore} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted text-sm">
+    <button onClick={onMore} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted/50 text-sm">
       <SmilePlus className="h-4 w-4 text-muted-foreground" />
     </button>
   </div>
