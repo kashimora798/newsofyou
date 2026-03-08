@@ -409,7 +409,13 @@ const QuickReactionBar: React.FC<{
   onClose: () => void;
 }> = ({ isOwn, onReact, onMore }) => (
   <div
-    className={`absolute ${isOwn ? "right-0" : "left-0"} -top-11 flex gap-0.5 glass rounded-full px-1.5 py-1 shadow-lg z-20 animate-scale-in`}
+    className={`absolute ${isOwn ? "right-0" : "left-0"} -top-11 flex gap-0.5 rounded-full px-1.5 py-1 shadow-xl z-20 animate-scale-in`}
+    style={{
+      background: "hsl(var(--card) / 0.92)",
+      backdropFilter: "blur(20px) saturate(180%)",
+      WebkitBackdropFilter: "blur(20px) saturate(180%)",
+      border: "1px solid hsl(var(--border) / 0.5)",
+    }}
     onClick={(e) => e.stopPropagation()}
   >
     {QUICK_REACTIONS.map((emoji) => (
