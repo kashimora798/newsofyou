@@ -91,6 +91,18 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
       const voiceNotes = ach.voice_note_count ?? 0;
       const musicLinks = ach.music_link_count ?? 0;
 
+      // New stats
+      const bookmarkCount = ach.bookmark_count ?? 0;
+      const reactionCount = ach.reaction_count ?? 0;
+      const gifCount = ach.gif_count ?? 0;
+      const stickerCount = ach.sticker_count ?? 0;
+      const complimentCount = ach.compliment_count ?? 0;
+      const reminderCount = ach.reminder_count ?? 0;
+      const eventCount = ach.event_count ?? 0;
+      const scheduledCount = ach.scheduled_count ?? 0;
+      const gameCompletedCount = ach.game_completed_count ?? 0;
+      const checklistPerfectStreak = ach.checklist_perfect_streak ?? 0;
+
       // Streak from cached/smart calculator
       const streakData = await (await import("@/hooks/useStreakState")).getStreakData(userId);
       const currentStreak = streakData.currentStreak;
@@ -109,6 +121,7 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
       const hasTimeCapsule = achState?.event_timecapsule ?? false;
       const hasTimeTraveler = achState?.event_timetraveler ?? false;
       const hasWaiter = achState?.event_waiter ?? false;
+      const hasMidnightGamer = achState?.event_midnightgamer ?? false;
 
       const p = (val: number, max: number) => ({ progress: `${Math.min(val, max)}/${max}`, progressValue: Math.min(val, max), progressMax: max });
 
