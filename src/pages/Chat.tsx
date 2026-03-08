@@ -255,6 +255,19 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
         {!immersiveMode && (
           <>
             <ConnectionBanner />
+            <PinnedMessagesBar
+              pinnedMessages={pinnedMessages}
+              currentUserId={userId}
+              onScrollToMessage={(id) => {
+                const el = document.getElementById(`msg-${id}`);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.classList.add("ring-2", "ring-primary/50");
+                  setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+                }
+              }}
+              onUnpin={(messageId) => unpinMessage(messageId, userId)}
+            />
             {showSearch && (
               <SearchBar
                 query={query}
@@ -275,6 +288,14 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
               wallpaper={effectiveWallpaper}
               useSkyBackground={wallpaper === "sky"}
               typingText={themeEffects.typingText}
+              onPin={async (msg) => {
+                if (isMessagePinned(msg.id)) {
+                  await unpinMessage(msg.id, userId);
+                } else {
+                  await pinMessage(msg.id, userId);
+                }
+              }}
+              isMessagePinned={isMessagePinned}
             />
             <MessageInput
               onSend={handleSend}
