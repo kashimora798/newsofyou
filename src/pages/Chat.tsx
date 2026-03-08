@@ -282,7 +282,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
               />
             )}
             <MessageList
-              messages={displayMessages}
+              messages={messages}
               currentUserId={userId}
               loading={loading}
               loadingMore={loadingMore}
