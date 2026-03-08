@@ -24,10 +24,12 @@ interface MessageListProps {
   wallpaper?: string | null;
   useSkyBackground?: boolean;
   typingText?: string;
+  onPin?: (message: Tables<"messages">) => void;
+  isMessagePinned?: (messageId: string) => boolean;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
-  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground, typingText,
+  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -133,6 +135,8 @@ const MessageList: React.FC<MessageListProps> = ({
                   onVideoClick={(url) => { setLightboxSrc(url); setLightboxType("video"); }}
                   onScrollToMessage={scrollToMessage}
                   onBookmark={(msg) => setBookmarkMsg(msg)}
+                  onPin={onPin}
+                  isPinned={isMessagePinned?.(msg.id) ?? false}
                 />
               </div>
             </React.Fragment>

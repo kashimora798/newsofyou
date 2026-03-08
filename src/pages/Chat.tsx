@@ -11,9 +11,11 @@ import { useSearch } from "@/hooks/useSearch";
 import { useMarkSeen } from "@/hooks/useMarkSeen";
 import { useAnimationQueue } from "@/hooks/useAnimationQueue";
 import { useShakeDetection } from "@/hooks/useShakeDetection";
+import { usePinnedMessages } from "@/hooks/usePinnedMessages";
 import { useThemeEffects } from "@/hooks/useThemeEffects";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
+import PinnedMessagesBar from "@/components/chat/PinnedMessagesBar";
 import MessageInput from "@/components/chat/MessageInput";
 import SearchBar from "@/components/chat/SearchBar";
 import ConnectionBanner from "@/components/chat/ConnectionBanner";
@@ -84,6 +86,8 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
   const { current: pendingAnim, dismiss: dismissPendingAnim } = useAnimationQueue(userId);
   const [queuedKeywordEffect, setQueuedKeywordEffect] = useState<EffectType>(null);
   const { shakeDetected, reset: resetShake } = useShakeDetection();
+  const { pinnedMessages, pinMessage, unpinMessage, isMessagePinned } = usePinnedMessages();
+  const messageListRef = useRef<{ scrollToMessage: (id: string) => void } | null>(null);
 
   const themeConfig = getThemeById(chatTheme);
   const themeEffects = useThemeEffects(chatTheme);
@@ -251,6 +255,19 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
         {!immersiveMode && (
           <>
             <ConnectionBanner />
+            <PinnedMessagesBar
+              pinnedMessages={pinnedMessages}
+              currentUserId={userId}
+              onScrollToMessage={(id) => {
+                const el = document.getElementById(`msg-${id}`);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.classList.add("ring-2", "ring-primary/50");
+                  setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+                }
+              }}
+              onUnpin={(messageId) => unpinMessage(messageId, userId)}
+            />
             {showSearch && (
               <SearchBar
                 query={query}
@@ -271,6 +288,14 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
               wallpaper={effectiveWallpaper}
               useSkyBackground={wallpaper === "sky"}
               typingText={themeEffects.typingText}
+              onPin={async (msg) => {
+                if (isMessagePinned(msg.id)) {
+                  await unpinMessage(msg.id, userId);
+                } else {
+                  await pinMessage(msg.id, userId);
+                }
+              }}
+              isMessagePinned={isMessagePinned}
             />
             <MessageInput
               onSend={handleSend}
