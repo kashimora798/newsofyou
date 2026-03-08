@@ -253,6 +253,45 @@ export type Database = {
         }
         Relationships: []
       }
+      game_sessions: {
+        Row: {
+          board_state: Json
+          created_at: string
+          created_by: string
+          current_turn: string
+          game_type: string
+          id: string
+          opponent_id: string
+          status: string
+          updated_at: string
+          winner_id: string | null
+        }
+        Insert: {
+          board_state?: Json
+          created_at?: string
+          created_by: string
+          current_turn: string
+          game_type?: string
+          id?: string
+          opponent_id: string
+          status?: string
+          updated_at?: string
+          winner_id?: string | null
+        }
+        Update: {
+          board_state?: Json
+          created_at?: string
+          created_by?: string
+          current_turn?: string
+          game_type?: string
+          id?: string
+          opponent_id?: string
+          status?: string
+          updated_at?: string
+          winner_id?: string | null
+        }
+        Relationships: []
+      }
       message_reactions: {
         Row: {
           created_at: string | null
