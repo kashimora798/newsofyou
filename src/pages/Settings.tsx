@@ -413,14 +413,6 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
         </div>
 
-        {/* Parallel Universe Mode */}
-        <ThemePicker
-          value={chatTheme}
-          onChange={(id) => {
-            setChatTheme(id);
-            saveSettings({ chat_theme: id });
-          }}
-        />
 
         {/* Info */}
         <div className="bg-card rounded-2xl border border-border p-4">

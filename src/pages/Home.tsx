@@ -305,12 +305,11 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
           <CalendarWidget />
         </motion.div>
 
-        {/* Relationship Section */}
-        <motion.div variants={item} className="space-y-3">
-          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-1">Your Bond</h3>
-          <Tamagotchi />
-          <SoulmateClock userId={userId} partnerOnline={partner?.is_online} partnerName={partner?.name ?? undefined} />
-          <StreakCounter />
+         {/* Relationship Section */}
+         <motion.div variants={item} className="space-y-3">
+           <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-1">Your Bond</h3>
+           <Tamagotchi />
+           <StreakCounter />
         </motion.div>
 
         {/* Discover Section */}
