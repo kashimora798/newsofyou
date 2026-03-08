@@ -23,7 +23,7 @@ interface MessageInputProps {
   sendLabel?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = memo(({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
