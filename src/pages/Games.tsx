@@ -207,8 +207,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
                     description={g.description}
                     color={g.color}
                     onChallenge={g.onChallenge}
-                    disabled={g.comingSoon || !partner?.user_id}
-                    comingSoon={g.comingSoon}
+                    disabled={!partner?.user_id}
                   />
                 ))}
               </div>
