@@ -40,10 +40,11 @@ export function useOnlineStatus(userId: string | undefined) {
       }
     };
 
-    window.addEventListener("click", resetInteraction);
-    window.addEventListener("keypress", resetInteraction);
-    window.addEventListener("scroll", resetInteraction, true);
-    window.addEventListener("touchstart", resetInteraction);
+    // Use passive listeners for performance
+    window.addEventListener("click", resetInteraction, { passive: true });
+    window.addEventListener("keypress", resetInteraction, { passive: true });
+    window.addEventListener("touchstart", resetInteraction, { passive: true });
+    // Skip scroll listener — too noisy, click/touch/key covers interaction detection
 
     // Heartbeat every 30s — also checks idle
     intervalRef.current = setInterval(() => {
