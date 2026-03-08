@@ -135,6 +135,8 @@ const MessageList: React.FC<MessageListProps> = ({
                   onVideoClick={(url) => { setLightboxSrc(url); setLightboxType("video"); }}
                   onScrollToMessage={scrollToMessage}
                   onBookmark={(msg) => setBookmarkMsg(msg)}
+                  onPin={onPin}
+                  isPinned={isMessagePinned?.(msg.id) ?? false}
                 />
               </div>
             </React.Fragment>
