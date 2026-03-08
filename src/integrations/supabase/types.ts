@@ -223,6 +223,36 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_checklists: {
+        Row: {
+          checklist_date: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          is_completed: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          checklist_date?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          checklist_date?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       message_reactions: {
         Row: {
           created_at: string | null
