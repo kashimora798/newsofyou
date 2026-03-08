@@ -10,7 +10,7 @@ import { checkNewYear, useWaiterAchievement } from "@/hooks/useSecretAchievement
 import { getThemeById } from "@/lib/chatThemes";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatLastSeen } from "@/lib/dateUtils";
-import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy } from "lucide-react";
+import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import BottomNav from "@/components/layout/BottomNav";
 import StreakCounter from "@/components/home/StreakCounter";
