@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, MessageCircle, User, Settings, BarChart3 } from "lucide-react";
+import { Home, MessageCircle, User, Settings, Gamepad2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 const tabs = [
