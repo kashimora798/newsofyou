@@ -62,18 +62,35 @@ const MessageList: React.FC<MessageListProps> = ({
     }
   }, []);
 
+  const isInitialLoad = useRef(true);
+  const loadMoreLock = useRef(false);
+
   useEffect(() => {
-    if (messages.length > prevLengthRef.current && isAtBottomRef.current) {
+    if (messages.length > prevLengthRef.current && isAtBottomRef.current && !loadMoreLock.current) {
       scrollToBottom();
     }
     prevLengthRef.current = messages.length;
   }, [messages.length, scrollToBottom]);
 
   useEffect(() => {
-    if (!loading && messages.length > 0) {
+    if (!loading && messages.length > 0 && isInitialLoad.current) {
+      isInitialLoad.current = false;
       scrollToBottom(false);
     }
   }, [loading, scrollToBottom, messages.length]);
+
+  // When new older messages load, restore scroll position
+  useEffect(() => {
+    if (loadMoreLock.current && containerRef.current) {
+      const el = containerRef.current;
+      const newHeight = el.scrollHeight;
+      const prevHeight = prevScrollHeightRef.current;
+      el.scrollTop = newHeight - prevHeight;
+      loadMoreLock.current = false;
+    }
+  }, [messages.length]);
+
+  const prevScrollHeightRef = useRef(0);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -81,10 +98,10 @@ const MessageList: React.FC<MessageListProps> = ({
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     isAtBottomRef.current = distFromBottom < 100;
     setShowScrollBtn(distFromBottom > 300);
-    if (el.scrollTop < 100 && hasMore && !loadingMore) {
-      const prevHeight = el.scrollHeight;
+    if (el.scrollTop < 80 && hasMore && !loadingMore && !loadMoreLock.current) {
+      prevScrollHeightRef.current = el.scrollHeight;
+      loadMoreLock.current = true;
       onLoadMore();
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight - prevHeight; });
     }
   }, [hasMore, loadingMore, onLoadMore]);
 
