@@ -91,6 +91,18 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
       const voiceNotes = ach.voice_note_count ?? 0;
       const musicLinks = ach.music_link_count ?? 0;
 
+      // New stats
+      const bookmarkCount = ach.bookmark_count ?? 0;
+      const reactionCount = ach.reaction_count ?? 0;
+      const gifCount = ach.gif_count ?? 0;
+      const stickerCount = ach.sticker_count ?? 0;
+      const complimentCount = ach.compliment_count ?? 0;
+      const reminderCount = ach.reminder_count ?? 0;
+      const eventCount = ach.event_count ?? 0;
+      const scheduledCount = ach.scheduled_count ?? 0;
+      const gameCompletedCount = ach.game_completed_count ?? 0;
+      const checklistPerfectStreak = ach.checklist_perfect_streak ?? 0;
+
       // Streak from cached/smart calculator
       const streakData = await (await import("@/hooks/useStreakState")).getStreakData(userId);
       const currentStreak = streakData.currentStreak;
@@ -109,6 +121,7 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
       const hasTimeCapsule = achState?.event_timecapsule ?? false;
       const hasTimeTraveler = achState?.event_timetraveler ?? false;
       const hasWaiter = achState?.event_waiter ?? false;
+      const hasMidnightGamer = achState?.event_midnightgamer ?? false;
 
       const p = (val: number, max: number) => ({ progress: `${Math.min(val, max)}/${max}`, progressValue: Math.min(val, max), progressMax: max });
 
@@ -142,6 +155,20 @@ const AchievementsView: React.FC<{ userId: string }> = ({ userId }) => {
         { id: "bottlemsg", name: "Message in a Bottle", icon: "🕰️", tier: "gold", category: "Features", lockedText: "Plant seeds for the future", unlockedText: "Your first time capsule has been sent and received. A gift from a past version of you. Wild, right? 🕰️✉️", unlocked: hasTimeCapsule },
         { id: "timetraveler", name: "Time Traveler", icon: "🔍", tier: "silver", category: "Nostalgia", lockedText: "Some people read old messages. You went DEEP.", unlockedText: "You scrolled all the way back to your very first messages. Does it feel like yesterday or like a different lifetime? 🔍⏪✨", unlocked: hasTimeTraveler },
         { id: "waiter", name: "The One Who Waits", icon: "👁️", tier: "platinum", category: "Secret", lockedText: "???", unlockedText: "They were offline for 24 hours. You opened the app 20+ times just to check. That quiet loyalty — that's love in its truest form. 👁️💙", isSecret: true, unlocked: hasWaiter },
+
+        // ── New 12 Achievements ──
+        { id: "gameon", name: "Game On!", icon: "🎮", tier: "bronze", category: "Features", lockedText: "Play your first game together", unlockedText: "Your first game together! Whether you won or lost doesn't matter — you played. And that's everything. 🎮✨", unlocked: gameCompletedCount >= 1, ...p(gameCompletedCount, 1) },
+        { id: "archrival", name: "Arch Rival", icon: "🏅", tier: "gold", category: "Features", lockedText: "25 games. That's a rivalry.", unlockedText: "25 games played together. At this point you probably know each other's strategies better than your own. 🏅🔥", unlocked: gameCompletedCount >= 25, ...p(gameCompletedCount, 25) },
+        { id: "bookmark10", name: "Memory Keeper", icon: "🔖", tier: "silver", category: "Features", lockedText: "Save the messages that matter most", unlockedText: "10 messages saved. These are the lines you never want to forget. Your personal highlight reel. 🔖💛", unlocked: bookmarkCount >= 10, ...p(bookmarkCount, 10) },
+        { id: "react50", name: "Reaction King", icon: "👑", tier: "bronze", category: "Love", lockedText: "React with your heart", unlockedText: "50 reactions! Sometimes a ❤️ says more than a thousand words. 👑", unlocked: reactionCount >= 50, ...p(reactionCount, 50) },
+        { id: "checklist7", name: "Routine Masters", icon: "✅", tier: "silver", category: "Streaks", lockedText: "Perfect checklist week. No excuses.", unlockedText: "7 perfect checklist days in a row. You don't just talk — you DO. Together. ✅🔥", unlocked: checklistPerfectStreak >= 7, ...p(checklistPerfectStreak, 7) },
+        { id: "reminder25", name: "Never Forget", icon: "🔔", tier: "bronze", category: "Features", lockedText: "Set reminders for what matters", unlockedText: "25 reminders set. Because every moment with them is worth remembering. 🔔💜", unlocked: reminderCount >= 25, ...p(reminderCount, 25) },
+        { id: "calendar10", name: "Date Planner", icon: "📅", tier: "silver", category: "Features", lockedText: "Plan your future on the calendar", unlockedText: "10 events planned together. Your future is literally on the calendar. 📅💫", unlocked: eventCount >= 10, ...p(eventCount, 10) },
+        { id: "gifmaster", name: "GIF Master", icon: "🎬", tier: "bronze", category: "Media", lockedText: "When words aren't enough, GIFs speak", unlockedText: "50 GIFs sent! When words fail, animations speak. You've mastered the art of visual conversation. 🎬😂", unlocked: gifCount >= 50, ...p(gifCount, 50) },
+        { id: "stickerfiend", name: "Sticker Fiend", icon: "🎨", tier: "bronze", category: "Media", lockedText: "Express yourself in stickers", unlockedText: "30 stickers sent. Your chat is basically an art gallery at this point. 🎨✨", unlocked: stickerCount >= 30, ...p(stickerCount, 30) },
+        { id: "sweetnothings", name: "Sweet Nothings", icon: "🍬", tier: "silver", category: "Love", lockedText: "Be each other's biggest fan", unlockedText: "50 compliments exchanged. In a world full of critics, you chose to be each other's biggest fan. 🍬💕", unlocked: complimentCount >= 50, ...p(complimentCount, 50) },
+        { id: "futurethinker", name: "Future Thinker", icon: "🚀", tier: "silver", category: "Features", lockedText: "Send messages to the future", unlockedText: "10 messages sent to the future. You plan your words like you plan your love — intentionally. 🚀💌", unlocked: scheduledCount >= 10, ...p(scheduledCount, 10) },
+        { id: "midnightgamer", name: "Midnight Gamers", icon: "🌃", tier: "gold", category: "Secret", lockedText: "???", unlockedText: "A game at 3 AM? Sleep is optional when you're having this much fun together. 🌃🎮", isSecret: true, unlocked: hasMidnightGamer },
       ];
 
       // #30: Written in the Stars - all 29 others unlocked

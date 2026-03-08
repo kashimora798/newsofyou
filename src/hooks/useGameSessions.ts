@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { checkMidnightGamer } from "@/hooks/useSecretAchievements";
 
 export interface GameSession {
   id: string;
@@ -137,6 +138,8 @@ export function useGameSessions(userId: string) {
         .update(update)
         .eq("id", sessionId);
       if (error) console.error("Move error:", error);
+      // Secret achievement: Midnight Gamer
+      checkMidnightGamer(userId);
     },
     []
   );
