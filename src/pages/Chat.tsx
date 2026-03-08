@@ -275,6 +275,10 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
                 onSearch={search}
                 onClose={() => { setShowSearch(false); clear(); }}
                 resultCount={results.length}
+                currentIndex={currentIndex}
+                onNext={goNext}
+                onPrev={goPrev}
+                searching={searching}
               />
             )}
             <MessageList
