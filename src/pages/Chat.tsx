@@ -271,7 +271,15 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
           <ChatHeader
             partner={partner}
             partnerTyping={partnerTyping}
-            onSearchToggle={() => { setShowSearch(!showSearch); if (showSearch) clear(); }}
+            onSearchToggle={() => {
+              if (showSearch) {
+                clear();
+                document.querySelectorAll(".search-highlight-active").forEach((e) => {
+                  e.classList.remove("ring-2", "ring-primary/40", "bg-primary/10", "search-highlight-active");
+                });
+              }
+              setShowSearch(!showSearch);
+            }}
             onProfileToggle={() => setShowProfile(!showProfile)}
             immersiveMode={immersiveMode}
             onImmersiveToggle={() => setImmersiveMode(!immersiveMode)}
