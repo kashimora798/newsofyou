@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { checkMidnightGamer } from "@/hooks/useSecretAchievements";
 
 export interface GameSession {
   id: string;
