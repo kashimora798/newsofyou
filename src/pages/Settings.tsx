@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail } from "lucide-react";
 import { useTheme } from "next-themes";
 import BottomNav from "@/components/layout/BottomNav";
-import ThemePicker from "@/components/settings/ThemePicker";
+
 
 const SettingsPage: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
