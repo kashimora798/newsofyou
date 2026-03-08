@@ -126,6 +126,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
     { path: "/compliments", icon: Heart, label: "Compliments", color: "text-pink-500" },
     { path: "/daily-checklist", icon: CheckSquare, label: "Checklist", color: "text-violet-500" },
     { path: "/achievements", icon: Trophy, label: "Achievements", color: "text-yellow-500" },
+    { path: "/games", icon: Gamepad2, label: "Games", color: "text-orange-500" },
   ];
 
   return (

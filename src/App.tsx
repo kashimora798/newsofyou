@@ -80,6 +80,7 @@ const App = () => (
                 <Route path="/calendar" element={<SharedCalendar />} />
                 <Route path="/compliments" element={<ComplimentBox />} />
                 <Route path="/daily-checklist" element={<DailyChecklist />} />
+                <Route path="/games" element={<Games />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
