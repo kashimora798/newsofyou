@@ -262,6 +262,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <Bookmark className="h-3.5 w-3.5 text-muted-foreground" /> Remember This
               </button>
             )}
+            {onPin && (
+              <button onClick={() => { onPin(message); setShowMsgInfo(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors">
+                <Pin className="h-3.5 w-3.5 text-muted-foreground" /> {isPinned ? "Unpin Message" : "Pin Message"}
+              </button>
+            )}
             <div className="border-t border-border my-1" />
             <div className="px-3 py-2 text-[10px] text-muted-foreground space-y-0.5">
               <p>Sent: {formatFullDate(message.created_at ?? "")}</p>
