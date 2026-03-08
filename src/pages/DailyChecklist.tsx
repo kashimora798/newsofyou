@@ -153,6 +153,15 @@ const ChecklistView: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
         </div>
 
+        {/* Weekly Productivity Chart */}
+        <div className="bg-card rounded-2xl border border-border p-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Weekly Completion Rate
+          </h2>
+          <WeeklyChart />
+        </div>
+
         {/* Missed / Incomplete */}
         {missed.length > 0 && (
           <div className="bg-card rounded-2xl border border-border p-4">
