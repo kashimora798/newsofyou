@@ -30,7 +30,7 @@ const container = {
   show: {
     transition: { staggerChildren: 0.06, delayChildren: 0.1 },
   },
-};
+} as const;
 
 const item = {
   hidden: { opacity: 0, y: 20, scale: 0.97 },
@@ -38,13 +38,13 @@ const item = {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { type: "spring", stiffness: 300, damping: 24 },
+    transition: { type: "spring" as const, stiffness: 300, damping: 24 },
   },
 };
 
 const headerVariant = {
   hidden: { opacity: 0, y: -10 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 200, damping: 20 } },
+  show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 200, damping: 20 } },
 };
 
 const Home: React.FC = () => {
