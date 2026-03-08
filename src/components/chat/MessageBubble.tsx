@@ -366,9 +366,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
     </div>
   );
-});
+};
 
-MessageBubble.displayName = "MessageBubble";
 
 // Status row — shared between bubble types
 const StatusRow: React.FC<{ isOwn: boolean; message: Tables<"messages"> }> = ({ isOwn, message }) => (
