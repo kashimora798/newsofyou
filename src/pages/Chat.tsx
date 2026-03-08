@@ -187,6 +187,17 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return new Set(results.map((r) => r.id));
   }, [results, query]);
 
+  // Scroll to current search result
+  useEffect(() => {
+    if (!currentResult) return;
+    const el = document.getElementById(`msg-${currentResult.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/40", "bg-primary/5");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/40", "bg-primary/5"), 2500);
+    }
+  }, [currentResult]);
+
   const initializedTouchRef = useRef(false);
 
   useEffect(() => {
