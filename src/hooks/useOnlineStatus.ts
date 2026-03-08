@@ -99,7 +99,6 @@ export function useOnlineStatus(userId: string | undefined) {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("click", resetInteraction);
       window.removeEventListener("keypress", resetInteraction);
-      window.removeEventListener("scroll", resetInteraction, true);
       window.removeEventListener("touchstart", resetInteraction);
       setOnline(false);
       updateActivityState("offline");
