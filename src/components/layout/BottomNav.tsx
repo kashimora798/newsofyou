@@ -1,12 +1,12 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, MessageCircle, User, Settings, BarChart3 } from "lucide-react";
+import { Home, MessageCircle, User, Settings, Gamepad2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 const tabs = [
   { path: "/home", label: "Home", icon: Home },
   { path: "/chat", label: "Chat", icon: MessageCircle },
-  { path: "/stats", label: "Stats", icon: BarChart3 },
+  { path: "/games", label: "Games", icon: Gamepad2 },
   { path: "/profile", label: "Profile", icon: User },
   { path: "/settings", label: "Settings", icon: Settings },
 ];

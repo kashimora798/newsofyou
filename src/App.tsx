@@ -28,6 +28,7 @@ const Reminders = lazy(() => import("./pages/Reminders"));
 const SharedCalendar = lazy(() => import("./pages/SharedCalendar"));
 const ComplimentBox = lazy(() => import("./pages/ComplimentBox"));
 const DailyChecklist = lazy(() => import("./pages/DailyChecklist"));
+const Games = lazy(() => import("./pages/Games"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -79,6 +80,7 @@ const App = () => (
                 <Route path="/calendar" element={<SharedCalendar />} />
                 <Route path="/compliments" element={<ComplimentBox />} />
                 <Route path="/daily-checklist" element={<DailyChecklist />} />
+                <Route path="/games" element={<Games />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
