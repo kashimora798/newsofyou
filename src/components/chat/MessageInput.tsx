@@ -313,9 +313,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
       </div>
     </div>
   );
-});
+};
 
-MessageInput.displayName = "MessageInput";
 
 const MoreBtn: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
   <motion.button
