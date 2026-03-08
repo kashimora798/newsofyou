@@ -16,7 +16,7 @@ const SoulmateClock: React.FC<SoulmateClockProps> = ({ userId, partnerOnline, pa
   const hourAngle = ((hours % 12) / 12) * 360 + (minutes / 60) * 30;
 
   return (
-    <div className="bg-card rounded-2xl border border-border p-4">
+    <div className="glass rounded-2xl p-4">
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
         ⏰ Soulmate Clock
       </h3>
