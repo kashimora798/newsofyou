@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { format, isToday, parseISO } from "date-fns";
-import { ArrowLeft, Plus, Trash2, RotateCcw, Loader2, CheckCircle2, Circle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, RotateCcw, Loader2, CheckCircle2, Circle, BarChart3 } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
+import WeeklyChart from "@/components/checklist/WeeklyChart";
 
 const motivationalText = (completed: number, total: number) => {
   if (total === 0) return "No tasks yet — add some! ✨";
