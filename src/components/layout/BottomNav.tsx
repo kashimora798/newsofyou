@@ -15,7 +15,7 @@ const BottomNav: React.FC = () => {
   const { pathname } = useLocation();
 
   return (
-    <nav className="shrink-0 flex items-center justify-around bg-card border-t border-border px-2 py-1.5 safe-area-bottom">
+    <nav className="shrink-0 flex items-center justify-around glass border-t border-border/30 px-2 py-1.5 safe-area-bottom">
       {tabs.map((tab) => {
         const active = pathname === tab.path;
         return (
