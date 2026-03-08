@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useSharedCalendar } from "@/hooks/useSharedCalendar";
 import { differenceInDays, parseISO, isFuture } from "date-fns";
 import { CalendarDays, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion";
 
 const CalendarWidget: React.FC = () => {
   const { events } = useSharedCalendar();
@@ -12,7 +13,12 @@ const CalendarWidget: React.FC = () => {
   if (upcoming.length === 0) return null;
 
   return (
-    <button onClick={() => navigate("/calendar")} className="w-full glass rounded-2xl p-4 text-left hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 active:scale-[0.98] group">
+    <motion.button
+      onClick={() => navigate("/calendar")}
+      whileHover={{ y: -2, boxShadow: "0 8px 30px -8px hsl(var(--primary) / 0.12)" }}
+      whileTap={{ scale: 0.98 }}
+      className="w-full glass rounded-2xl p-4 text-left transition-colors group"
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10">
@@ -28,11 +34,17 @@ const CalendarWidget: React.FC = () => {
           <div key={e.id} className="flex items-center gap-2 py-1.5">
             <span className="text-base">{e.emoji}</span>
             <span className="text-sm text-foreground truncate flex-1">{e.title}</span>
-            <span className="text-xs font-bold text-primary">{days}d</span>
+            <motion.span
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              className="text-xs font-bold text-primary"
+            >
+              {days}d
+            </motion.span>
           </div>
         );
       })}
-    </button>
+    </motion.button>
   );
 };
 
