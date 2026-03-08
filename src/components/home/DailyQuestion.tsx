@@ -51,7 +51,7 @@ const DailyQuestion: React.FC = () => {
   }
 
   return (
-    <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl border border-primary/20 p-4">
+    <div className="glass-accent rounded-2xl p-4">
       <div className="flex items-center gap-2 mb-2">
         <MessageCircleQuestion className="h-4 w-4 text-primary" />
         <h3 className="text-xs font-semibold text-primary uppercase tracking-wider">
