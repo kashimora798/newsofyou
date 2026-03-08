@@ -1,74 +1,82 @@
-# Feature Analysis & Implementation Plan
-
-These are ambitious features. Let me assess each for feasibility in a web app (React/Vite/Supabase) and recommend a phased approach.
-
-## Feature Feasibility Assessment
 
 
-| Feature                              | Complexity | Web Feasible?                                                         | Priority                |
-| ------------------------------------ | ---------- | --------------------------------------------------------------------- | ----------------------- |
-| Parallel Universe Mode (theme skins) | Medium     | Yes                                                                   | High — fun, doable      |
-| Voice Waves → Art                    | Very High  | Partial — Web Audio API works, but persistent art timeline is complex | Low                     |
-| Shared Dream Canvas                  | High       | Yes — HTML Canvas + Supabase realtime                                 | Medium                  |
-| Soulmate Clock                       | Low-Medium | Yes — track overlap time in DB                                        | High — elegant & simple |
-| Conversation Chapters                | Medium     | Yes — AI/keyword grouping of messages                                 | Medium                  |
-| Doodle Reply                         | Medium     | Yes — canvas drawing, save as image                                   | Medium                  |
-| Custom Reaction Combos               | Low        | Partially exists already (custom touch reactions)                     | High — extend existing  |
+# Touch Reaction System Upgrade
 
+## What We're Improving
 
-## Recommended Build Order (by impact-to-effort ratio)
+The current touch reaction system has basic particle floating, simple fade animations, and a flat picker UI. Here's what we'll do to make it feel premium and real:
 
-### 1. Parallel Universe Mode (Chat Theme Skins)
+---
 
-- Add a `chat_theme` column to `chat_user_settings` (or use existing wallpaper system)
-- Create 5-6 theme presets: "Spy Documents" (monospace, redacted look), "GeoCities 98" (comic sans, under-construction gifs, visitor counter), "GameBoy" (green monochrome, pixel font), "Horror ARG" (glitch text, static noise), "Romance Novel" (script font, parchment bg, rose petals)
-- Each theme = a CSS class applied to the chat container that overrides fonts, colors, bubble styles, and background
-- Theme picker in Settings or as a quick-toggle button in ChatHeader
-- Store selection per-user in `chat_user_settings`
+## 1. Enhanced Particle Physics (TouchReactionOverlay.tsx)
 
-### 2. Soulmate Clock
+**Current**: Particles float straight up with a simple linear animation.
+**Upgrade**:
+- Particles will have randomized sinusoidal sway (left-right oscillation) as they rise
+- Multiple particle layers: foreground (large, fast) + background (small, slow, blurred)
+- Gravity-aware burst from center on entry before floating upward
+- Fade-out with scale-down at the end of lifecycle
 
-- Track concurrent online time: when both users have `is_online = true`, a Supabase edge function or client-side interval increments a shared counter in a new `couple_stats` table (`concurrent_seconds INTEGER`)
-- Client polls every 30s: if both online, increment locally and sync
-- Display as a beautiful analog clock component on the Home page showing "time spent together"
-- Format as days/hours/minutes
+## 2. Richer Overlay Animations (index.css + TouchReactionOverlay.tsx)
 
-### 3. Custom Reaction Combos (Extend Existing)
+- Replace basic fade-in with a **radial reveal** (circle expanding from center)
+- Emoji entrance: bouncy spring scale with rotation
+- Pulsing glow ring behind the center emoji
+- Smooth blur transition on background (0 -> 20px blur)
+- Text fades in with a subtle upward slide, staggered after emoji
 
-- Already have `custom_touch_reactions` table and picker
-- Extend to allow custom **message reactions** (not just touch reactions): add a `custom_message_reactions` table with `emoji`, `label`, `animation_type`, `sound_url`
-- Show custom reactions in the QuickReactionBar alongside default emojis
-- Each custom reaction can trigger a mini CSS animation (bounce, sparkle, shake) on the message bubble
+## 3. Redesigned Picker UI (TouchReactionPicker.tsx)
 
-### 4. Doodle Reply
+**Current**: Simple grid with tiny text labels.
+**Upgrade**:
+- Horizontal scrollable category tabs at top (pill-shaped, animated active indicator)
+- Larger emoji buttons (44px) with glassmorphic hover cards showing label + verb preview
+- Long-press on a reaction shows a mini-preview tooltip
+- Smooth `framer-motion` staggered entrance when picker opens
+- Glass card styling consistent with the dashboard redesign
 
-- Add a mini canvas (HTML5 Canvas) overlay triggered from the reply menu
-- User draws with finger/mouse, saves as PNG data URL
-- Send as a message with `message_type: "doodle"` and the image stored in Supabase Storage
-- Render in MessageBubble like an image but with a "✏️ Doodle" label
+## 4. New Touch Reactions (TouchReactionOverlay.tsx)
 
-### 5. Conversation Chapters
+Add 7 new emotions to expand expressiveness:
 
-- Group messages by date ranges + topic detection (simple keyword matching or AI via edge function)
-- Add a "Chapters" view accessible from ChatHeader that shows timeline blocks
-- Each chapter = clickable, scrolls to that section in chat
-- Bookmarkable chapters stored in a `bookmarked_chapters` table
+| Key | Emoji | Label | Verb | Vibe |
+|-----|-------|-------|------|------|
+| `kiss` | 💋 | Kiss | kissing | Romantic pink burst |
+| `high_five` | 🙌 | High Five | high-fiving | Energetic yellow flash |
+| `poke` | 👉 | Poke | poking | Playful bounce effect |
+| `blush` | 😊 | Blush | making blush | Soft pink warmth |
+| `sleepy` | 🥱 | Sleepy | yawning with | Dark blue with stars |
+| `cheer` | 📣 | Cheer | cheering for | Vibrant confetti |
+| `butterfly` | 🦋 | Butterflies | giving butterflies to | Dreamy purple with flutter |
 
-### 6. Shared Dream Canvas
+New categories reorganized: **Love** (6), **Energy** (5), **Comfort** (4), **Playful** (4), **Vibes** (3)
 
-- A dedicated page (`/canvas`) with an infinite HTML5 Canvas
-- Both users can draw, add text, paste images
-- Supabase Realtime broadcasts strokes/objects live
-- Canvas state persisted as JSON in a `shared_canvas` table
-- This is the most complex feature — essentially building a mini collaborative whiteboard
+## 5. Premium Keyframe Animations (index.css)
 
-### 7. Voice Waves → Art
+New keyframes to add:
+- `particle-burst` — initial outward explosion before float
+- `particle-sway` — sinusoidal left-right movement
+- `emoji-spring-in` — bouncy overshoot scale entrance
+- `glow-pulse` — pulsing ring behind center emoji
+- `radial-reveal` — clip-path circle expansion
+- `text-slide-up` — subtle upward fade for the verb text
 
-- Requires Web Audio API to analyze audio messages and generate waveform visualizations
-- Each voice message gets a unique SVG wave pattern rendered alongside the audio player
-- A "Sound Gallery" page that stitches all voice wave patterns into a scrollable art timeline
-- Most complex, least essential — save for later
+## 6. "React Back" Button Polish
 
-## What I'd Build First
+- Glassmorphic styling with border glow
+- Scale-in with spring physics
+- Ripple effect on tap
 
-I recommend starting with **Parallel Universe Mode** and **Soulmate Clock** — they're the most delightful, most feasible, and most unique. The theme skins transform the entire chat feel instantly, and the Soulmate Clock is a beautiful emotional feature that's technically simple.
+---
+
+## Files to Edit
+
+| File | Changes |
+|------|---------|
+| `src/components/chat/TouchReactionOverlay.tsx` | Add 7 new emotions, multi-layer particles, burst physics, glow ring, radial reveal, improved center animation |
+| `src/components/chat/TouchReactionPicker.tsx` | Horizontal category tabs, larger buttons, glassmorphic styling, framer-motion stagger, long-press preview |
+| `src/index.css` | New keyframes (particle-burst, particle-sway, emoji-spring-in, glow-pulse, radial-reveal, text-slide-up) |
+| `src/components/settings/ReactionPreview.tsx` | Update preview to match new particle physics and glow effects |
+
+No backend or data model changes needed — the new built-in reactions are hardcoded like the existing 15.
+
