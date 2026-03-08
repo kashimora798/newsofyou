@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usePartner } from "@/hooks/usePartner";
 import { useGameSessions } from "@/hooks/useGameSessions";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Gamepad2, Grid3X3, BookOpen, HelpCircle, Trophy, Swords } from "lucide-react";
+import { Loader2, Gamepad2, Grid3X3, BookOpen, HelpCircle, Trophy, Swords, LayoutGrid } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
 import GameInvite from "@/components/games/GameInvite";
 import GameLobbyCard from "@/components/games/GameLobbyCard";
@@ -12,6 +12,7 @@ import ActiveGameCard from "@/components/games/ActiveGameCard";
 import TicTacToe from "@/components/games/TicTacToe";
 import WordChain from "@/components/games/WordChain";
 import Hangman from "@/components/games/Hangman";
+import Bingo from "@/components/games/Bingo";
 import type { GameSession } from "@/hooks/useGameSessions";
 import { formatDistanceToNow } from "date-fns";
 
@@ -67,7 +68,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
   // If playing a game, show game view
   if (activeSession) {
-    const GameComponent = activeSession.game_type === "word_chain" ? WordChain : activeSession.game_type === "hangman" ? Hangman : TicTacToe;
+    const GameComponent = activeSession.game_type === "word_chain" ? WordChain : activeSession.game_type === "hangman" ? Hangman : activeSession.game_type === "bingo" ? Bingo : TicTacToe;
     return (
       <div className="flex flex-col h-dvh bg-background">
         <GameComponent
@@ -104,6 +105,13 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
       description: "Pick a word and challenge your friend to guess it!",
       color: "bg-pink-500/10 text-pink-500",
       onChallenge: () => handleChallenge("hangman"),
+    },
+    {
+      icon: LayoutGrid,
+      label: "Bingo",
+      description: "Fill your grid, call numbers, first to N lines wins!",
+      color: "bg-amber-500/10 text-amber-500",
+      onChallenge: () => handleChallenge("bingo"),
     },
   ];
 
