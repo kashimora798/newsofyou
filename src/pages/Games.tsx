@@ -106,6 +106,13 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
       color: "bg-pink-500/10 text-pink-500",
       onChallenge: () => handleChallenge("hangman"),
     },
+    {
+      icon: LayoutGrid,
+      label: "Bingo",
+      description: "Fill your grid, call numbers, first to N lines wins!",
+      color: "bg-amber-500/10 text-amber-500",
+      onChallenge: () => handleChallenge("bingo"),
+    },
   ];
 
   return (
