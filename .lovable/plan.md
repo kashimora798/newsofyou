@@ -1,74 +1,81 @@
-# Feature Analysis & Implementation Plan
-
-These are ambitious features. Let me assess each for feasibility in a web app (React/Vite/Supabase) and recommend a phased approach.
-
-## Feature Feasibility Assessment
 
 
-| Feature                              | Complexity | Web Feasible?                                                         | Priority                |
-| ------------------------------------ | ---------- | --------------------------------------------------------------------- | ----------------------- |
-| Parallel Universe Mode (theme skins) | Medium     | Yes                                                                   | High — fun, doable      |
-| Voice Waves → Art                    | Very High  | Partial — Web Audio API works, but persistent art timeline is complex | Low                     |
-| Shared Dream Canvas                  | High       | Yes — HTML Canvas + Supabase realtime                                 | Medium                  |
-| Soulmate Clock                       | Low-Medium | Yes — track overlap time in DB                                        | High — elegant & simple |
-| Conversation Chapters                | Medium     | Yes — AI/keyword grouping of messages                                 | Medium                  |
-| Doodle Reply                         | Medium     | Yes — canvas drawing, save as image                                   | Medium                  |
-| Custom Reaction Combos               | Low        | Partially exists already (custom touch reactions)                     | High — extend existing  |
+# Game Lobby + Tic Tac Toe
 
+## Overview
 
-## Recommended Build Order (by impact-to-effort ratio)
+Add a full game system: a Game Lobby page with game invites, and a real-time Tic Tac Toe game — both synced via Supabase Realtime so both partners play live.
 
-### 1. Parallel Universe Mode (Chat Theme Skins)
+## Database
 
-- Add a `chat_theme` column to `chat_user_settings` (or use existing wallpaper system)
-- Create 5-6 theme presets: "Spy Documents" (monospace, redacted look), "GeoCities 98" (comic sans, under-construction gifs, visitor counter), "GameBoy" (green monochrome, pixel font), "Horror ARG" (glitch text, static noise), "Romance Novel" (script font, parchment bg, rose petals)
-- Each theme = a CSS class applied to the chat container that overrides fonts, colors, bubble styles, and background
-- Theme picker in Settings or as a quick-toggle button in ChatHeader
-- Store selection per-user in `chat_user_settings`
+Two new tables (via migration):
 
-### 2. Soulmate Clock
+**`game_sessions`** — tracks each game instance
+- `id` (uuid, PK)
+- `game_type` (text — 'tic_tac_toe', extensible for future games)
+- `created_by` (uuid, FK → auth.users)
+- `opponent_id` (uuid, FK → auth.users)
+- `status` (text — 'pending', 'active', 'completed', 'declined')
+- `winner_id` (uuid, nullable)
+- `board_state` (jsonb — stores game-specific state, e.g. 9-cell array for TTT)
+- `current_turn` (uuid — whose turn it is)
+- `created_at`, `updated_at` (timestamptz)
 
-- Track concurrent online time: when both users have `is_online = true`, a Supabase edge function or client-side interval increments a shared counter in a new `couple_stats` table (`concurrent_seconds INTEGER`)
-- Client polls every 30s: if both online, increment locally and sync
-- Display as a beautiful analog clock component on the Home page showing "time spent together"
-- Format as days/hours/minutes
+RLS: Both players can read/update their own games. Insert for authenticated users.
 
-### 3. Custom Reaction Combos (Extend Existing)
+## New Files
 
-- Already have `custom_touch_reactions` table and picker
-- Extend to allow custom **message reactions** (not just touch reactions): add a `custom_message_reactions` table with `emoji`, `label`, `animation_type`, `sound_url`
-- Show custom reactions in the QuickReactionBar alongside default emojis
-- Each custom reaction can trigger a mini CSS animation (bounce, sparkle, shake) on the message bubble
+| File | Purpose |
+|------|---------|
+| `src/pages/Games.tsx` | Game Lobby — shows available games, pending invites, active/past games |
+| `src/components/games/GameLobbyCard.tsx` | Card for each game type (icon, name, "Challenge" button) |
+| `src/components/games/GameInvite.tsx` | Incoming/outgoing invite cards with Accept/Decline |
+| `src/components/games/ActiveGameCard.tsx` | Resume an active game |
+| `src/components/games/TicTacToe.tsx` | Full Tic Tac Toe board with real-time moves via Supabase Realtime |
+| `src/hooks/useGameSessions.ts` | CRUD + realtime subscription for game_sessions |
 
-### 4. Doodle Reply
+## Modified Files
 
-- Add a mini canvas (HTML5 Canvas) overlay triggered from the reply menu
-- User draws with finger/mouse, saves as PNG data URL
-- Send as a message with `message_type: "doodle"` and the image stored in Supabase Storage
-- Render in MessageBubble like an image but with a "✏️ Doodle" label
+| File | Change |
+|------|--------|
+| `src/App.tsx` | Add `/games` route |
+| `src/pages/Home.tsx` | Add "Games" to quickLinks |
+| `src/components/layout/BottomNav.tsx` | Add Games tab (Gamepad2 icon) |
 
-### 5. Conversation Chapters
+## Game Lobby Page Design
 
-- Group messages by date ranges + topic detection (simple keyword matching or AI via edge function)
-- Add a "Chapters" view accessible from ChatHeader that shows timeline blocks
-- Each chapter = clickable, scrolls to that section in chat
-- Bookmarkable chapters stored in a `bookmarked_chapters` table
+- Header with "Game Lobby" title and partner avatar
+- **Incoming Invites** section — glassmorphic cards with Accept/Decline buttons, pulsing animation
+- **Available Games** section — grid of game cards (Tic Tac Toe first, placeholders for future games like Word Chain, Quiz, etc.)
+- **Recent Games** section — past completed games showing winner/result
+- All styled with existing glass aesthetic and framer-motion stagger animations
 
-### 6. Shared Dream Canvas
+## Tic Tac Toe Game
 
-- A dedicated page (`/canvas`) with an infinite HTML5 Canvas
-- Both users can draw, add text, paste images
-- Supabase Realtime broadcasts strokes/objects live
-- Canvas state persisted as JSON in a `shared_canvas` table
-- This is the most complex feature — essentially building a mini collaborative whiteboard
+- 3x3 grid, glassmorphic cells
+- X/O rendered as animated SVGs with spring entrance
+- Turn indicator showing partner's name/avatar
+- Win detection with celebration animation (confetti-style)
+- Draw detection
+- Real-time sync: moves written to `board_state` jsonb, opponent sees updates via Supabase Realtime channel
+- "Play Again" and "Back to Lobby" buttons on game end
 
-### 7. Voice Waves → Art
+## Flow
 
-- Requires Web Audio API to analyze audio messages and generate waveform visualizations
-- Each voice message gets a unique SVG wave pattern rendered alongside the audio player
-- A "Sound Gallery" page that stitches all voice wave patterns into a scrollable art timeline
-- Most complex, least essential — save for later
+```text
+Home → Games (lobby)
+  ├── See available games (Tic Tac Toe card)
+  ├── Tap "Challenge" → creates game_session (status: pending)
+  ├── Partner sees invite → taps Accept → status: active
+  ├── Both see the board → take turns updating board_state
+  └── Win/Draw → status: completed, show result
+```
 
-## What I'd Build First
+## Technical Details
 
-I recommend starting with **Parallel Universe Mode** and **Soulmate Clock** — they're the most delightful, most feasible, and most unique. The theme skins transform the entire chat feel instantly, and the Soulmate Clock is a beautiful emotional feature that's technically simple.
+- Board state stored as JSON array: `["X","","O","","X","","","","O"]`
+- Moves update via `supabase.from('game_sessions').update({ board_state, current_turn })`
+- Realtime subscription on `game_sessions` table filtered by session id
+- Win check runs client-side after each move
+- Creator is always X, opponent is always O
+
