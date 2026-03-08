@@ -18,7 +18,7 @@ import OnThisDay from "@/components/home/OnThisDay";
 import AiSummary from "@/components/home/AiSummary";
 import DailyQuestion from "@/components/home/DailyQuestion";
 import Tamagotchi from "@/components/home/Tamagotchi";
-import SoulmateClock from "@/components/home/SoulmateClock";
+
 import ReminderWidget from "@/components/home/ReminderWidget";
 import CalendarWidget from "@/components/home/CalendarWidget";
 import ComplimentPopup from "@/components/home/ComplimentPopup";
