@@ -58,13 +58,13 @@ const StreakCounter: React.FC = () => {
         </h3>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="text-center p-3 bg-muted/50 rounded-xl">
+          <div className="text-center p-3 glass-subtle rounded-xl">
             <p className="text-2xl font-bold text-primary">
               {currentStreak > 0 ? `🔥 ${currentStreak}` : "0"}
             </p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Current Streak</p>
           </div>
-          <div className="text-center p-3 bg-muted/50 rounded-xl">
+          <div className="text-center p-3 glass-subtle rounded-xl">
             <p className="text-2xl font-bold text-foreground">🏆 {longestStreak}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">Longest Streak</p>
           </div>

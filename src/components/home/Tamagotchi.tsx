@@ -80,7 +80,7 @@ const Tamagotchi: React.FC = () => {
       </button>
 
       {showTooltip && (
-        <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl p-3 shadow-lg animate-scale-in z-10">
+        <div className="absolute bottom-full left-0 right-0 mb-2 glass rounded-xl p-3 shadow-lg animate-scale-in z-10">
           <p className="text-xs text-foreground">{stage.statusMessage}</p>
           <div className="mt-2 flex gap-1">
             {Object.values(STAGES).map((s, i) => (
