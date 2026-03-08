@@ -6,8 +6,8 @@ interface DateSeparatorProps {
 }
 
 const DateSeparator: React.FC<DateSeparatorProps> = ({ date }) => (
-  <div className="flex items-center justify-center my-3">
-    <span className="px-3 py-1 rounded-full bg-muted text-[11px] font-medium text-muted-foreground shadow-sm">
+  <div className="flex items-center justify-center my-4 animate-date-chip">
+    <span className="px-4 py-1 rounded-full glass-subtle text-[11px] font-semibold text-muted-foreground tracking-wide">
       {formatDateSeparator(date)}
     </span>
   </div>

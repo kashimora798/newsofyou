@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import PresenceStatus from "./PresenceStatus";
 import { Search, ArrowLeft, LogOut, Eye, EyeOff } from "lucide-react";
+import { motion } from "framer-motion";
 import type { Tables } from "@/integrations/supabase/types";
 import type { ThemeEffectsConfig } from "@/hooks/useThemeEffects";
 
@@ -26,11 +27,11 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
   const themedName = themeEffects ? themeEffects.headerTitle(displayName) : displayName;
 
   return (
-    <header className="flex items-center gap-3 px-4 py-3 bg-card border-b border-border shrink-0 relative overflow-hidden">
+    <header className="glass-chat-header flex items-center gap-3 px-4 py-2.5 shrink-0 relative overflow-hidden">
       {/* Theme decoration overlays */}
       {themeEffects?.headerDecoration === "classified" && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] select-none">
-          <span className="text-[60px] font-bold tracking-[12px] text-red-500 rotate-[-15deg]" style={{ fontFamily: "monospace" }}>
+          <span className="text-[60px] font-bold tracking-[12px] text-destructive rotate-[-15deg]" style={{ fontFamily: "monospace" }}>
             CLASSIFIED
           </span>
         </div>
@@ -44,32 +45,43 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         </div>
       )}
 
-      <button onClick={() => navigate("/home")} className="p-1.5 rounded-full hover:bg-muted transition-colors relative z-10">
+      <motion.button
+        whileTap={{ scale: 0.9 }}
+        onClick={() => navigate("/home")}
+        className="p-1.5 rounded-full hover:bg-muted/60 transition-colors relative z-10"
+      >
         <ArrowLeft className="h-5 w-5 text-foreground" />
-      </button>
-      <div className="relative cursor-pointer z-10" onClick={onProfileToggle}>
-        <Avatar className="h-10 w-10">
+      </motion.button>
+
+      <motion.div
+        className="relative cursor-pointer z-10"
+        onClick={onProfileToggle}
+        whileTap={{ scale: 0.95 }}
+      >
+        <Avatar className="h-10 w-10 ring-2 ring-primary/10 ring-offset-1 ring-offset-background">
           <AvatarImage src={partner?.profileurl ?? ""} alt={partner?.name ?? "Partner"} />
           <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
             {partner?.name?.charAt(0) ?? "?"}
           </AvatarFallback>
         </Avatar>
         {partner?.is_online && (
-          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-online border-2 border-card" />
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-online border-[2.5px] border-card"
+          />
         )}
-      </div>
+      </motion.div>
 
       <div className="flex-1 min-w-0 cursor-pointer z-10" onClick={onProfileToggle}>
         {themeEffects?.headerDecoration === "marquee" ? (
           <div className="overflow-hidden">
-            <h2 className="text-sm font-semibold text-foreground whitespace-nowrap theme-marquee">
+            <h2 className="text-sm font-bold text-foreground whitespace-nowrap theme-marquee">
               {themedName}
             </h2>
           </div>
         ) : (
-          <h2 className="text-sm font-semibold text-foreground truncate">
-            {themedName}
-          </h2>
+          <h2 className="text-sm font-bold text-foreground truncate">{themedName}</h2>
         )}
         {themeEffects?.headerSubtitle && !partnerTyping ? (
           <p className="text-[10px] text-muted-foreground truncate">{themeEffects.headerSubtitle}</p>
@@ -86,18 +98,29 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
       )}
 
       {showImmersiveButton && (
-        <button onClick={onImmersiveToggle} className="p-2 rounded-full hover:bg-muted transition-colors z-10" title="Toggle immersive sky">
-          {immersiveMode ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
-        </button>
+        <HeaderBtn onClick={onImmersiveToggle}>
+          {immersiveMode ? <EyeOff className="h-[18px] w-[18px] text-muted-foreground" /> : <Eye className="h-[18px] w-[18px] text-muted-foreground" />}
+        </HeaderBtn>
       )}
-      <button onClick={onSearchToggle} className="p-2 rounded-full hover:bg-muted transition-colors z-10">
-        <Search className="h-5 w-5 text-muted-foreground" />
-      </button>
-      <button onClick={signOut} className="p-2 rounded-full hover:bg-muted transition-colors z-10" title="Logout">
-        <LogOut className="h-5 w-5 text-muted-foreground" />
-      </button>
+      <HeaderBtn onClick={onSearchToggle}>
+        <Search className="h-[18px] w-[18px] text-muted-foreground" />
+      </HeaderBtn>
+      <HeaderBtn onClick={signOut} title="Logout">
+        <LogOut className="h-[18px] w-[18px] text-muted-foreground" />
+      </HeaderBtn>
     </header>
   );
 };
+
+const HeaderBtn: React.FC<{ onClick?: () => void; title?: string; children: React.ReactNode }> = ({ onClick, title, children }) => (
+  <motion.button
+    whileTap={{ scale: 0.88 }}
+    onClick={onClick}
+    title={title}
+    className="p-2 rounded-xl hover:bg-muted/60 transition-colors z-10"
+  >
+    {children}
+  </motion.button>
+);
 
 export default ChatHeader;
