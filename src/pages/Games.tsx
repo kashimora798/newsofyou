@@ -100,11 +100,10 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
     },
     {
       icon: HelpCircle,
-      label: "Trivia Duel",
-      description: "Test your knowledge against each other!",
+      label: "Hangman",
+      description: "Pick a word and challenge your friend to guess it!",
       color: "bg-pink-500/10 text-pink-500",
-      onChallenge: () => {},
-      comingSoon: true,
+      onChallenge: () => handleChallenge("hangman"),
     },
   ];
 
