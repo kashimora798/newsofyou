@@ -11,6 +11,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { useMarkSeen } from "@/hooks/useMarkSeen";
 import { useAnimationQueue } from "@/hooks/useAnimationQueue";
 import { useShakeDetection } from "@/hooks/useShakeDetection";
+import { usePinnedMessages } from "@/hooks/usePinnedMessages";
 import { useThemeEffects } from "@/hooks/useThemeEffects";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
