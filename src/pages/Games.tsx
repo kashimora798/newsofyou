@@ -114,6 +114,13 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
       color: "bg-amber-500/10 text-amber-500",
       onChallenge: () => handleChallenge("bingo"),
     },
+    {
+      icon: PenTool,
+      label: "Quick Draw",
+      description: "Draw a word and let your partner guess it!",
+      color: "bg-cyan-500/10 text-cyan-500",
+      onChallenge: () => handleChallenge("quick_draw"),
+    },
   ];
 
   return (
