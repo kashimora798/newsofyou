@@ -23,6 +23,7 @@ import TodoWidget from "@/components/home/TodoWidget";
 import ReminderWidget from "@/components/home/ReminderWidget";
 import CalendarWidget from "@/components/home/CalendarWidget";
 import ComplimentPopup from "@/components/home/ComplimentPopup";
+import DailyChecklistWidget from "@/components/home/DailyChecklistWidget";
 
 const Home: React.FC = () => {
   const { user, loading: authLoading, signOut } = useAuth();
