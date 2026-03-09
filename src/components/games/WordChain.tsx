@@ -262,39 +262,17 @@ const WordChain: React.FC<Props> = ({
         <div ref={wordsEndRef} />
       </div>
 
-      {/* Game Over */}
       {gameOver && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="px-4 py-4 border-t border-border/50 shrink-0"
-        >
-          <div className="glass rounded-2xl p-5 text-center space-y-3">
-            <Trophy className={`h-8 w-8 mx-auto ${iWon ? "text-primary" : "text-muted-foreground"}`} />
-            <p className="text-lg font-bold text-foreground">
-              {iWon ? "You win! 🎉" : theyWon ? `${partnerName ?? "Partner"} wins!` : "Draw!"}
-            </p>
-            <div className="flex justify-center gap-6 text-sm">
-              <div>
-                <p className="font-bold text-primary">{myScore}</p>
-                <p className="text-[10px] text-muted-foreground">You</p>
-              </div>
-              <div>
-                <p className="font-bold text-destructive">{theirScore}</p>
-                <p className="text-[10px] text-muted-foreground">{partnerName ?? "Partner"}</p>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">{state.words.length} words played</p>
-            <div className="flex gap-2 justify-center pt-1">
-              <Button variant="outline" size="sm" onClick={onBack}>
-                Lobby
-              </Button>
-              <Button size="sm" onClick={() => onPlayAgain(opponentId)} className="gap-1.5">
-                <RotateCcw className="h-3.5 w-3.5" /> Play Again
-              </Button>
-            </div>
-          </div>
-        </motion.div>
+        <GameOverCelebration
+          isWinner={iWon}
+          isDraw={!iWon && !theyWon}
+          partnerName={partnerName}
+          myScore={myScore}
+          opponentScore={theirScore}
+          onExit={onBack}
+          onRematch={() => onPlayAgain(opponentId)}
+          customMessage={`${state.words.length} words played`}
+        />
       )}
 
       {/* Input */}

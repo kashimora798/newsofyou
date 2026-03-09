@@ -200,33 +200,15 @@ const TicTacToe: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, 
         </div>
       </div>
 
-      {/* Game Over Actions */}
-      <AnimatePresence>
-        {gameOver && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="px-4 pb-6 flex gap-3"
-          >
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onPlayAgain(opponentId)}
-              className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Play Again
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={onBack}
-              className="flex-1 h-11 rounded-xl glass font-semibold text-sm text-foreground flex items-center justify-center"
-            >
-              Back to Lobby
-            </motion.button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {gameOver && (
+        <GameOverCelebration
+          isWinner={!!didWin}
+          isDraw={!!draw}
+          partnerName={partnerName}
+          onExit={onBack}
+          onRematch={() => onPlayAgain(opponentId)}
+        />
+      )}
     </div>
   );
 };

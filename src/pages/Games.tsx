@@ -79,7 +79,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   if (activeSession) {
     const GameComponent = activeSession.game_type === "word_chain" ? WordChain : activeSession.game_type === "hangman" ? Hangman : activeSession.game_type === "bingo" ? Bingo : activeSession.game_type === "quick_draw" ? QuickDraw : TicTacToe;
     return (
-      <div className="flex flex-col h-dvh bg-background">
+      <div className="flex flex-col h-dvh bg-background relative">
         <GameComponent
           session={activeSession}
           userId={userId}
@@ -88,6 +88,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
           onBack={() => setActiveSessionId(null)}
           onPlayAgain={handlePlayAgain}
         />
+        <GameChat sessionId={activeSession.id} userId={userId} partnerName={partner?.name} />
         <BottomNav />
       </div>
     );
