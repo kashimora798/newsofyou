@@ -5,26 +5,24 @@ import { Button } from "@/components/ui/button";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 const WORD_BANK = [
-  // Easy shapes & objects
+  // Easy objects & animals
   "sun", "cat", "dog", "tree", "house", "car", "flower", "star", "moon", "fish",
   "heart", "bird", "cloud", "rain", "snow", "fire", "book", "cake", "hat", "shoe",
   "apple", "banana", "guitar", "clock", "chair", "table", "phone", "lamp", "key",
   "pizza", "rocket", "robot", "dragon", "crown", "sword", "beach", "snowman", "cactus",
   "penguin", "elephant", "dolphin", "turtle", "spider", "mushroom", "castle",
-  // Fun & friendly additions
-  "poop", "taco", "donut", "ice cream", "lollipop", "burrito", "cookie", "cupcake",
-  "unicorn", "ghost", "alien", "wizard", "mermaid", "pirate", "cowboy", "clown",
-  "kiss", "hug", "wink", "tongue out", "crying face", "angry face", "party hat",
-  "rainbow", "lightning", "tornado", "sunrise", "bonfire",
-  "skateboard", "surfboard", "trampoline", "balloon", "kite", "slide",
-  "baby", "grandma", "mustache", "beard", "glasses", "crown",
+  // Fun & playful
+  "taco", "donut", "ice cream", "lollipop", "cookie", "cupcake", "waffle",
+  "unicorn", "ghost", "alien", "wizard", "mermaid", "pirate", "ninja",
+  "rainbow", "lightning", "tornado", "sunrise", "bonfire", "sunset",
+  "skateboard", "balloon", "kite", "slide", "swing", "trampoline",
+  "mustache", "glasses", "bow tie", "top hat", "magic wand",
   "frog", "snail", "ladybug", "bee", "bunny", "pig", "chicken", "duck", "owl",
-  "spaghetti", "fried egg", "watermelon", "cherry", "avocado", "hot dog", "popcorn",
-  "toilet", "bathtub", "pillow", "sock", "underwear", "diaper",
-  // Emoji-style challenges 🎨
-  "💀 skull", "👻 ghost", "🤡 clown face", "😂 laughing face", "😍 heart eyes",
-  "🐸 frog", "🦄 unicorn", "🌮 taco", "🍕 pizza slice", "💩 poop emoji",
-  "🎃 pumpkin", "🎅 santa", "👽 alien", "🤖 robot face", "🧜 mermaid",
+  "watermelon", "cherry", "avocado", "hot dog", "popcorn", "pancake", "smoothie",
+  "pillow", "blanket", "teddy bear", "candle", "treasure chest", "compass",
+  // Emoji-style fun 🎨
+  "happy face", "winking face", "heart eyes", "surprised face", "sleepy face",
+  "thumbs up", "peace sign", "high five", "flexing arm", "dancing person",
 ];
 
 interface Stroke {
