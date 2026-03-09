@@ -177,7 +177,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
                     partnerName={partner?.name ?? undefined}
                     onAccept={() => {
                       acceptGame(inv.id);
-                      setActiveSession({ ...inv, status: "active" });
+                      setActiveSessionId(inv.id);
                     }}
                     onDecline={() => declineGame(inv.id)}
                   />
