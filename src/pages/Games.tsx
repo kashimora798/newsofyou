@@ -209,7 +209,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
                     game={g}
                     partnerName={partner?.name ?? undefined}
                     isMyTurn={g.current_turn === userId}
-                    onResume={() => setActiveSession(g)}
+                    onResume={() => setActiveSessionId(g.id)}
                   />
                 ))}
               </motion.div>
