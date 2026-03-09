@@ -175,7 +175,11 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
     e.preventDefault();
-    setCurrentStroke((prev) => [...prev, getPos(e)]);
+    const pos = getPos(e);
+    // Sample: skip if too close to last point (reduces points by ~60%)
+    const last = currentStroke[currentStroke.length - 1];
+    if (last && Math.abs(pos.x - last.x) < 0.005 && Math.abs(pos.y - last.y) < 0.005) return;
+    setCurrentStroke((prev) => [...prev, pos]);
   };
 
   // Debounced sync ref
