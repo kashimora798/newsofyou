@@ -31,14 +31,7 @@ export function useGameSessions(userId: string) {
     if (error) {
       console.error("Error fetching game sessions:", error);
     } else {
-      setSessions(
-        (data ?? []).map((s: any) => ({
-          ...s,
-          board_state: Array.isArray(s.board_state)
-            ? s.board_state
-            : JSON.parse(s.board_state),
-        }))
-      );
+      setSessions((data ?? []).map((s: any) => ({ ...s, board_state: s.board_state })));
     }
     setLoading(false);
   }, [userId]);
