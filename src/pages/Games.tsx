@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Gamepad2, Grid3X3, BookOpen, HelpCircle, Trophy, Swords, LayoutGrid, PenTool } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
 import GameInvite from "@/components/games/GameInvite";
+import GameChat from "@/components/games/GameChat";
 import GameLobbyCard from "@/components/games/GameLobbyCard";
 import ActiveGameCard from "@/components/games/ActiveGameCard";
 import TicTacToe from "@/components/games/TicTacToe";
