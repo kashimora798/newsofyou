@@ -178,6 +178,25 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     setCurrentStroke((prev) => [...prev, getPos(e)]);
   };
 
+  // Debounced sync ref
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const pendingSyncRef = useRef<Stroke[] | null>(null);
+
+  const syncStrokes = useCallback((strokes: Stroke[]) => {
+    pendingSyncRef.current = strokes;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(async () => {
+      if (pendingSyncRef.current) {
+        await onMakeMove(session.id, { ...state, strokes: pendingSyncRef.current }, session.current_turn);
+        pendingSyncRef.current = null;
+      }
+    }, 350); // debounce 350ms
+  }, [state, session, onMakeMove]);
+
+  useEffect(() => {
+    return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
+  }, []);
+
   const handlePointerUp = useCallback(async () => {
     if (!isDrawing || currentStroke.length < 2) {
       setIsDrawing(false);
@@ -190,9 +209,9 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     setLocalStrokes(newStrokes);
     setCurrentStroke([]);
 
-    // Sync to DB
-    await onMakeMove(session.id, { ...state, strokes: newStrokes }, session.current_turn);
-  }, [isDrawing, currentStroke, penColor, penWidth, localStrokes, state, session, onMakeMove]);
+    // Debounced sync to DB
+    syncStrokes(newStrokes);
+  }, [isDrawing, currentStroke, penColor, penWidth, localStrokes, syncStrokes]);
 
   const handleUndo = useCallback(async () => {
     if (localStrokes.length === 0) return;
