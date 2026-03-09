@@ -89,6 +89,7 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   const [localStrokes, setLocalStrokes] = useState<Stroke[]>([]);
   const [penColor, setPenColor] = useState(COLORS[0]);
   const [penWidth, setPenWidth] = useState(WIDTHS[0]);
+  const [eraserMode, setEraserMode] = useState(false);
   const [guess, setGuess] = useState("");
   const [timer, setTimer] = useState(TIMER_SECONDS);
   const [wordOptions, setWordOptions] = useState<string[]>([]);
