@@ -146,8 +146,8 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     for (const stroke of allStrokes) {
       if (stroke.points.length < 2) continue;
       ctx.beginPath();
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.width;
+      ctx.strokeStyle = stroke.isEraser ? "hsl(var(--card))" : stroke.color;
+      ctx.lineWidth = stroke.isEraser ? 20 : stroke.width;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.moveTo(stroke.points[0].x * rect.width, stroke.points[0].y * rect.height);
