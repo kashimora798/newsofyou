@@ -70,8 +70,9 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   };
 
   const handlePlayAgain = async (opponentId: string) => {
+    const gameType = activeSession?.game_type ?? "tic_tac_toe";
     setActiveSessionId(null);
-    await createGame(opponentId, "tic_tac_toe");
+    await createGame(opponentId, gameType);
   };
 
   // If playing a game, show game view
