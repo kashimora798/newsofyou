@@ -1,7 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Pencil, Eraser, Undo2, Trophy, Clock, Send, Eye, Palette } from "lucide-react";
+import { ArrowLeft, Pencil, Eraser, Undo2, Clock, Send, Eye, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import GameOverCelebration from "./GameOverCelebration";
 import { supabase } from "@/integrations/supabase/client";
 import type { GameSession } from "@/hooks/useGameSessions";
 
@@ -30,6 +31,7 @@ interface Stroke {
   points: { x: number; y: number }[];
   color: string;
   width: number;
+  isEraser?: boolean;
 }
 
 interface QuickDrawState {
@@ -87,6 +89,7 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   const [localStrokes, setLocalStrokes] = useState<Stroke[]>([]);
   const [penColor, setPenColor] = useState(COLORS[0]);
   const [penWidth, setPenWidth] = useState(WIDTHS[0]);
+  const [eraserMode, setEraserMode] = useState(false);
   const [guess, setGuess] = useState("");
   const [timer, setTimer] = useState(TIMER_SECONDS);
   const [wordOptions, setWordOptions] = useState<string[]>([]);
@@ -143,8 +146,8 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     for (const stroke of allStrokes) {
       if (stroke.points.length < 2) continue;
       ctx.beginPath();
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.width;
+      ctx.strokeStyle = stroke.isEraser ? "hsl(var(--card))" : stroke.color;
+      ctx.lineWidth = stroke.isEraser ? 20 : stroke.width;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.moveTo(stroke.points[0].x * rect.width, stroke.points[0].y * rect.height);
@@ -157,8 +160,8 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     // Current stroke in progress
     if (currentStroke.length >= 2) {
       ctx.beginPath();
-      ctx.strokeStyle = penColor;
-      ctx.lineWidth = penWidth;
+      ctx.strokeStyle = eraserMode ? "hsl(var(--card))" : penColor;
+      ctx.lineWidth = eraserMode ? 20 : penWidth;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.moveTo(currentStroke[0].x * rect.width, currentStroke[0].y * rect.height);
@@ -221,7 +224,7 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
       return;
     }
     setIsDrawing(false);
-    const newStroke: Stroke = { points: currentStroke, color: penColor, width: penWidth };
+    const newStroke: Stroke = { points: currentStroke, color: eraserMode ? "hsl(var(--card))" : penColor, width: eraserMode ? 20 : penWidth, isEraser: eraserMode };
     const newStrokes = [...localStrokes, newStroke];
     setLocalStrokes(newStrokes);
     setCurrentStroke([]);
@@ -331,23 +334,15 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   if (gameOver) {
     const winnerId = session.winner_id;
     return (
-      <div className="flex flex-col h-full">
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
-          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-          <h2 className="text-sm font-bold text-foreground">Quick Draw — Game Over</h2>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
-          <Trophy className="h-12 w-12 text-primary" />
-          <p className="text-xl font-bold text-foreground">
-            {winnerId === userId ? "You won! 🎉" : winnerId ? `${partnerName ?? "Partner"} won!` : "It's a draw!"}
-          </p>
-          <div className="flex gap-6 text-sm">
-            <span className="text-primary font-bold">You: {myScore}</span>
-            <span className="text-muted-foreground font-bold">{partnerName ?? "P"}: {opScore}</span>
-          </div>
-          <Button onClick={() => onPlayAgain(opponentId)}>Play Again</Button>
-        </div>
-      </div>
+      <GameOverCelebration
+        isWinner={winnerId === userId}
+        isDraw={!winnerId}
+        partnerName={partnerName}
+        myScore={myScore}
+        opponentScore={opScore}
+        onExit={onBack}
+        onRematch={() => onPlayAgain(opponentId)}
+      />
     );
   }
 
@@ -446,31 +441,46 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
         {/* Drawer tools */}
         {isDrawer && state.phase === "drawing" && !state.guessed && (
           <div className="flex items-center gap-2 px-3 py-2 border-t border-border/40">
-            <div className="flex gap-1">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setPenColor(c)}
-                  className={`h-6 w-6 rounded-full border-2 transition-all ${penColor === c ? "border-primary scale-110" : "border-transparent"}`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-            <div className="h-4 w-px bg-border mx-1" />
-            <div className="flex gap-1">
-              {WIDTHS.map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setPenWidth(w)}
-                  className={`h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-bold transition-all ${penWidth === w ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
+            {!eraserMode && (
+              <div className="flex gap-1">
+                {COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => { setPenColor(c); setEraserMode(false); }}
+                    className={`h-6 w-6 rounded-full border-2 transition-all ${penColor === c && !eraserMode ? "border-primary scale-110" : "border-transparent"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            )}
+            {!eraserMode && (
+              <>
+                <div className="h-4 w-px bg-border mx-1" />
+                <div className="flex gap-1">
+                  {WIDTHS.map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setPenWidth(w)}
+                      className={`h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-bold transition-all ${penWidth === w ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="flex-1" />
+            <Button
+              size="icon"
+              variant={eraserMode ? "default" : "ghost"}
+              onClick={() => setEraserMode(!eraserMode)}
+              className={`h-7 w-7 ${eraserMode ? "bg-primary text-primary-foreground" : ""}`}
+              title="Eraser"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </Button>
             <Button size="icon" variant="ghost" onClick={handleUndo} className="h-7 w-7"><Undo2 className="h-3.5 w-3.5" /></Button>
-            <Button size="icon" variant="ghost" onClick={handleClear} className="h-7 w-7"><Eraser className="h-3.5 w-3.5" /></Button>
+            <Button size="icon" variant="ghost" onClick={handleClear} className="h-7 w-7 text-destructive"><Eraser className="h-3.5 w-3.5" /></Button>
           </div>
         )}
 

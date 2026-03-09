@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Shuffle, Check, Trophy, Clock } from "lucide-react";
+import { ArrowLeft, Shuffle, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import GameOverCelebration from "./GameOverCelebration";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 interface BingoState {
@@ -316,22 +317,17 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
           </div>
         )}
 
-        {/* Win state */}
-        <AnimatePresence>
-          {won && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="text-center space-y-3 py-4"
-            >
-              <Trophy className="h-10 w-10 mx-auto text-primary" />
-              <p className="text-lg font-bold text-foreground">
-                {winnerId === userId ? "BINGO! You won! 🎉" : `${partnerName ?? "Partner"} got BINGO!`}
-              </p>
-              <Button onClick={() => onPlayAgain(opponentId)}>Play Again</Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {won && (
+          <GameOverCelebration
+            isWinner={winnerId === userId}
+            isDraw={false}
+            partnerName={partnerName}
+            myScore={myLines}
+            opponentScore={opLines}
+            onExit={onBack}
+            onRematch={() => onPlayAgain(opponentId)}
+          />
+        )}
       </div>
     </div>
   );

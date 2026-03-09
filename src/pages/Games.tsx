@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Gamepad2, Grid3X3, BookOpen, HelpCircle, Trophy, Swords, LayoutGrid, PenTool } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
 import GameInvite from "@/components/games/GameInvite";
+import GameChat from "@/components/games/GameChat";
 import GameLobbyCard from "@/components/games/GameLobbyCard";
 import ActiveGameCard from "@/components/games/ActiveGameCard";
 import TicTacToe from "@/components/games/TicTacToe";
@@ -69,15 +70,16 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   };
 
   const handlePlayAgain = async (opponentId: string) => {
+    const gameType = activeSession?.game_type ?? "tic_tac_toe";
     setActiveSessionId(null);
-    await createGame(opponentId, "tic_tac_toe");
+    await createGame(opponentId, gameType);
   };
 
   // If playing a game, show game view
   if (activeSession) {
     const GameComponent = activeSession.game_type === "word_chain" ? WordChain : activeSession.game_type === "hangman" ? Hangman : activeSession.game_type === "bingo" ? Bingo : activeSession.game_type === "quick_draw" ? QuickDraw : TicTacToe;
     return (
-      <div className="flex flex-col h-dvh bg-background">
+      <div className="flex flex-col h-dvh bg-background relative">
         <GameComponent
           session={activeSession}
           userId={userId}
@@ -86,6 +88,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
           onBack={() => setActiveSessionId(null)}
           onPlayAgain={handlePlayAgain}
         />
+        <GameChat sessionId={activeSession.id} userId={userId} partnerName={partner?.name} />
         <BottomNav />
       </div>
     );
