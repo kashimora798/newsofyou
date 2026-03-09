@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Shuffle, Check, Hash, Trophy, Clock } from "lucide-react";
+import { ArrowLeft, Shuffle, Check, Trophy, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { GameSession } from "@/hooks/useGameSessions";
 
@@ -31,7 +31,7 @@ const defaultState = (size = 5): BingoState => ({
   linesToWin: size,
 });
 
-const shuffle = (n: number): number[] => {
+const shuffleNumbers = (n: number): number[] => {
   const arr = Array.from({ length: n }, (_, i) => i + 1);
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -43,17 +43,13 @@ const shuffle = (n: number): number[] => {
 const countLines = (board: number[], called: number[], size: number): number => {
   const marked = new Set(board.filter((n) => called.includes(n)));
   let lines = 0;
-  // rows
   for (let r = 0; r < size; r++) {
     if (Array.from({ length: size }, (_, c) => board[r * size + c]).every((n) => marked.has(n))) lines++;
   }
-  // cols
   for (let c = 0; c < size; c++) {
     if (Array.from({ length: size }, (_, r) => board[r * size + c]).every((n) => marked.has(n))) lines++;
   }
-  // diag 1
   if (Array.from({ length: size }, (_, i) => board[i * size + i]).every((n) => marked.has(n))) lines++;
-  // diag 2
   if (Array.from({ length: size }, (_, i) => board[i * size + (size - 1 - i)]).every((n) => marked.has(n))) lines++;
   return lines;
 };
@@ -73,10 +69,8 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
   const total = size * size;
   const isMyTurn = session.current_turn === userId;
 
-  // Setup state
   const [localBoard, setLocalBoard] = useState<number[]>(() => state.boards[userId] ?? []);
   const [selectedCell, setSelectedCell] = useState<number | null>(null);
-  const [callNumber, setCallNumber] = useState("");
 
   useEffect(() => {
     if (state.boards[userId] && localBoard.length === 0) {
@@ -84,8 +78,18 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
     }
   }, [state.boards, userId]);
 
-  const handleRandomFill = () => {
-    setLocalBoard(shuffle(total));
+  const handleRandomFill = () => setLocalBoard(shuffleNumbers(total));
+
+  const handlePlaceNumber = (num: number) => {
+    if (selectedCell === null) return;
+    if (localBoard.includes(num)) return; // already placed
+    const newBoard = [...localBoard];
+    while (newBoard.length <= selectedCell) newBoard.push(0);
+    newBoard[selectedCell] = num;
+    setLocalBoard(newBoard);
+    // Auto-advance to next empty cell
+    const nextEmpty = newBoard.findIndex((v, i) => i > selectedCell && (!v || v === 0));
+    setSelectedCell(nextEmpty >= 0 ? nextEmpty : null);
   };
 
   const handleReady = useCallback(async () => {
@@ -102,12 +106,11 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
     await onMakeMove(session.id, newState, bothReady ? session.created_by : session.current_turn);
   }, [localBoard, state, userId, opponentId, total, session, onMakeMove]);
 
-  const handleCallNumber = useCallback(async () => {
-    const num = parseInt(callNumber);
-    if (isNaN(num) || num < 1 || num > total || state.calledNumbers.includes(num)) return;
+  // During play: tap a number on your board to "call" it
+  const handleCallNumber = useCallback(async (num: number) => {
+    if (!isMyTurn || state.calledNumbers.includes(num)) return;
     const newCalled = [...state.calledNumbers, num];
 
-    // Check wins
     const myLines = countLines(state.boards[userId] ?? [], newCalled, size);
     const opLines = countLines(state.boards[opponentId] ?? [], newCalled, size);
     let winnerId: string | null = null;
@@ -118,8 +121,7 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
 
     const newState: BingoState = { ...state, calledNumbers: newCalled, phase };
     await onMakeMove(session.id, newState, opponentId, winnerId);
-    setCallNumber("");
-  }, [callNumber, state, userId, opponentId, size, total, session, onMakeMove]);
+  }, [state, userId, opponentId, size, isMyTurn, session, onMakeMove]);
 
   const myLines = countLines(state.boards[userId] ?? [], state.calledNumbers, size);
   const opLines = countLines(state.boards[opponentId] ?? [], state.calledNumbers, size);
@@ -127,17 +129,22 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
   const iAmReady = state.readyPlayers.includes(userId);
   const won = state.phase === "won";
   const winnerId = session.winner_id;
+  const usedNumbers = new Set(localBoard.filter(Boolean));
+
+  // Compute cell size based on grid
+  const cellClass = size <= 4 ? "h-14 w-14 text-lg" : size <= 5 ? "h-12 w-12 text-base" : "h-10 w-10 text-sm";
+  const playCellClass = size <= 4 ? "h-16 w-16 text-xl" : size <= 5 ? "h-14 w-14 text-lg" : "h-11 w-11 text-sm";
 
   // SETUP PHASE
   if (state.phase === "setup") {
-    const boardValid = localBoard.length === total && new Set(localBoard).size === total;
+    const boardValid = localBoard.length === total && new Set(localBoard).size === total && !localBoard.includes(0);
     return (
       <div className="flex flex-col h-full">
         <header className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
           <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
           <div className="flex-1">
             <h2 className="text-sm font-bold text-foreground">Bingo — Setup</h2>
-            <p className="text-[10px] text-muted-foreground">{size}×{size} grid · Fill numbers 1–{total}</p>
+            <p className="text-[10px] text-muted-foreground">{size}×{size} grid · Tap a cell, then pick a number</p>
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -149,22 +156,23 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
 
           {/* Grid */}
           <div
-            className="mx-auto w-fit grid gap-1"
+            className="mx-auto w-fit grid gap-1.5"
             style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
           >
             {Array.from({ length: total }, (_, i) => {
               const val = localBoard[i];
+              const isSelected = selectedCell === i;
               return (
                 <motion.button
                   key={i}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setSelectedCell(selectedCell === i ? null : i)}
-                  className={`h-10 w-10 sm:h-12 sm:w-12 rounded-lg text-xs font-bold border transition-all flex items-center justify-center ${
-                    selectedCell === i
-                      ? "border-primary bg-primary/20 text-primary"
+                  onClick={() => setSelectedCell(isSelected ? null : i)}
+                  className={`${cellClass} rounded-xl font-bold border-2 transition-all flex items-center justify-center ${
+                    isSelected
+                      ? "border-primary bg-primary/20 text-primary shadow-md"
                       : val
                       ? "border-border bg-card text-foreground"
-                      : "border-dashed border-muted-foreground/30 bg-muted/30 text-muted-foreground"
+                      : "border-dashed border-muted-foreground/30 bg-muted/20 text-muted-foreground"
                   }`}
                 >
                   {val || ""}
@@ -173,30 +181,34 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
             })}
           </div>
 
-          {/* Manual number input for selected cell */}
+          {/* Number picker grid */}
           {selectedCell !== null && (
-            <div className="flex items-center justify-center gap-2">
-              <input
-                type="number"
-                min={1}
-                max={total}
-                placeholder={`1–${total}`}
-                className="w-20 rounded-lg border border-input bg-background px-3 py-2 text-sm text-center"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const v = parseInt((e.target as HTMLInputElement).value);
-                    if (v >= 1 && v <= total && !localBoard.includes(v)) {
-                      const newBoard = [...localBoard];
-                      while (newBoard.length <= selectedCell!) newBoard.push(0);
-                      newBoard[selectedCell!] = v;
-                      setLocalBoard(newBoard);
-                      setSelectedCell(null);
-                    }
-                  }
-                }}
-              />
-              <span className="text-xs text-muted-foreground">Press Enter</span>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-2"
+            >
+              <p className="text-xs text-center text-muted-foreground font-medium">Pick a number for cell {selectedCell + 1}</p>
+              <div className="grid grid-cols-5 gap-1.5 max-w-xs mx-auto">
+                {Array.from({ length: total }, (_, i) => i + 1).map((num) => {
+                  const used = usedNumbers.has(num);
+                  return (
+                    <button
+                      key={num}
+                      disabled={used}
+                      onClick={() => handlePlaceNumber(num)}
+                      className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                        used
+                          ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                          : "bg-primary/10 text-primary hover:bg-primary/20 active:scale-90"
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
           )}
 
           <div className="flex flex-col items-center gap-2">
@@ -230,7 +242,7 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
           <p className="text-[10px] text-muted-foreground">
             {won
               ? winnerId === userId ? "🎉 You won!" : `${partnerName ?? "Partner"} won`
-              : isMyTurn ? "Your turn — call a number!" : `${partnerName ?? "Partner"}'s turn`}
+              : isMyTurn ? "Your turn — tap a number to call it!" : `${partnerName ?? "Partner"}'s turn`}
           </p>
         </div>
         <div className="flex gap-3 text-xs font-bold">
@@ -240,62 +252,63 @@ const Bingo: React.FC<BingoProps> = ({ session, userId, partnerName, onMakeMove,
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Board */}
+        {/* Board — tap to call numbers */}
         <div
-          className="mx-auto w-fit grid gap-1"
+          className="mx-auto w-fit grid gap-1.5"
           style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
         >
           {myBoard.map((num, i) => {
             const marked = calledSet.has(num);
+            const canCall = isMyTurn && !won && !marked;
             return (
-              <motion.div
+              <motion.button
                 key={i}
-                animate={marked ? { scale: [1, 1.15, 1] } : {}}
-                className={`h-10 w-10 sm:h-12 sm:w-12 rounded-lg text-xs font-bold flex items-center justify-center transition-all ${
+                disabled={!canCall && !marked}
+                onClick={() => canCall && handleCallNumber(num)}
+                animate={marked ? { scale: [1, 1.1, 1] } : {}}
+                transition={{ duration: 0.3 }}
+                className={`${playCellClass} rounded-xl font-bold flex items-center justify-center transition-all relative ${
                   marked
-                    ? "bg-primary text-primary-foreground shadow-md"
-                    : "bg-card border border-border text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-lg"
+                    : canCall
+                    ? "bg-card border-2 border-primary/40 text-foreground active:scale-90 cursor-pointer"
+                    : "bg-card border-2 border-border text-foreground"
                 }`}
               >
-                {num}
-              </motion.div>
+                <span className={marked ? "line-through decoration-2" : ""}>{num}</span>
+                {marked && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <span className="text-2xl opacity-30">✕</span>
+                  </motion.div>
+                )}
+              </motion.button>
             );
           })}
         </div>
 
-        {/* Call number input */}
-        {!won && isMyTurn && (
-          <div className="flex items-center justify-center gap-2">
-            <div className="relative">
-              <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <input
-                type="number"
-                min={1}
-                max={total}
-                value={callNumber}
-                onChange={(e) => setCallNumber(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCallNumber()}
-                placeholder={`1–${total}`}
-                className="w-24 rounded-lg border border-input bg-background pl-8 pr-3 py-2 text-sm"
-              />
-            </div>
-            <Button size="sm" onClick={handleCallNumber} disabled={!callNumber}>Call</Button>
-          </div>
-        )}
-
         {!won && !isMyTurn && (
           <p className="text-center text-xs text-muted-foreground animate-pulse flex items-center justify-center gap-1">
-            <Clock className="h-3 w-3" /> Waiting for {partnerName ?? "partner"}…
+            <Clock className="h-3 w-3" /> Waiting for {partnerName ?? "partner"} to call a number…
           </p>
         )}
 
-        {/* Called numbers */}
+        {isMyTurn && !won && (
+          <p className="text-center text-xs text-primary font-medium">
+            Tap any uncrossed number on your board to call it!
+          </p>
+        )}
+
+        {/* Called numbers history */}
         {state.calledNumbers.length > 0 && (
           <div className="space-y-1">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Called Numbers</p>
             <div className="flex flex-wrap gap-1.5">
               {state.calledNumbers.map((n, i) => (
-                <span key={i} className="h-7 w-7 rounded-full bg-muted text-[10px] font-bold flex items-center justify-center text-muted-foreground">
+                <span key={i} className="h-8 w-8 rounded-full bg-primary/15 text-xs font-bold flex items-center justify-center text-primary">
                   {n}
                 </span>
               ))}
