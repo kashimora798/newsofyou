@@ -441,31 +441,46 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
         {/* Drawer tools */}
         {isDrawer && state.phase === "drawing" && !state.guessed && (
           <div className="flex items-center gap-2 px-3 py-2 border-t border-border/40">
-            <div className="flex gap-1">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setPenColor(c)}
-                  className={`h-6 w-6 rounded-full border-2 transition-all ${penColor === c ? "border-primary scale-110" : "border-transparent"}`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-            <div className="h-4 w-px bg-border mx-1" />
-            <div className="flex gap-1">
-              {WIDTHS.map((w) => (
-                <button
-                  key={w}
-                  onClick={() => setPenWidth(w)}
-                  className={`h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-bold transition-all ${penWidth === w ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
+            {!eraserMode && (
+              <div className="flex gap-1">
+                {COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => { setPenColor(c); setEraserMode(false); }}
+                    className={`h-6 w-6 rounded-full border-2 transition-all ${penColor === c && !eraserMode ? "border-primary scale-110" : "border-transparent"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            )}
+            {!eraserMode && (
+              <>
+                <div className="h-4 w-px bg-border mx-1" />
+                <div className="flex gap-1">
+                  {WIDTHS.map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setPenWidth(w)}
+                      className={`h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-bold transition-all ${penWidth === w ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="flex-1" />
+            <Button
+              size="icon"
+              variant={eraserMode ? "default" : "ghost"}
+              onClick={() => setEraserMode(!eraserMode)}
+              className={`h-7 w-7 ${eraserMode ? "bg-primary text-primary-foreground" : ""}`}
+              title="Eraser"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </Button>
             <Button size="icon" variant="ghost" onClick={handleUndo} className="h-7 w-7"><Undo2 className="h-3.5 w-3.5" /></Button>
-            <Button size="icon" variant="ghost" onClick={handleClear} className="h-7 w-7"><Eraser className="h-3.5 w-3.5" /></Button>
+            <Button size="icon" variant="ghost" onClick={handleClear} className="h-7 w-7 text-destructive"><Eraser className="h-3.5 w-3.5" /></Button>
           </div>
         )}
 
