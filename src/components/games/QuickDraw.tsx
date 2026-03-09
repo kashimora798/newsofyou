@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Pencil, Eraser, Undo2, Trophy, Clock, Send, Eye, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 const WORD_BANK = [
