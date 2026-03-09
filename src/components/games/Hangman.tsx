@@ -61,6 +61,8 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
   const [hintText, setHintText] = useState<string | null>(null);
   const [aiHintText, setAiHintText] = useState<string | null>(null);
   const [aiHintLoading, setAiHintLoading] = useState(false);
+  const [wordGuess, setWordGuess] = useState("");
+  const [wordGuessResult, setWordGuessResult] = useState<string | null>(null);
 
   const opponentId = game.created_by === userId ? game.opponent_id : game.created_by;
   const iAmSetter = state.setter === userId;
@@ -128,7 +130,57 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
     onMakeMove(game.id, newState, lost || revealed ? userId : state.setter, winnerId, false);
   }, [iAmGuesser, state, userId, opponentId, game.id, onMakeMove]);
 
-  // Normal hint — reveal a random unrevealed letter
+  // Guess the full word (with AI fuzzy matching)
+  const handleWordGuess = useCallback(async () => {
+    const clean = wordGuess.trim().toUpperCase();
+    if (!clean || !iAmGuesser) return;
+    setWordGuess("");
+    setWordGuessResult(null);
+
+    // Exact match
+    if (clean === state.word) {
+      const allLetters = [...new Set(state.word.split(""))];
+      const newGuessed = [...new Set([...state.guessed, ...allLetters])];
+      const newState: HangmanState = { ...state, guessed: newGuessed, phase: "won" };
+      setState(newState);
+      onMakeMove(game.id, newState, userId, userId, false);
+      return;
+    }
+
+    // AI fuzzy check
+    try {
+      const { data, error } = await supabase.functions.invoke("guess-check", {
+        body: { guess: clean, answer: state.word },
+      });
+      if (!error && data?.match) {
+        const allLetters = [...new Set(state.word.split(""))];
+        const newGuessed = [...new Set([...state.guessed, ...allLetters])];
+        const newState: HangmanState = { ...state, guessed: newGuessed, phase: "won" };
+        setState(newState);
+        setWordGuessResult("🎉 Close enough!");
+        onMakeMove(game.id, newState, userId, userId, false);
+        return;
+      }
+    } catch (e) {
+      console.error("Word guess check error:", e);
+    }
+
+    // Wrong word guess — costs 1 wrong guess
+    const fakeWrongLetter = `?${clean.slice(0, 3)}`;
+    const newGuessed = [...state.guessed, fakeWrongLetter];
+    const newWrong = newGuessed.filter((l) => !state.word.includes(l));
+    const lost = newWrong.length >= MAX_WRONG;
+    const newState: HangmanState = {
+      ...state, guessed: newGuessed,
+      phase: lost ? "lost" : "guessing",
+    };
+    setState(newState);
+    setWordGuessResult(`❌ "${clean}" is not the word!`);
+    onMakeMove(game.id, newState, lost ? userId : state.setter, lost ? opponentId : null, false);
+    setTimeout(() => setWordGuessResult(null), 2500);
+  }, [wordGuess, iAmGuesser, state, userId, opponentId, game.id, onMakeMove]);
+
+
   const handleNormalHint = useCallback(() => {
     if (!iAmGuesser || (state.hintsUsed ?? 0) >= MAX_NORMAL_HINTS) return;
     const unrevealed = wordLetters.filter((l, i, arr) => !state.guessed.includes(l) && arr.indexOf(l) === i);
@@ -366,6 +418,41 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
               </motion.button>
             </div>
           )}
+
+          {/* Guess the word input */}
+          {!gameOver && iAmGuesser && (
+            <div className="flex gap-2 w-full max-w-[320px]">
+              <input
+                value={wordGuess}
+                onChange={(e) => setWordGuess(e.target.value.replace(/[^a-zA-Z]/g, "").slice(0, 12))}
+                placeholder="Guess the word…"
+                className="flex-1 h-9 rounded-lg glass px-3 text-xs text-foreground bg-transparent outline-none placeholder:text-muted-foreground"
+                onKeyDown={(e) => e.key === "Enter" && handleWordGuess()}
+              />
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleWordGuess}
+                disabled={wordGuess.trim().length < 2}
+                className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1 disabled:opacity-40"
+              >
+                <Send className="h-3 w-3" /> Guess
+              </motion.button>
+            </div>
+          )}
+
+          {/* Word guess result */}
+          <AnimatePresence>
+            {wordGuessResult && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-xs font-semibold text-center"
+              >
+                {wordGuessResult}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Keyboard */}
           {!gameOver && iAmGuesser && (

@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Pencil, Eraser, Undo2, Trophy, Clock, Send, Eye, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 const WORD_BANK = [
@@ -252,25 +253,43 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     if (!clean) return;
     setGuess("");
 
+    // Exact match — instant accept
     if (clean === state.word.toLowerCase()) {
-      // Correct!
-      const newScores = { ...state.scores };
-      newScores[userId] = (newScores[userId] ?? 0) + 1;
-      newScores[state.drawer] = (newScores[state.drawer] ?? 0) + 1;
-      const newState: QuickDrawState = {
-        ...state,
-        guessed: true,
-        guesses: [...state.guesses, `✅ ${clean}`],
-        scores: newScores,
-      };
-      await onMakeMove(session.id, newState, session.current_turn);
-      // Auto advance after delay
-      setTimeout(() => advanceRound(newState), 2000);
-    } else {
-      const newState: QuickDrawState = { ...state, guesses: [...state.guesses, clean] };
-      await onMakeMove(session.id, newState, session.current_turn);
+      await acceptCorrectGuess(clean);
+      return;
     }
+
+    // AI/fuzzy check for synonyms, partial, spelling mistakes
+    try {
+      const { data, error } = await supabase.functions.invoke("guess-check", {
+        body: { guess: clean, answer: state.word },
+      });
+      if (!error && data?.match) {
+        await acceptCorrectGuess(clean);
+        return;
+      }
+    } catch (e) {
+      console.error("Guess check error:", e);
+    }
+
+    // Wrong guess
+    const newState: QuickDrawState = { ...state, guesses: [...state.guesses, clean] };
+    await onMakeMove(session.id, newState, session.current_turn);
   }, [guess, state, userId, session, onMakeMove]);
+
+  const acceptCorrectGuess = useCallback(async (clean: string) => {
+    const newScores = { ...state.scores };
+    newScores[userId] = (newScores[userId] ?? 0) + 1;
+    newScores[state.drawer] = (newScores[state.drawer] ?? 0) + 1;
+    const newState: QuickDrawState = {
+      ...state,
+      guessed: true,
+      guesses: [...state.guesses, `✅ ${clean}`],
+      scores: newScores,
+    };
+    await onMakeMove(session.id, newState, session.current_turn);
+    setTimeout(() => advanceRound(newState), 2000);
+  }, [state, userId, session, onMakeMove]);
 
   const handleTimeUp = useCallback(async () => {
     const newState: QuickDrawState = { ...state, phase: "result" };
