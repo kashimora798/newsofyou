@@ -55,7 +55,12 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
     makeMove,
   } = useGameSessions(userId);
 
-  const [activeSession, setActiveSession] = useState<GameSession | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  // Always get fresh session from realtime data
+  const activeSession = activeSessionId
+    ? sessions.find((s) => s.id === activeSessionId) ?? null
+    : null;
 
   const handleChallenge = async (gameType = "tic_tac_toe") => {
     if (!partner?.user_id) return;
