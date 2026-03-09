@@ -175,8 +175,31 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
     e.preventDefault();
-    setCurrentStroke((prev) => [...prev, getPos(e)]);
+    const pos = getPos(e);
+    // Sample: skip if too close to last point (reduces points by ~60%)
+    const last = currentStroke[currentStroke.length - 1];
+    if (last && Math.abs(pos.x - last.x) < 0.005 && Math.abs(pos.y - last.y) < 0.005) return;
+    setCurrentStroke((prev) => [...prev, pos]);
   };
+
+  // Debounced sync ref
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const pendingSyncRef = useRef<Stroke[] | null>(null);
+
+  const syncStrokes = useCallback((strokes: Stroke[]) => {
+    pendingSyncRef.current = strokes;
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(async () => {
+      if (pendingSyncRef.current) {
+        await onMakeMove(session.id, { ...state, strokes: pendingSyncRef.current }, session.current_turn);
+        pendingSyncRef.current = null;
+      }
+    }, 350); // debounce 350ms
+  }, [state, session, onMakeMove]);
+
+  useEffect(() => {
+    return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
+  }, []);
 
   const handlePointerUp = useCallback(async () => {
     if (!isDrawing || currentStroke.length < 2) {
@@ -190,9 +213,9 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     setLocalStrokes(newStrokes);
     setCurrentStroke([]);
 
-    // Sync to DB
-    await onMakeMove(session.id, { ...state, strokes: newStrokes }, session.current_turn);
-  }, [isDrawing, currentStroke, penColor, penWidth, localStrokes, state, session, onMakeMove]);
+    // Debounced sync to DB
+    syncStrokes(newStrokes);
+  }, [isDrawing, currentStroke, penColor, penWidth, localStrokes, syncStrokes]);
 
   const handleUndo = useCallback(async () => {
     if (localStrokes.length === 0) return;

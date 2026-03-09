@@ -14,7 +14,7 @@ import WordChain from "@/components/games/WordChain";
 import Hangman from "@/components/games/Hangman";
 import Bingo from "@/components/games/Bingo";
 import QuickDraw from "@/components/games/QuickDraw";
-import type { GameSession } from "@/hooks/useGameSessions";
+
 import { formatDistanceToNow } from "date-fns";
 
 const container = {
@@ -44,6 +44,7 @@ const Games: React.FC = () => {
 const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   const partner = usePartner(userId);
   const {
+    sessions,
     loading,
     pendingInvites,
     outgoingInvites,
@@ -55,7 +56,12 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
     makeMove,
   } = useGameSessions(userId);
 
-  const [activeSession, setActiveSession] = useState<GameSession | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  // Always get fresh session from realtime data
+  const activeSession = activeSessionId
+    ? sessions.find((s) => s.id === activeSessionId) ?? null
+    : null;
 
   const handleChallenge = async (gameType = "tic_tac_toe") => {
     if (!partner?.user_id) return;
@@ -63,7 +69,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   };
 
   const handlePlayAgain = async (opponentId: string) => {
-    setActiveSession(null);
+    setActiveSessionId(null);
     await createGame(opponentId, "tic_tac_toe");
   };
 
@@ -77,7 +83,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
           userId={userId}
           partnerName={partner?.name ?? undefined}
           onMakeMove={makeMove}
-          onBack={() => setActiveSession(null)}
+          onBack={() => setActiveSessionId(null)}
           onPlayAgain={handlePlayAgain}
         />
         <BottomNav />
@@ -171,7 +177,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
                     partnerName={partner?.name ?? undefined}
                     onAccept={() => {
                       acceptGame(inv.id);
-                      setActiveSession({ ...inv, status: "active" });
+                      setActiveSessionId(inv.id);
                     }}
                     onDecline={() => declineGame(inv.id)}
                   />
@@ -203,7 +209,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
                     game={g}
                     partnerName={partner?.name ?? undefined}
                     isMyTurn={g.current_turn === userId}
-                    onResume={() => setActiveSession(g)}
+                    onResume={() => setActiveSessionId(g.id)}
                   />
                 ))}
               </motion.div>
