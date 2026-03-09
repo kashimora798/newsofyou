@@ -44,6 +44,7 @@ const Games: React.FC = () => {
 const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   const partner = usePartner(userId);
   const {
+    sessions,
     loading,
     pendingInvites,
     outgoingInvites,
