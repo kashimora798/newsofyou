@@ -69,7 +69,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
   };
 
   const handlePlayAgain = async (opponentId: string) => {
-    setActiveSession(null);
+    setActiveSessionId(null);
     await createGame(opponentId, "tic_tac_toe");
   };
 
