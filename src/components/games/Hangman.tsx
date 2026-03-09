@@ -130,7 +130,57 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
     onMakeMove(game.id, newState, lost || revealed ? userId : state.setter, winnerId, false);
   }, [iAmGuesser, state, userId, opponentId, game.id, onMakeMove]);
 
-  // Normal hint — reveal a random unrevealed letter
+  // Guess the full word (with AI fuzzy matching)
+  const handleWordGuess = useCallback(async () => {
+    const clean = wordGuess.trim().toUpperCase();
+    if (!clean || !iAmGuesser) return;
+    setWordGuess("");
+    setWordGuessResult(null);
+
+    // Exact match
+    if (clean === state.word) {
+      const allLetters = [...new Set(state.word.split(""))];
+      const newGuessed = [...new Set([...state.guessed, ...allLetters])];
+      const newState: HangmanState = { ...state, guessed: newGuessed, phase: "won" };
+      setState(newState);
+      onMakeMove(game.id, newState, userId, userId, false);
+      return;
+    }
+
+    // AI fuzzy check
+    try {
+      const { data, error } = await supabase.functions.invoke("guess-check", {
+        body: { guess: clean, answer: state.word },
+      });
+      if (!error && data?.match) {
+        const allLetters = [...new Set(state.word.split(""))];
+        const newGuessed = [...new Set([...state.guessed, ...allLetters])];
+        const newState: HangmanState = { ...state, guessed: newGuessed, phase: "won" };
+        setState(newState);
+        setWordGuessResult("🎉 Close enough!");
+        onMakeMove(game.id, newState, userId, userId, false);
+        return;
+      }
+    } catch (e) {
+      console.error("Word guess check error:", e);
+    }
+
+    // Wrong word guess — costs 1 wrong guess
+    const fakeWrongLetter = `?${clean.slice(0, 3)}`;
+    const newGuessed = [...state.guessed, fakeWrongLetter];
+    const newWrong = newGuessed.filter((l) => !state.word.includes(l));
+    const lost = newWrong.length >= MAX_WRONG;
+    const newState: HangmanState = {
+      ...state, guessed: newGuessed,
+      phase: lost ? "lost" : "guessing",
+    };
+    setState(newState);
+    setWordGuessResult(`❌ "${clean}" is not the word!`);
+    onMakeMove(game.id, newState, lost ? userId : state.setter, lost ? opponentId : null, false);
+    setTimeout(() => setWordGuessResult(null), 2500);
+  }, [wordGuess, iAmGuesser, state, userId, opponentId, game.id, onMakeMove]);
+
+
   const handleNormalHint = useCallback(() => {
     if (!iAmGuesser || (state.hintsUsed ?? 0) >= MAX_NORMAL_HINTS) return;
     const unrevealed = wordLetters.filter((l, i, arr) => !state.guessed.includes(l) && arr.indexOf(l) === i);
