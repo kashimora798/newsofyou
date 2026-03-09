@@ -224,7 +224,7 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
       return;
     }
     setIsDrawing(false);
-    const newStroke: Stroke = { points: currentStroke, color: penColor, width: penWidth };
+    const newStroke: Stroke = { points: currentStroke, color: eraserMode ? "hsl(var(--card))" : penColor, width: eraserMode ? 20 : penWidth, isEraser: eraserMode };
     const newStrokes = [...localStrokes, newStroke];
     setLocalStrokes(newStrokes);
     setCurrentStroke([]);
