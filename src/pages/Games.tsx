@@ -83,7 +83,7 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
           userId={userId}
           partnerName={partner?.name ?? undefined}
           onMakeMove={makeMove}
-          onBack={() => setActiveSession(null)}
+          onBack={() => setActiveSessionId(null)}
           onPlayAgain={handlePlayAgain}
         />
         <BottomNav />
