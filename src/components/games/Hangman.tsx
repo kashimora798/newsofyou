@@ -61,6 +61,8 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
   const [hintText, setHintText] = useState<string | null>(null);
   const [aiHintText, setAiHintText] = useState<string | null>(null);
   const [aiHintLoading, setAiHintLoading] = useState(false);
+  const [wordGuess, setWordGuess] = useState("");
+  const [wordGuessResult, setWordGuessResult] = useState<string | null>(null);
 
   const opponentId = game.created_by === userId ? game.opponent_id : game.created_by;
   const iAmSetter = state.setter === userId;
