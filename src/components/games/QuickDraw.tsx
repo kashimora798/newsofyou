@@ -334,23 +334,15 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   if (gameOver) {
     const winnerId = session.winner_id;
     return (
-      <div className="flex flex-col h-full">
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
-          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-          <h2 className="text-sm font-bold text-foreground">Quick Draw — Game Over</h2>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
-          <Trophy className="h-12 w-12 text-primary" />
-          <p className="text-xl font-bold text-foreground">
-            {winnerId === userId ? "You won! 🎉" : winnerId ? `${partnerName ?? "Partner"} won!` : "It's a draw!"}
-          </p>
-          <div className="flex gap-6 text-sm">
-            <span className="text-primary font-bold">You: {myScore}</span>
-            <span className="text-muted-foreground font-bold">{partnerName ?? "P"}: {opScore}</span>
-          </div>
-          <Button onClick={() => onPlayAgain(opponentId)}>Play Again</Button>
-        </div>
-      </div>
+      <GameOverCelebration
+        isWinner={winnerId === userId}
+        isDraw={!winnerId}
+        partnerName={partnerName}
+        myScore={myScore}
+        opponentScore={opScore}
+        onExit={onBack}
+        onRematch={() => onPlayAgain(opponentId)}
+      />
     );
   }
 
