@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Send, Trophy, Clock, Zap, RotateCcw } from "lucide-react";
+import { ArrowLeft, Send, Clock, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import GameOverCelebration from "./GameOverCelebration";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 interface WordChainState {
