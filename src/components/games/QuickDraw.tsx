@@ -160,8 +160,8 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     // Current stroke in progress
     if (currentStroke.length >= 2) {
       ctx.beginPath();
-      ctx.strokeStyle = penColor;
-      ctx.lineWidth = penWidth;
+      ctx.strokeStyle = eraserMode ? "hsl(var(--card))" : penColor;
+      ctx.lineWidth = eraserMode ? 20 : penWidth;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.moveTo(currentStroke[0].x * rect.width, currentStroke[0].y * rect.height);
