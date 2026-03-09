@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Shuffle, Check, Trophy, Clock } from "lucide-react";
+import { ArrowLeft, Shuffle, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import GameOverCelebration from "./GameOverCelebration";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 interface BingoState {
