@@ -31,6 +31,7 @@ interface Stroke {
   points: { x: number; y: number }[];
   color: string;
   width: number;
+  isEraser?: boolean;
 }
 
 interface QuickDrawState {
