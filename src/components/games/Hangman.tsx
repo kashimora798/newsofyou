@@ -419,6 +419,41 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
             </div>
           )}
 
+          {/* Guess the word input */}
+          {!gameOver && iAmGuesser && (
+            <div className="flex gap-2 w-full max-w-[320px]">
+              <input
+                value={wordGuess}
+                onChange={(e) => setWordGuess(e.target.value.replace(/[^a-zA-Z]/g, "").slice(0, 12))}
+                placeholder="Guess the word…"
+                className="flex-1 h-9 rounded-lg glass px-3 text-xs text-foreground bg-transparent outline-none placeholder:text-muted-foreground"
+                onKeyDown={(e) => e.key === "Enter" && handleWordGuess()}
+              />
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleWordGuess}
+                disabled={wordGuess.trim().length < 2}
+                className="h-9 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1 disabled:opacity-40"
+              >
+                <Send className="h-3 w-3" /> Guess
+              </motion.button>
+            </div>
+          )}
+
+          {/* Word guess result */}
+          <AnimatePresence>
+            {wordGuessResult && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-xs font-semibold text-center"
+              >
+                {wordGuessResult}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Keyboard */}
           {!gameOver && iAmGuesser && (
             <div className="grid grid-cols-9 gap-1.5 w-full max-w-[320px] mt-1">
