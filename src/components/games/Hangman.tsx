@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, RotateCcw, Send, Lightbulb, Sparkles } from "lucide-react";
+import GameOverCelebration from "./GameOverCelebration";
 import { supabase } from "@/integrations/supabase/client";
 import type { GameSession } from "@/hooks/useGameSessions";
 
