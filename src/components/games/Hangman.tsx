@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, RotateCcw, Send } from "lucide-react";
+import { ArrowLeft, RotateCcw, Send, Lightbulb, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { GameSession } from "@/hooks/useGameSessions";
 
@@ -13,20 +13,24 @@ const WORD_LIST = [
 ];
 
 const MAX_WRONG = 6;
+const MAX_NORMAL_HINTS = 2;
+const MAX_AI_HINTS = 2;
 
 interface HangmanState {
   word: string;
   guessed: string[];
-  setter: string; // who set the word
+  setter: string;
   phase: "setting" | "guessing" | "won" | "lost";
+  hintsUsed?: number;
+  aiHintsUsed?: number;
 }
 
 function getDefaultState(): HangmanState {
-  return { word: "", guessed: [], setter: "", phase: "setting" };
+  return { word: "", guessed: [], setter: "", phase: "setting", hintsUsed: 0, aiHintsUsed: 0 };
 }
 
 function parseState(raw: any): HangmanState {
-  if (raw && typeof raw === "object" && "word" in raw) return raw as HangmanState;
+  if (raw && typeof raw === "object" && "word" in raw) return { hintsUsed: 0, aiHintsUsed: 0, ...raw } as HangmanState;
   return getDefaultState();
 }
 
@@ -40,17 +44,11 @@ interface Props {
 }
 
 const BODY_PARTS = [
-  // head
   <circle key="head" cx="200" cy="80" r="20" fill="none" stroke="currentColor" strokeWidth="3" />,
-  // body
   <line key="body" x1="200" y1="100" x2="200" y2="160" stroke="currentColor" strokeWidth="3" />,
-  // left arm
   <line key="larm" x1="200" y1="120" x2="170" y2="145" stroke="currentColor" strokeWidth="3" />,
-  // right arm
   <line key="rarm" x1="200" y1="120" x2="230" y2="145" stroke="currentColor" strokeWidth="3" />,
-  // left leg
   <line key="lleg" x1="200" y1="160" x2="175" y2="195" stroke="currentColor" strokeWidth="3" />,
-  // right leg
   <line key="rleg" x1="200" y1="160" x2="225" y2="195" stroke="currentColor" strokeWidth="3" />,
 ];
 
@@ -60,6 +58,9 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
   const [game, setGame] = useState(session);
   const [state, setState] = useState<HangmanState>(() => parseState(session.board_state));
   const [wordInput, setWordInput] = useState("");
+  const [hintText, setHintText] = useState<string | null>(null);
+  const [aiHintText, setAiHintText] = useState<string | null>(null);
+  const [aiHintLoading, setAiHintLoading] = useState(false);
 
   const opponentId = game.created_by === userId ? game.opponent_id : game.created_by;
   const iAmSetter = state.setter === userId;
@@ -68,7 +69,6 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
   const wrongGuesses = state.guessed.filter((l) => !state.word.includes(l));
   const wrongCount = wrongGuesses.length;
   const wordLetters = state.word.split("");
-  const allRevealed = wordLetters.length > 0 && wordLetters.every((l) => state.guessed.includes(l));
 
   // Realtime
   useEffect(() => {
@@ -87,60 +87,90 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
     return () => { supabase.removeChannel(channel); };
   }, [session.id]);
 
-  // Set word (setter picks a word for guesser)
+  // Set word
   const handleSetWord = useCallback(() => {
     const clean = wordInput.trim().toUpperCase().replace(/[^A-Z]/g, "");
     if (clean.length < 3 || clean.length > 12) return;
     const newState: HangmanState = {
-      word: clean,
-      guessed: [],
-      setter: userId,
-      phase: "guessing",
+      word: clean, guessed: [], setter: userId, phase: "guessing", hintsUsed: 0, aiHintsUsed: 0,
     };
     setState(newState);
     onMakeMove(game.id, newState, opponentId);
     setWordInput("");
+    setHintText(null);
+    setAiHintText(null);
   }, [wordInput, userId, game.id, opponentId, onMakeMove]);
 
   const handleRandomWord = useCallback(() => {
     const word = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
     const newState: HangmanState = {
-      word,
-      guessed: [],
-      setter: userId,
-      phase: "guessing",
+      word, guessed: [], setter: userId, phase: "guessing", hintsUsed: 0, aiHintsUsed: 0,
     };
     setState(newState);
     onMakeMove(game.id, newState, opponentId);
+    setHintText(null);
+    setAiHintText(null);
   }, [userId, game.id, opponentId, onMakeMove]);
 
   // Guess a letter
   const handleGuess = useCallback((letter: string) => {
     if (!iAmGuesser || state.guessed.includes(letter)) return;
-
     const newGuessed = [...state.guessed, letter];
     const newWrong = newGuessed.filter((l) => !state.word.includes(l));
     const revealed = state.word.split("").every((l) => newGuessed.includes(l));
     const lost = newWrong.length >= MAX_WRONG;
-
     const newState: HangmanState = {
-      ...state,
-      guessed: newGuessed,
+      ...state, guessed: newGuessed,
       phase: revealed ? "won" : lost ? "lost" : "guessing",
     };
-
     const winnerId = revealed ? userId : lost ? opponentId : null;
     setState(newState);
-    onMakeMove(
-      game.id,
-      newState,
-      lost || revealed ? userId : state.setter,
-      winnerId,
-      false
-    );
+    onMakeMove(game.id, newState, lost || revealed ? userId : state.setter, winnerId, false);
   }, [iAmGuesser, state, userId, opponentId, game.id, onMakeMove]);
 
+  // Normal hint — reveal a random unrevealed letter
+  const handleNormalHint = useCallback(() => {
+    if (!iAmGuesser || (state.hintsUsed ?? 0) >= MAX_NORMAL_HINTS) return;
+    const unrevealed = wordLetters.filter((l, i, arr) => !state.guessed.includes(l) && arr.indexOf(l) === i);
+    if (unrevealed.length === 0) return;
+    const hintLetter = unrevealed[Math.floor(Math.random() * unrevealed.length)];
+    setHintText(`💡 The word contains "${hintLetter}"!`);
+    // Auto-guess the hint letter
+    const newGuessed = [...state.guessed, hintLetter];
+    const revealed = state.word.split("").every((l) => newGuessed.includes(l));
+    const newState: HangmanState = {
+      ...state, guessed: newGuessed, hintsUsed: (state.hintsUsed ?? 0) + 1,
+      phase: revealed ? "won" : "guessing",
+    };
+    const winnerId = revealed ? userId : null;
+    setState(newState);
+    onMakeMove(game.id, newState, revealed ? userId : state.setter, winnerId, false);
+  }, [iAmGuesser, state, wordLetters, userId, game.id, onMakeMove]);
+
+  // AI hint — get a creative clue from AI
+  const handleAiHint = useCallback(async () => {
+    if (!iAmGuesser || (state.aiHintsUsed ?? 0) >= MAX_AI_HINTS || aiHintLoading) return;
+    setAiHintLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("hangman-hint", {
+        body: { word: state.word, guessedLetters: state.guessed, wrongCount },
+      });
+      if (error) throw error;
+      setAiHintText(data?.hint ?? "🤔 Think about it differently!");
+      const newState: HangmanState = { ...state, aiHintsUsed: (state.aiHintsUsed ?? 0) + 1 };
+      setState(newState);
+      onMakeMove(game.id, newState, state.setter);
+    } catch (e) {
+      console.error("AI hint error:", e);
+      setAiHintText("🤖 AI is busy, try again!");
+    } finally {
+      setAiHintLoading(false);
+    }
+  }, [iAmGuesser, state, wrongCount, aiHintLoading, game.id, onMakeMove]);
+
   const gameOver = state.phase === "won" || state.phase === "lost";
+  const normalHintsLeft = MAX_NORMAL_HINTS - (state.hintsUsed ?? 0);
+  const aiHintsLeft = MAX_AI_HINTS - (state.aiHintsUsed ?? 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -240,12 +270,10 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
         <div className="flex-1 flex flex-col items-center px-4 gap-3 overflow-y-auto">
           {/* Hangman figure */}
           <svg viewBox="100 0 200 220" className="w-full max-w-[200px] h-auto text-foreground">
-            {/* gallows */}
             <line x1="130" y1="210" x2="270" y2="210" stroke="currentColor" strokeWidth="3" />
             <line x1="150" y1="210" x2="150" y2="30" stroke="currentColor" strokeWidth="3" />
             <line x1="150" y1="30" x2="200" y2="30" stroke="currentColor" strokeWidth="3" />
             <line x1="200" y1="30" x2="200" y2="60" stroke="currentColor" strokeWidth="3" />
-            {/* body parts */}
             {BODY_PARTS.slice(0, wrongCount).map((part, i) => (
               <motion.g
                 key={i}
@@ -261,21 +289,21 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
           {/* Word display */}
           <div className="flex gap-2 flex-wrap justify-center">
             {wordLetters.map((letter, i) => {
-              const revealed = state.guessed.includes(letter) || gameOver;
+              const isRevealed = state.guessed.includes(letter) || gameOver;
               return (
                 <motion.div
                   key={i}
-                  initial={revealed ? { scale: 0.5 } : {}}
+                  initial={isRevealed ? { scale: 0.5 } : {}}
                   animate={{ scale: 1 }}
                   className={`w-9 h-11 rounded-lg flex items-center justify-center text-lg font-bold border-b-2 ${
-                    revealed
+                    isRevealed
                       ? gameOver && state.phase === "lost" && !state.guessed.includes(letter)
                         ? "text-destructive border-destructive/30 bg-destructive/5"
                         : "text-foreground border-primary/30 bg-primary/5"
                       : "border-muted-foreground/30"
                   }`}
                 >
-                  {revealed ? letter : ""}
+                  {isRevealed ? letter : ""}
                 </motion.div>
               );
             })}
@@ -291,9 +319,57 @@ const Hangman: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, on
             </div>
           )}
 
+          {/* Hint bubbles */}
+          <AnimatePresence>
+            {hintText && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="glass rounded-xl px-4 py-2 text-xs text-foreground text-center max-w-[280px]"
+              >
+                {hintText}
+              </motion.div>
+            )}
+            {aiHintText && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="rounded-xl px-4 py-2 text-xs text-center max-w-[280px] bg-accent/20 text-accent-foreground border border-accent/30"
+              >
+                🤖 {aiHintText}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Hint buttons */}
+          {!gameOver && iAmGuesser && (
+            <div className="flex gap-2">
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleNormalHint}
+                disabled={normalHintsLeft <= 0}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg glass text-xs font-medium text-foreground disabled:opacity-30"
+              >
+                <Lightbulb className="h-3.5 w-3.5" />
+                Hint ({normalHintsLeft})
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={handleAiHint}
+                disabled={aiHintsLeft <= 0 || aiHintLoading}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium bg-accent/10 text-accent-foreground border border-accent/20 disabled:opacity-30"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {aiHintLoading ? "Thinking…" : `AI Hint (${aiHintsLeft})`}
+              </motion.button>
+            </div>
+          )}
+
           {/* Keyboard */}
           {!gameOver && iAmGuesser && (
-            <div className="grid grid-cols-9 gap-1.5 w-full max-w-[320px] mt-2">
+            <div className="grid grid-cols-9 gap-1.5 w-full max-w-[320px] mt-1">
               {ALPHABET.map((letter) => {
                 const used = state.guessed.includes(letter);
                 const correct = used && state.word.includes(letter);

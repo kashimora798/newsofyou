@@ -5,12 +5,26 @@ import { Button } from "@/components/ui/button";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 const WORD_BANK = [
+  // Easy shapes & objects
   "sun", "cat", "dog", "tree", "house", "car", "flower", "star", "moon", "fish",
   "heart", "bird", "cloud", "rain", "snow", "fire", "book", "cake", "hat", "shoe",
-  "apple", "banana", "guitar", "piano", "clock", "chair", "table", "phone", "lamp", "key",
-  "pizza", "rocket", "robot", "dragon", "crown", "sword", "bridge", "beach", "mountain", "island",
-  "rainbow", "butterfly", "diamond", "umbrella", "camera", "bicycle", "airplane", "lighthouse", "snowman", "cactus",
-  "penguin", "elephant", "dolphin", "turtle", "spider", "octopus", "mushroom", "volcano", "castle", "tornado",
+  "apple", "banana", "guitar", "clock", "chair", "table", "phone", "lamp", "key",
+  "pizza", "rocket", "robot", "dragon", "crown", "sword", "beach", "snowman", "cactus",
+  "penguin", "elephant", "dolphin", "turtle", "spider", "mushroom", "castle",
+  // Fun & friendly additions
+  "poop", "taco", "donut", "ice cream", "lollipop", "burrito", "cookie", "cupcake",
+  "unicorn", "ghost", "alien", "wizard", "mermaid", "pirate", "cowboy", "clown",
+  "kiss", "hug", "wink", "tongue out", "crying face", "angry face", "party hat",
+  "rainbow", "lightning", "tornado", "sunrise", "bonfire",
+  "skateboard", "surfboard", "trampoline", "balloon", "kite", "slide",
+  "baby", "grandma", "mustache", "beard", "glasses", "crown",
+  "frog", "snail", "ladybug", "bee", "bunny", "pig", "chicken", "duck", "owl",
+  "spaghetti", "fried egg", "watermelon", "cherry", "avocado", "hot dog", "popcorn",
+  "toilet", "bathtub", "pillow", "sock", "underwear", "diaper",
+  // Emoji-style challenges 🎨
+  "💀 skull", "👻 ghost", "🤡 clown face", "😂 laughing face", "😍 heart eyes",
+  "🐸 frog", "🦄 unicorn", "🌮 taco", "🍕 pizza slice", "💩 poop emoji",
+  "🎃 pumpkin", "🎅 santa", "👽 alien", "🤖 robot face", "🧜 mermaid",
 ];
 
 interface Stroke {
