@@ -11,6 +11,26 @@ export interface Compliment {
   created_at: string;
 }
 
+const DAILY_LIMIT = 2;
+
+function getDeliveredTodayCount(): number {
+  const today = new Date().toISOString().split("T")[0];
+  const stored = localStorage.getItem("compliments_delivered_date");
+  if (stored !== today) {
+    localStorage.setItem("compliments_delivered_date", today);
+    localStorage.setItem("compliments_delivered_count", "0");
+    return 0;
+  }
+  return parseInt(localStorage.getItem("compliments_delivered_count") || "0", 10);
+}
+
+function incrementDeliveredToday() {
+  const today = new Date().toISOString().split("T")[0];
+  localStorage.setItem("compliments_delivered_date", today);
+  const current = parseInt(localStorage.getItem("compliments_delivered_count") || "0", 10);
+  localStorage.setItem("compliments_delivered_count", String(current + 1));
+}
+
 export function useCompliments() {
   const { user } = useAuth();
   const [compliments, setCompliments] = useState<Compliment[]>([]);
@@ -32,17 +52,29 @@ export function useCompliments() {
 
   const fetchRandomForMe = useCallback(async () => {
     if (!user) return;
+
+    // Check daily limit
+    const deliveredToday = getDeliveredTodayCount();
+    if (deliveredToday >= DAILY_LIMIT) return;
+
+    // Fetch undelivered compliments from partner
     const { data } = await (supabase as any)
       .from("compliments")
       .select("*")
       .neq("user_id", user.id)
       .eq("is_delivered", false)
+      .order("created_at", { ascending: true })
       .limit(1);
 
     if (data && data.length > 0) {
       const c = data[0] as Compliment;
       setRandomCompliment(c);
-      await (supabase as any).from("compliments").update({ is_delivered: true, delivered_at: new Date().toISOString() }).eq("id", c.id);
+      // Mark as delivered permanently
+      await (supabase as any)
+        .from("compliments")
+        .update({ is_delivered: true, delivered_at: new Date().toISOString() })
+        .eq("id", c.id);
+      incrementDeliveredToday();
     } else {
       setRandomCompliment(null);
     }
@@ -52,11 +84,11 @@ export function useCompliments() {
 
   useEffect(() => {
     if (!user) return;
-    const shown = sessionStorage.getItem("compliment_shown");
-    if (!shown && Math.random() < 0.3) {
-      sessionStorage.setItem("compliment_shown", "true");
-      fetchRandomForMe();
-    }
+    // Only attempt delivery once per session
+    const shown = sessionStorage.getItem("compliment_checked");
+    if (shown) return;
+    sessionStorage.setItem("compliment_checked", "true");
+    fetchRandomForMe();
   }, [user, fetchRandomForMe]);
 
   const addCompliment = useCallback(async (content: string) => {
