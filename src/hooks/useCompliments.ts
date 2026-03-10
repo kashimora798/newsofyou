@@ -34,8 +34,10 @@ function incrementDeliveredToday() {
 export function useCompliments() {
   const { user } = useAuth();
   const [compliments, setCompliments] = useState<Compliment[]>([]);
+  const [received, setReceived] = useState<Compliment[]>([]);
   const [randomCompliment, setRandomCompliment] = useState<Compliment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingReceived, setLoadingReceived] = useState(true);
 
   const fetchCompliments = useCallback(async () => {
     if (!user) return;
@@ -50,14 +52,26 @@ export function useCompliments() {
     setLoading(false);
   }, [user]);
 
+  const fetchReceived = useCallback(async () => {
+    if (!user) return;
+    setLoadingReceived(true);
+    const { data } = await (supabase as any)
+      .from("compliments")
+      .select("*")
+      .neq("user_id", user.id)
+      .eq("is_delivered", true)
+      .order("delivered_at", { ascending: false });
+
+    if (data) setReceived(data as Compliment[]);
+    setLoadingReceived(false);
+  }, [user]);
+
   const fetchRandomForMe = useCallback(async () => {
     if (!user) return;
 
-    // Check daily limit
     const deliveredToday = getDeliveredTodayCount();
     if (deliveredToday >= DAILY_LIMIT) return;
 
-    // Fetch undelivered compliments from partner
     const { data } = await (supabase as any)
       .from("compliments")
       .select("*")
@@ -69,7 +83,6 @@ export function useCompliments() {
     if (data && data.length > 0) {
       const c = data[0] as Compliment;
       setRandomCompliment(c);
-      // Mark as delivered permanently
       await (supabase as any)
         .from("compliments")
         .update({ is_delivered: true, delivered_at: new Date().toISOString() })
@@ -80,11 +93,10 @@ export function useCompliments() {
     }
   }, [user]);
 
-  useEffect(() => { fetchCompliments(); }, [fetchCompliments]);
+  useEffect(() => { fetchCompliments(); fetchReceived(); }, [fetchCompliments, fetchReceived]);
 
   useEffect(() => {
     if (!user) return;
-    // Only attempt delivery once per session
     const shown = sessionStorage.getItem("compliment_checked");
     if (shown) return;
     sessionStorage.setItem("compliment_checked", "true");
@@ -105,5 +117,5 @@ export function useCompliments() {
     setCompliments((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  return { compliments, randomCompliment, loading, addCompliment, deleteCompliment, dismissCompliment: () => setRandomCompliment(null) };
+  return { compliments, received, randomCompliment, loading, loadingReceived, addCompliment, deleteCompliment, dismissCompliment: () => setRandomCompliment(null) };
 }

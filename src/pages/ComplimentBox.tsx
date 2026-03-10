@@ -2,13 +2,14 @@ import React, { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompliments } from "@/hooks/useCompliments";
-import { ArrowLeft, Plus, Heart, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Heart, Trash2, Loader2, Inbox } from "lucide-react";
 import { formatLastSeen } from "@/lib/dateUtils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import BottomNav from "@/components/layout/BottomNav";
 
 const ComplimentBox: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
-  const { compliments, loading, addCompliment, deleteCompliment } = useCompliments();
+  const { compliments, received, loading, loadingReceived, addCompliment, deleteCompliment } = useCompliments();
   const navigate = useNavigate();
   const [showAdd, setShowAdd] = useState(false);
   const [content, setContent] = useState("");
@@ -55,39 +56,71 @@ const ComplimentBox: React.FC = () => {
           </div>
         )}
 
-        {loading ? (
-          <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-        ) : compliments.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-4xl mb-2">💌</p>
-            <p className="text-sm text-muted-foreground">No compliments yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Tap + to write one for your partner</p>
-          </div>
-        ) : (
-          <div>
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Your Notes ({compliments.length})</h3>
-            {compliments.map((c) => (
-              <div key={c.id} className="bg-card rounded-xl border border-border p-3 mb-2 group">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <p className="text-sm text-foreground">{c.content}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-[10px] text-muted-foreground">{formatLastSeen(c.created_at)}</span>
-                      {c.is_delivered ? (
-                        <span className="text-[10px] text-primary font-medium">💕 Delivered</span>
-                      ) : (
-                        <span className="text-[10px] text-muted-foreground">🕐 Waiting to surprise</span>
-                      )}
+        <Tabs defaultValue="sent" className="w-full">
+          <TabsList className="w-full">
+            <TabsTrigger value="sent" className="flex-1 text-xs">✍️ My Notes ({compliments.length})</TabsTrigger>
+            <TabsTrigger value="received" className="flex-1 text-xs">💕 Received ({received.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="sent">
+            {loading ? (
+              <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+            ) : compliments.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-4xl mb-2">💌</p>
+                <p className="text-sm text-muted-foreground">No compliments yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Tap + to write one for your partner</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mt-2">
+                {compliments.map((c) => (
+                  <div key={c.id} className="bg-card rounded-xl border border-border p-3 group">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="text-sm text-foreground">{c.content}</p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="text-[10px] text-muted-foreground">{formatLastSeen(c.created_at)}</span>
+                          {c.is_delivered ? (
+                            <span className="text-[10px] text-primary font-medium">💕 Delivered</span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">🕐 Waiting to surprise</span>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => deleteCompliment(c.id)} className="p-1 rounded-full hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
                     </div>
                   </div>
-                  <button onClick={() => deleteCompliment(c.id)} className="p-1 rounded-full hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            )}
+          </TabsContent>
+
+          <TabsContent value="received">
+            {loadingReceived ? (
+              <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+            ) : received.length === 0 ? (
+              <div className="text-center py-12">
+                <Inbox className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No compliments received yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Your partner's sweet notes will appear here 💗</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mt-2">
+                {received.map((c) => (
+                  <div key={c.id} className="bg-card rounded-xl border border-primary/20 p-3 relative overflow-hidden">
+                    <div className="absolute top-2 right-2 text-lg opacity-30">💌</div>
+                    <p className="text-sm text-foreground pr-6">{c.content}</p>
+                    <span className="text-[10px] text-muted-foreground mt-1.5 block">
+                      {c.delivered_at ? formatLastSeen(c.delivered_at) : formatLastSeen(c.created_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
       <BottomNav />
     </div>
