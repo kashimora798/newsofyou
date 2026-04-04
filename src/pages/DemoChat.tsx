@@ -32,13 +32,12 @@ const AUTO_REPLIES = [
 const DemoChat: React.FC = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const partner = usePartner(user?.id);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const partnerName = partner?.name ?? "Partner";
-  const partnerInitial = partnerName.charAt(0).toUpperCase();
+  const partnerName = "Ramu";
+  const partnerInitial = "R";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
