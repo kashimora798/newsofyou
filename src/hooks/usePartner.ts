@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -6,6 +6,7 @@ type UserStatus = Tables<"user_status">;
 
 export function usePartner(currentUserId: string | undefined) {
   const [partner, setPartner] = useState<UserStatus | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -22,11 +23,11 @@ export function usePartner(currentUserId: string | undefined) {
 
     fetchPartner();
 
-    // Poll partner status every 10s as fallback for dropped realtime
     const poll = setInterval(fetchPartner, 10000);
 
+    const channelName = `partner-status-${Date.now()}`;
     const channel = supabase
-      .channel("partner-status")
+      .channel(channelName)
       .on("postgres_changes", {
         event: "UPDATE",
         schema: "public",
@@ -37,9 +38,12 @@ export function usePartner(currentUserId: string | undefined) {
       })
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(poll);
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
   }, [currentUserId]);
 
