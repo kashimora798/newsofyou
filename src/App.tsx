@@ -8,13 +8,14 @@ import { ThemeProvider } from "next-themes";
 import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import OfflineBanner from "@/components/layout/OfflineBanner";
+import PartnerRoute from "@/components/layout/PartnerRoute";
 
 // Eagerly loaded (critical path)
 import Login from "./pages/Login";
-import Home from "./pages/Home";
 
-// Lazy loaded (secondary pages)
+// Lazy loaded
 const Chat = lazy(() => import("./pages/Chat"));
+const Home = lazy(() => import("./pages/Home"));
 const Profile = lazy(() => import("./pages/Profile"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const Stats = lazy(() => import("./pages/Stats"));
@@ -34,11 +35,11 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 2, // 2 min — avoid refetching on every mount
-      gcTime: 1000 * 60 * 10, // 10 min cache
+      staleTime: 1000 * 60 * 2,
+      gcTime: 1000 * 60 * 10,
       retry: 1,
       refetchOnWindowFocus: false,
-      networkMode: "offlineFirst", // serve cache when offline
+      networkMode: "offlineFirst",
     },
     mutations: {
       networkMode: "offlineFirst",
@@ -52,6 +53,10 @@ const PageLoader = () => (
   </div>
 );
 
+const P = ({ children }: { children: React.ReactNode }) => (
+  <PartnerRoute>{children}</PartnerRoute>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -63,24 +68,24 @@ const App = () => (
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/" element={<Navigate to="/home" replace />} />
+                <Route path="/" element={<Navigate to="/chat" replace />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/home" element={<Home />} />
                 <Route path="/chat" element={<Chat />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/stats" element={<Stats />} />
-                <Route path="/scheduled-messages" element={<ScheduledMessages />} />
-                <Route path="/custom-stickers" element={<CustomStickers />} />
-                <Route path="/custom-touch-reactions" element={<CustomTouchReactions />} />
-                <Route path="/achievements" element={<Achievements />} />
-                <Route path="/letter-collection" element={<LetterCollection />} />
-                <Route path="/bookmarks" element={<Bookmarks />} />
-                <Route path="/reminders" element={<Reminders />} />
-                <Route path="/calendar" element={<SharedCalendar />} />
-                <Route path="/compliments" element={<ComplimentBox />} />
-                <Route path="/daily-checklist" element={<DailyChecklist />} />
-                <Route path="/games" element={<Games />} />
+                <Route path="/home" element={<P><Home /></P>} />
+                <Route path="/profile" element={<P><Profile /></P>} />
+                <Route path="/settings" element={<P><SettingsPage /></P>} />
+                <Route path="/stats" element={<P><Stats /></P>} />
+                <Route path="/scheduled-messages" element={<P><ScheduledMessages /></P>} />
+                <Route path="/custom-stickers" element={<P><CustomStickers /></P>} />
+                <Route path="/custom-touch-reactions" element={<P><CustomTouchReactions /></P>} />
+                <Route path="/achievements" element={<P><Achievements /></P>} />
+                <Route path="/letter-collection" element={<P><LetterCollection /></P>} />
+                <Route path="/bookmarks" element={<P><Bookmarks /></P>} />
+                <Route path="/reminders" element={<P><Reminders /></P>} />
+                <Route path="/calendar" element={<P><SharedCalendar /></P>} />
+                <Route path="/compliments" element={<P><ComplimentBox /></P>} />
+                <Route path="/daily-checklist" element={<P><DailyChecklist /></P>} />
+                <Route path="/games" element={<P><Games /></P>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
