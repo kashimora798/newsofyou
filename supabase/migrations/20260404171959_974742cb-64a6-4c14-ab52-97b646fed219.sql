@@ -1,0 +1,1 @@
+ALTER TABLE public.user_status ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'demo';
