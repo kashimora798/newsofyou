@@ -48,10 +48,13 @@ function getTimeOfDay(): string {
   return "night";
 }
 
+const DemoChat = lazy(() => import("./DemoChat"));
+
 const Chat: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
+  const { role, loading: roleLoading } = useUserRole(user?.id);
 
-  if (authLoading) {
+  if (authLoading || roleLoading) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -60,6 +63,14 @@ const Chat: React.FC = () => {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  if (role !== "partner") {
+    return (
+      <React.Suspense fallback={<div className="flex h-dvh items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <DemoChat />
+      </React.Suspense>
+    );
+  }
 
   return <ChatView userId={user.id} />;
 };
