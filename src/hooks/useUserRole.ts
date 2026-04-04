@@ -15,9 +15,9 @@ export function useUserRole(userId: string | undefined) {
 
     const fetchRole = async () => {
       const { data } = await supabase
-        .from("user_status")
+        .from("users")
         .select("role")
-        .eq("user_id", userId)
+        .eq("id", userId)
         .maybeSingle();
 
       setRole(((data as any)?.role as UserRole) ?? "demo");

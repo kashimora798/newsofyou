@@ -1,0 +1,2 @@
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'demo';
+ALTER TABLE public.user_status DROP COLUMN IF EXISTS role;
