@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { LogOut, Send } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePartner } from "@/hooks/usePartner";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -33,13 +32,12 @@ const AUTO_REPLIES = [
 const DemoChat: React.FC = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const partner = usePartner(user?.id);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const partnerName = partner?.name ?? "Partner";
-  const partnerInitial = partnerName.charAt(0).toUpperCase();
+  const partnerName = "Ramu";
+  const partnerInitial = "R";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
