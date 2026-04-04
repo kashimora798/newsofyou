@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { LogOut, Send } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePartner } from "@/hooks/usePartner";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
