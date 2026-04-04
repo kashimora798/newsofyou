@@ -1124,7 +1124,6 @@ export type Database = {
           longest_streak: number | null
           name: string | null
           profileurl: string | null
-          role: string
           streak_broken_on: string | null
           updated_at: string | null
           user_id: string | null
@@ -1143,7 +1142,6 @@ export type Database = {
           longest_streak?: number | null
           name?: string | null
           profileurl?: string | null
-          role?: string
           streak_broken_on?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -1162,7 +1160,6 @@ export type Database = {
           longest_streak?: number | null
           name?: string | null
           profileurl?: string | null
-          role?: string
           streak_broken_on?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -1178,6 +1175,7 @@ export type Database = {
           isOboardComp: boolean | null
           name: string | null
           profileURL: string | null
+          role: string
           updated_at: string | null
         }
         Insert: {
@@ -1188,6 +1186,7 @@ export type Database = {
           isOboardComp?: boolean | null
           name?: string | null
           profileURL?: string | null
+          role?: string
           updated_at?: string | null
         }
         Update: {
@@ -1198,6 +1197,7 @@ export type Database = {
           isOboardComp?: boolean | null
           name?: string | null
           profileURL?: string | null
+          role?: string
           updated_at?: string | null
         }
         Relationships: []
