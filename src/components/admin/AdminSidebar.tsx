@@ -53,9 +53,9 @@ const AdminSidebar = () => {
       <SidebarHeader className="border-b p-4">
         <div className={cn("flex items-center gap-2", collapsed && "justify-center")}>
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">N</span>
+            <span className="text-primary-foreground font-bold text-sm">E</span>
           </div>
-          {!collapsed && <span className="font-semibold text-lg">NewsOfYou Admin</span>}
+          {!collapsed && <span className="font-semibold text-lg">EduflowAi Admin</span>}
         </div>
       </SidebarHeader>
 

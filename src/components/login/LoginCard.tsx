@@ -47,7 +47,7 @@ const LoginCard: React.FC<LoginCardProps> = ({ onSubmit, onSuccess, invalidUser 
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <CardTitle className="text-2xl">Chatroom Login</CardTitle>
+            <CardTitle className="text-2xl">EduflowAi Login</CardTitle>
             <CardDescription>
               {invalidUser ? "Invalid user" : "Sign in to continue to private chat"}
             </CardDescription>

@@ -30,7 +30,7 @@ export function useUnreadCount(userId: string | undefined) {
 
   // Update tab title
   useEffect(() => {
-    document.title = count > 0 ? `(${count}) ChatRoom` : "ChatRoom";
+    document.title = count > 0 ? `(${count}) EduflowAi` : "EduflowAi";
   }, [count]);
 
   return count;

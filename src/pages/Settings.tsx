@@ -417,7 +417,7 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
         {/* Info */}
         <div className="bg-card rounded-2xl border border-border p-4">
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">About</h3>
-          <p className="text-xs text-muted-foreground">ChatRoom v2.0</p>
+          <p className="text-xs text-muted-foreground">EduflowAi v2.0</p>
           <p className="text-xs text-muted-foreground mt-1">A private chat for two 💕</p>
         </div>
       </div>
