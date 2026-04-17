@@ -1,14 +1,15 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
-import { Loader2 } from "lucide-react";
 
-interface PartnerRouteProps {
+interface AdminRouteProps {
   children: React.ReactNode;
+  allowNonAdmin?: boolean;
 }
 
-const PartnerRoute: React.FC<PartnerRouteProps> = ({ children }) => {
+const AdminRoute: React.FC<AdminRouteProps> = ({ children, allowNonAdmin = false }) => {
   const { user, loading: authLoading } = useAuth();
   const { role, loading: roleLoading } = useUserRole(user?.id);
 
@@ -20,10 +21,11 @@ const PartnerRoute: React.FC<PartnerRouteProps> = ({ children }) => {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
-  if (role !== "partner") return <Navigate to="/you/dashboard" replace />;
+  if (!user) return <Navigate to="/you/login" replace />;
+  if (allowNonAdmin) return <>{children}</>;
+  if (role !== "admin") return <Navigate to="/you/login" replace />;
 
   return <>{children}</>;
 };
 
-export default PartnerRoute;
+export default AdminRoute;

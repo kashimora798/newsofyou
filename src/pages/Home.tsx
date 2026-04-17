@@ -6,6 +6,7 @@ import { usePartner } from "@/hooks/usePartner";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { usePartnerAwayMessage } from "@/hooks/usePartnerAwayMessage";
 import { checkNewYear, useWaiterAchievement } from "@/hooks/useSecretAchievements";
 import { getThemeById } from "@/lib/chatThemes";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -49,6 +50,7 @@ const headerVariant = {
 
 const Home: React.FC = () => {
   const { user, loading: authLoading, signOut } = useAuth();
+  const navigate = useNavigate();
 
   if (authLoading) {
     return (
@@ -65,7 +67,12 @@ const Home: React.FC = () => {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  return <HomeView userId={user.id} onSignOut={signOut} />;
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/you/login", { replace: true });
+  };
+
+  return <HomeView userId={user.id} onSignOut={handleSignOut} />;
 };
 
 const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId, onSignOut }) => {
@@ -76,6 +83,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastMessageTime, setLastMessageTime] = useState<string | null>(null);
   const [chatTheme, setChatTheme] = useState("default");
+  const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
 
   useOnlineStatus(userId);
   useWaiterAchievement(userId, partner?.is_online);
@@ -208,7 +216,9 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {partner?.is_online ? (
+                  {partnerAwayMessage ? (
+                    <span className="text-orange-400 font-medium">{partnerAwayMessage}</span>
+                  ) : partner?.is_online ? (
                     <span className="text-online font-medium">Online now</span>
                   ) : (
                     `Last seen ${formatLastSeen(partner?.last_seen ?? null)}`

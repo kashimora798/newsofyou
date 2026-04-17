@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import PresenceStatus from "./PresenceStatus";
-import { Search, ArrowLeft, LogOut, Eye, EyeOff } from "lucide-react";
+import { Search, ArrowLeft, LogOut, Eye, EyeOff, ShieldBan } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Tables } from "@/integrations/supabase/types";
 import type { ThemeEffectsConfig } from "@/hooks/useThemeEffects";
@@ -17,11 +17,20 @@ interface ChatHeaderProps {
   onImmersiveToggle?: () => void;
   showImmersiveButton?: boolean;
   themeEffects?: ThemeEffectsConfig;
+  canBanPartner?: boolean;
+  onBanPartner?: () => void;
+  banButtonTitle?: string;
+  partnerAwayMessage?: string | null;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle, immersiveMode, onImmersiveToggle, showImmersiveButton, themeEffects }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle, immersiveMode, onImmersiveToggle, showImmersiveButton, themeEffects, canBanPartner, onBanPartner, banButtonTitle, partnerAwayMessage }) => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    window.location.replace("/you/login");
+  };
 
   const displayName = partner?.name ?? "Loading...";
   const themedName = themeEffects ? themeEffects.headerTitle(displayName) : displayName;
@@ -83,10 +92,10 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         ) : (
           <h2 className="text-sm font-bold text-foreground truncate">{themedName}</h2>
         )}
-        {themeEffects?.headerSubtitle && !partnerTyping ? (
+        {themeEffects?.headerSubtitle && !partnerTyping && !partnerAwayMessage ? (
           <p className="text-[10px] text-muted-foreground truncate">{themeEffects.headerSubtitle}</p>
         ) : (
-          <PresenceStatus partner={partner} partnerTyping={partnerTyping} />
+          <PresenceStatus partner={partner} partnerTyping={partnerTyping} partnerAwayMessage={partnerAwayMessage} />
         )}
       </div>
 
@@ -97,6 +106,11 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         </div>
       )}
 
+      {canBanPartner && (
+        <HeaderBtn onClick={onBanPartner} title={banButtonTitle ?? "Ban user for 5 minutes"}>
+          <ShieldBan className="h-[18px] w-[18px] text-rose-500" />
+        </HeaderBtn>
+      )}
       {showImmersiveButton && (
         <HeaderBtn onClick={onImmersiveToggle}>
           {immersiveMode ? <EyeOff className="h-[18px] w-[18px] text-muted-foreground" /> : <Eye className="h-[18px] w-[18px] text-muted-foreground" />}
@@ -105,7 +119,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
       <HeaderBtn onClick={onSearchToggle}>
         <Search className="h-[18px] w-[18px] text-muted-foreground" />
       </HeaderBtn>
-      <HeaderBtn onClick={signOut} title="Logout">
+      <HeaderBtn onClick={handleLogout} title="Logout">
         <LogOut className="h-[18px] w-[18px] text-muted-foreground" />
       </HeaderBtn>
     </header>

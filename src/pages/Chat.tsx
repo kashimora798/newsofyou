@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback, lazy } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -14,6 +14,7 @@ import { useAnimationQueue } from "@/hooks/useAnimationQueue";
 import { useShakeDetection } from "@/hooks/useShakeDetection";
 import { usePinnedMessages } from "@/hooks/usePinnedMessages";
 import { useThemeEffects } from "@/hooks/useThemeEffects";
+import { usePartnerAwayMessage } from "@/hooks/usePartnerAwayMessage";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
 import PinnedMessagesBar from "@/components/chat/PinnedMessagesBar";
@@ -48,8 +49,6 @@ function getTimeOfDay(): string {
   return "night";
 }
 
-const DemoChat = lazy(() => import("./DemoChat"));
-
 const Chat: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
   const { role, loading: roleLoading } = useUserRole(user?.id);
@@ -62,22 +61,17 @@ const Chat: React.FC = () => {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/you/login" replace />;
 
-  if (role !== "partner") {
-    return (
-      <React.Suspense fallback={<div className="flex h-dvh items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
-        <DemoChat />
-      </React.Suspense>
-    );
-  }
+  if (role === "demo") return <Navigate to="/you/dashboard" replace />;
 
-  return <ChatView userId={user.id} />;
+  return <ChatView userId={user.id} role={role} canBanAction={role !== "demo"} />;
 };
 
-const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
+const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; canBanAction: boolean }> = ({ userId, role, canBanAction }) => {
   const partner = usePartner(userId);
   const currentUser = useCurrentUser(userId);
+  const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
   const { messages, loading, loadingMore, hasMore, loadMore, sendMessage } = useMessages(userId);
   const { partnerTyping, handleTyping, setTyping } = useTyping(userId, currentUser?.name ?? undefined);
   const [replyTo, setReplyTo] = useState<Tables<"messages"> | null>(null);
@@ -254,6 +248,30 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
     return last.content ?? null;
   }, [messages, userId]);
 
+  const handleBanAction = useCallback(async () => {
+    const isAdmin = role === "admin";
+    const targetUserId = isAdmin ? partner?.user_id : userId;
+    if (!targetUserId) {
+      toast({ title: "Unable to ban user", description: "Partner not available.", variant: "destructive" });
+      return;
+    }
+
+    const { error } = await supabase.rpc("ban_user_for_five_minutes", {
+      target_user_id: targetUserId,
+      ban_reason: isAdmin ? "Temporary moderation action" : "Temporary self-hide action",
+    });
+
+    if (error) {
+      toast({ title: "Ban failed", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    toast({
+      title: isAdmin ? "User banned" : "You are hidden",
+      description: "Access blocked for 5 minutes.",
+    });
+  }, [partner?.user_id, role, userId]);
+
   return (
     <div className={`flex h-dvh ${themeConfig.cssClass}`} style={{ background: themeConfig.cssClass ? 'hsl(var(--chat-bg))' : undefined }}>
       {/* Theme ambient effects */}
@@ -277,6 +295,7 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
           <ChatHeader
             partner={partner}
             partnerTyping={partnerTyping}
+            partnerAwayMessage={partnerAwayMessage}
             onSearchToggle={() => {
               if (showSearch) {
                 clear();
@@ -291,6 +310,9 @@ const ChatView: React.FC<{ userId: string }> = ({ userId }) => {
             onImmersiveToggle={() => setImmersiveMode(!immersiveMode)}
             showImmersiveButton={wallpaper === "sky"}
             themeEffects={themeEffects}
+            canBanPartner={canBanAction}
+            onBanPartner={handleBanAction}
+            banButtonTitle={role === "admin" ? "Ban partner for 5 minutes" : "Hide this account for 5 minutes"}
           />
         </div>
         {!immersiveMode && (

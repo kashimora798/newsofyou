@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type UserRole = "partner" | "demo";
+export type UserRole = "partner" | "demo" | "admin";
 
 export function useUserRole(userId: string | undefined) {
   const [role, setRole] = useState<UserRole>("demo");

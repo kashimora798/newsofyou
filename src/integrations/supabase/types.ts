@@ -1166,6 +1166,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_bans: {
+        Row: {
+          ban_reason: string | null
+          banned_by: string | null
+          banned_until: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          ban_reason?: string | null
+          banned_by?: string | null
+          banned_until: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          ban_reason?: string | null
+          banned_by?: string | null
+          banned_until?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           bio: string | null
@@ -1248,7 +1275,12 @@ export type Database = {
     }
     Functions: {
       auto_cleanup_statuses: { Args: never; Returns: undefined }
+      ban_user_for_five_minutes: {
+        Args: { ban_reason?: string; target_user_id: string }
+        Returns: undefined
+      }
       cleanup_typing_status: { Args: never; Returns: undefined }
+      current_user_is_admin: { Args: never; Returns: boolean }
       get_achievement_stats: { Args: never; Returns: Json }
       get_advanced_stats: { Args: never; Returns: Json }
       get_chat_stats: { Args: never; Returns: Json }

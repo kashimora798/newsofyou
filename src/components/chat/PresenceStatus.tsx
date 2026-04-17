@@ -5,6 +5,7 @@ import type { Tables } from "@/integrations/supabase/types";
 interface PresenceStatusProps {
   partner: Tables<"user_status"> | null;
   partnerTyping: boolean;
+  partnerAwayMessage?: string | null;
 }
 
 const STATUS_PRESETS: Record<string, { emoji: string; label: string }> = {
@@ -18,7 +19,11 @@ const STATUS_PRESETS: Record<string, { emoji: string; label: string }> = {
   exercising: { emoji: "🏃", label: "Exercising" },
 };
 
-const PresenceStatus: React.FC<PresenceStatusProps> = ({ partner, partnerTyping }) => {
+const PresenceStatus: React.FC<PresenceStatusProps> = ({ partner, partnerTyping, partnerAwayMessage }) => {
+  if (partnerAwayMessage) {
+    return <span className="text-xs text-orange-400">{partnerAwayMessage}</span>;
+  }
+
   if (partnerTyping) {
     return <span className="text-xs text-primary font-medium">typing...</span>;
   }

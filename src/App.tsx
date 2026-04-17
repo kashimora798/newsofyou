@@ -9,9 +9,12 @@ import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import OfflineBanner from "@/components/layout/OfflineBanner";
 import PartnerRoute from "@/components/layout/PartnerRoute";
+import AdminRoute from "@/components/layout/AdminRoute";
 
 // Eagerly loaded (critical path)
-import Login from "./pages/Login";
+import Index from "./pages/Index";
+import AdminLogin from "./pages/AdminLogin";
+import AdminDashboard from "./pages/AdminDashboard";
 
 // Lazy loaded
 const Chat = lazy(() => import("./pages/Chat"));
@@ -68,8 +71,12 @@ const App = () => (
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/" element={<Navigate to="/chat" replace />} />
-                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<NotFound />} />
+                <Route path="/you" element={<Navigate to="/you/login" replace />} />
+                <Route path="/you/login" element={<AdminLogin />} />
+                <Route path="/you/dashboard" element={<AdminRoute allowNonAdmin><AdminDashboard /></AdminRoute>} />
+                <Route path="/you/control" element={<AdminRoute><Chat /></AdminRoute>} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/home" element={<P><Home /></P>} />
                 <Route path="/profile" element={<P><Profile /></P>} />
