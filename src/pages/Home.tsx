@@ -9,9 +9,10 @@ import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { usePartnerAwayMessage } from "@/hooks/usePartnerAwayMessage";
 import { checkNewYear, useWaiterAchievement } from "@/hooks/useSecretAchievements";
 import { getThemeById } from "@/lib/chatThemes";
+import { daysTogether } from "@/lib/anniversary";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatLastSeen } from "@/lib/dateUtils";
-import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2 } from "lucide-react";
+import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2, BarChart3, Mail, Send, Sticker, Hand, Compass, Sparkles, TreePine } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import BottomNav from "@/components/layout/BottomNav";
 import StreakCounter from "@/components/home/StreakCounter";
@@ -24,6 +25,7 @@ import ReminderWidget from "@/components/home/ReminderWidget";
 import CalendarWidget from "@/components/home/CalendarWidget";
 import ComplimentPopup from "@/components/home/ComplimentPopup";
 import DailyChecklistWidget from "@/components/home/DailyChecklistWidget";
+import AnniversaryBanner from "@/components/home/AnniversaryBanner";
 
 // Stagger animation variants
 const container = {
@@ -128,13 +130,19 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const themeConfig = getThemeById(chatTheme);
 
   const quickLinks = [
-    { path: "/bookmarks", icon: Bookmark, label: "Bookmarks", color: "text-amber-500" },
-    { path: "/reminders", icon: Bell, label: "Reminders", color: "text-blue-500" },
-    { path: "/calendar", icon: CalendarDays, label: "Calendar", color: "text-emerald-500" },
-    { path: "/compliments", icon: Heart, label: "Compliments", color: "text-pink-500" },
-    { path: "/daily-checklist", icon: CheckSquare, label: "Checklist", color: "text-violet-500" },
-    { path: "/achievements", icon: Trophy, label: "Achievements", color: "text-yellow-500" },
-    { path: "/games", icon: Gamepad2, label: "Games", color: "text-orange-500" },
+    { path: "/forest", icon: TreePine, label: "Our Tree", color: "text-green-500", bg: "bg-green-500/10" },
+    { path: "/games", icon: Gamepad2, label: "Games", color: "text-orange-500", bg: "bg-orange-500/10" },
+    { path: "/stats", icon: BarChart3, label: "Stats", color: "text-sky-500", bg: "bg-sky-500/10" },
+    { path: "/bookmarks", icon: Bookmark, label: "Bookmarks", color: "text-amber-500", bg: "bg-amber-500/10" },
+    { path: "/reminders", icon: Bell, label: "Reminders", color: "text-blue-500", bg: "bg-blue-500/10" },
+    { path: "/calendar", icon: CalendarDays, label: "Calendar", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { path: "/compliments", icon: Heart, label: "Compliments", color: "text-pink-500", bg: "bg-pink-500/10" },
+    { path: "/daily-checklist", icon: CheckSquare, label: "Checklist", color: "text-violet-500", bg: "bg-violet-500/10" },
+    { path: "/achievements", icon: Trophy, label: "Achievements", color: "text-yellow-500", bg: "bg-yellow-500/10" },
+    { path: "/letter-collection", icon: Mail, label: "Letters", color: "text-rose-500", bg: "bg-rose-500/10" },
+    { path: "/scheduled-messages", icon: Send, label: "Scheduled", color: "text-cyan-500", bg: "bg-cyan-500/10" },
+    { path: "/custom-stickers", icon: Sticker, label: "Stickers", color: "text-fuchsia-500", bg: "bg-fuchsia-500/10" },
+    { path: "/custom-touch-reactions", icon: Hand, label: "Touch", color: "text-teal-500", bg: "bg-teal-500/10" },
   ];
 
   return (
@@ -182,33 +190,43 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         animate="show"
         className="flex-1 overflow-y-auto px-4 pb-4 space-y-3 scrollbar-thin"
       >
-        {/* Chat Card */}
+        {/* Anniversary Wrapped (appears only near the anniversary) */}
+        <motion.div variants={item}>
+          <AnniversaryBanner />
+        </motion.div>
+
+        {/* Chat Card — the hero */}
         <motion.div variants={item}>
           <motion.button
             onClick={() => navigate("/chat")}
-            whileHover={{ y: -2, boxShadow: "0 8px 30px -8px hsl(var(--primary) / 0.15)" }}
+            whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
-            className="w-full glass rounded-2xl p-4 transition-colors group"
+            className="relative w-full rounded-3xl p-5 transition-colors group overflow-hidden text-left"
+            style={{
+              background: "linear-gradient(135deg, hsl(var(--primary) / 0.12) 0%, hsl(var(--accent) / 0.18) 100%)",
+              border: "1px solid hsl(var(--primary) / 0.15)",
+              boxShadow: "0 8px 32px -12px hsl(var(--primary) / 0.25)",
+            }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3.5">
               <div className="relative">
-                <Avatar className="h-12 w-12 ring-2 ring-primary/20">
+                <Avatar className="h-14 w-14 ring-2 ring-primary/25 ring-offset-2 ring-offset-background">
                   <AvatarImage src={partner?.profileurl ?? ""} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-base font-semibold">
+                  <AvatarFallback className="bg-primary/15 text-primary text-lg font-bold">
                     {partner?.name?.charAt(0) ?? "?"}
                   </AvatarFallback>
                 </Avatar>
                 {partner?.is_online && (
                   <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-online border-2 border-background"
+                    animate={{ scale: [1, 1.25, 1] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-online border-2 border-background"
                   />
                 )}
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-foreground truncate">{partner?.name ?? "..."}</h3>
+                  <h3 className="text-base font-bold text-foreground truncate">{partner?.name ?? "..."}</h3>
                   {lastMessageTime && (
                     <span className="text-[10px] text-muted-foreground shrink-0">
                       {formatLastSeen(lastMessageTime)}
@@ -225,7 +243,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
                   )}
                 </p>
                 {lastMessage && (
-                  <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{lastMessage}</p>
+                  <p className="text-xs text-muted-foreground/70 truncate mt-1">{lastMessage}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -236,46 +254,30 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
                       animate={{ scale: 1 }}
                       exit={{ scale: 0 }}
                       transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5"
+                      className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold px-2 shadow-lg shadow-primary/30"
                     >
                       {unreadCount}
                     </motion.span>
                   )}
                 </AnimatePresence>
-                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                <ChevronRight className="h-5 w-5 text-primary/60 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
               </div>
             </div>
           </motion.button>
         </motion.div>
 
-        {/* Quick Stats Row */}
-        <motion.div variants={item} className="grid grid-cols-2 gap-3">
-          <motion.div whileHover={{ y: -2 }} className="glass rounded-2xl p-3 text-center">
-            <motion.p
-              key={unreadCount}
-              initial={{ scale: 1.3, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-2xl font-bold text-primary"
-            >
-              {unreadCount}
-            </motion.p>
-            <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Unread</p>
-          </motion.div>
-          <motion.div whileHover={{ y: -2 }} className="glass rounded-2xl p-3 text-center">
-            <div className="flex items-center justify-center gap-1.5">
-              <motion.span
-                animate={partner?.is_online ? { scale: [1, 1.3, 1] } : {}}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className={`h-2 w-2 rounded-full ${partner?.is_online ? "bg-online" : "bg-muted-foreground/30"}`}
-              />
-              <p className="text-xs font-semibold text-foreground truncate">
-                {partner?.name?.split(" ")[0] ?? "Partner"}
-              </p>
-            </div>
-            <p className="text-[10px] text-muted-foreground font-medium mt-1">
-              {partner?.is_online ? "Online" : "Offline"}
+        {/* Days together ribbon */}
+        <motion.div variants={item}>
+          <div
+            className="rounded-2xl px-4 py-3 flex items-center justify-center gap-2.5"
+            style={{ background: "linear-gradient(120deg, hsl(330 50% 60% / 0.12), hsl(var(--primary) / 0.12))" }}
+          >
+            <Heart className="h-4 w-4 text-pink-500 shrink-0" />
+            <p className="text-sm text-foreground">
+              <span className="font-black text-primary">{daysTogether().toLocaleString()}</span>
+              <span className="text-muted-foreground"> days together 💞</span>
             </p>
-          </motion.div>
+          </div>
         </motion.div>
 
         {/* Daily Checklist */}
@@ -288,20 +290,24 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
           <DailyQuestion />
         </motion.div>
 
-        {/* Quick Links */}
+        {/* Explore — every feature, beautifully surfaced */}
         <motion.div variants={item} className="glass rounded-2xl p-4">
-          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Quick Access</h3>
-          <div className="grid grid-cols-3 gap-2">
-            {quickLinks.map((link, i) => (
+          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <Compass className="h-3 w-3" /> Explore
+          </h3>
+          <div className="grid grid-cols-4 gap-2.5">
+            {quickLinks.map((link) => (
               <motion.button
                 key={link.path}
-                whileHover={{ y: -3, scale: 1.02 }}
-                whileTap={{ scale: 0.92 }}
+                whileHover={{ y: -3, scale: 1.03 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={() => navigate(link.path)}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl glass-subtle hover:bg-muted/40 transition-colors"
+                className="flex flex-col items-center gap-1.5 group"
               >
-                <link.icon className={`h-5 w-5 ${link.color}`} />
-                <span className="text-[10px] font-semibold text-foreground">{link.label}</span>
+                <div className={`h-12 w-12 rounded-2xl ${link.bg} flex items-center justify-center transition-shadow group-hover:shadow-lg group-hover:shadow-primary/10`}>
+                  <link.icon className={`h-5 w-5 ${link.color}`} />
+                </div>
+                <span className="text-[9.5px] font-semibold text-foreground/80 text-center leading-tight">{link.label}</span>
               </motion.button>
             ))}
           </div>
@@ -317,14 +323,18 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
 
          {/* Relationship Section */}
          <motion.div variants={item} className="space-y-3">
-           <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-1">Your Bond</h3>
+           <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-1 flex items-center gap-1.5">
+             <Heart className="h-3 w-3 text-pink-500" /> Your Bond
+           </h3>
            <Tamagotchi />
            <StreakCounter />
         </motion.div>
 
         {/* Discover Section */}
         <motion.div variants={item} className="space-y-3">
-          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-1">Discover</h3>
+          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest px-1 flex items-center gap-1.5">
+            <Sparkles className="h-3 w-3 text-primary" /> Discover
+          </h3>
           <AiSummary />
           <OnThisDay />
         </motion.div>

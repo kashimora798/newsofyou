@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, RotateCcw, ArrowLeft } from "lucide-react";
+import { Trophy, RotateCcw, ArrowLeft, Shuffle } from "lucide-react";
+import { useGameActions } from "@/contexts/GameActionsContext";
 
 interface ConfettiProps {
   delay: number;
@@ -65,6 +66,7 @@ const GameOverCelebration: React.FC<GameOverCelebrationProps> = ({
   customMessage,
 }) => {
   const [rematchRequested, setRematchRequested] = useState(false);
+  const { onDifferentGame } = useGameActions();
 
   const confettiParticles = useMemo(() => {
     if (!isWinner) return [];
@@ -183,6 +185,23 @@ const GameOverCelebration: React.FC<GameOverCelebrationProps> = ({
             {rematchRequested ? "Waiting…" : "Rematch"}
           </motion.button>
         </motion.div>
+        
+        {onDifferentGame && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            className="mt-3"
+          >
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={onDifferentGame}
+              className="w-full h-12 rounded-2xl bg-secondary/80 text-secondary-foreground font-semibold text-sm flex items-center justify-center gap-2"
+            >
+              <Shuffle className="h-4 w-4" /> Different Game
+            </motion.button>
+          </motion.div>
+        )}
       </motion.div>
     </motion.div>
   );

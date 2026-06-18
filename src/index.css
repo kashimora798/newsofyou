@@ -5,104 +5,113 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Quicksand:wght@400;500;600;700&display=swap');
 
 @layer base {
+  /* ───────────────────────────────────────────────────────────
+     PREMIUM LIGHT — warm white / cream, single refined accent.
+     Built on the apple-aesthetic-ui token system: deference
+     (chrome recedes), hairline separators, one accent for actions.
+     ─────────────────────────────────────────────────────────── */
   :root {
-    --background: 270 20% 98%;
-    --foreground: 260 25% 11%;
+    --background: 40 33% 97%;        /* warm cream canvas */
+    --foreground: 30 12% 12%;        /* near-black, faint warmth */
 
-    --card: 0 0% 100%;
-    --card-foreground: 260 25% 11%;
+    --card: 42 50% 99.5%;            /* paper white, hint of cream */
+    --card-foreground: 30 12% 12%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 260 25% 11%;
+    --popover: 42 50% 99.5%;
+    --popover-foreground: 30 12% 12%;
 
-    --primary: 262 52% 56%;
+    --primary: 262 52% 56%;          /* the single accent (actions only) */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 170 35% 92%;
-    --secondary-foreground: 170 40% 20%;
+    --secondary: 40 24% 93%;
+    --secondary-foreground: 35 18% 24%;
 
-    --muted: 260 15% 95%;
-    --muted-foreground: 260 10% 45%;
+    --muted: 40 22% 94%;
+    --muted-foreground: 35 9% 44%;
 
-    --accent: 330 50% 93%;
-    --accent-foreground: 330 45% 25%;
+    --accent: 40 28% 92%;
+    --accent-foreground: 35 20% 26%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 5 78% 53%;        /* iOS red */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 260 15% 90%;
-    --input: 260 15% 88%;
+    --border: 38 18% 88%;            /* warm hairline */
+    --input: 38 18% 86%;
     --ring: 262 52% 56%;
 
-    --radius: 0.75rem;
+    --radius: 0.875rem;              /* 14px — Apple list-row / button radius */
 
-    --bubble-own: 262 45% 94%;
-    --bubble-own-foreground: 262 30% 15%;
-    --bubble-partner: 0 0% 100%;
-    --bubble-partner-foreground: 260 25% 11%;
+    --bubble-own: 262 48% 95%;       /* soft accent-tint cream */
+    --bubble-own-foreground: 262 32% 20%;
+    --bubble-partner: 42 50% 99.5%;  /* paper white */
+    --bubble-partner-foreground: 30 12% 14%;
 
-    --online: 145 63% 49%;
-    --seen: 210 100% 52%;
+    --online: 142 60% 42%;           /* iOS green */
+    --seen: 211 100% 50%;            /* iOS blue */
 
-    --chat-bg: 270 20% 96%;
+    --chat-bg: 40 30% 96%;           /* cream, a touch deeper than cards */
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 40 33% 97%;
+    --sidebar-foreground: 35 10% 28%;
+    --sidebar-primary: 262 52% 56%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 24% 93%;
+    --sidebar-accent-foreground: 35 18% 24%;
+    --sidebar-border: 38 18% 88%;
+    --sidebar-ring: 262 52% 56%;
   }
 
+  /* ───────────────────────────────────────────────────────────
+     PREMIUM DARK — warm charcoal, not blue-black. Deep, calm,
+     layered: background → card → elevated surface, hairlines.
+     ─────────────────────────────────────────────────────────── */
   .dark {
-    --background: 260 20% 7%;
-    --foreground: 260 10% 92%;
+    --background: 30 9% 7%;          /* warm near-black */
+    --foreground: 40 16% 92%;
 
-    --card: 260 20% 10%;
-    --card-foreground: 260 10% 92%;
+    --card: 32 9% 11%;               /* elevated warm grey */
+    --card-foreground: 40 16% 92%;
 
-    --popover: 260 20% 10%;
-    --popover-foreground: 260 10% 92%;
+    --popover: 32 9% 12%;
+    --popover-foreground: 40 16% 92%;
 
-    --primary: 262 52% 60%;
+    --primary: 262 60% 67%;          /* accent, lifted for dark contrast */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 170 25% 15%;
-    --secondary-foreground: 170 30% 85%;
+    --secondary: 32 7% 16%;
+    --secondary-foreground: 40 14% 86%;
 
-    --muted: 260 15% 15%;
-    --muted-foreground: 260 10% 55%;
+    --muted: 32 7% 16%;
+    --muted-foreground: 38 8% 58%;
 
-    --accent: 330 30% 18%;
-    --accent-foreground: 330 35% 85%;
+    --accent: 32 8% 18%;
+    --accent-foreground: 40 14% 86%;
 
-    --destructive: 0 62% 30%;
+    --destructive: 5 70% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 260 15% 18%;
-    --input: 260 15% 18%;
-    --ring: 262 52% 60%;
+    --border: 34 7% 19%;             /* warm hairline */
+    --input: 34 7% 19%;
+    --ring: 262 60% 67%;
 
-    --bubble-own: 262 35% 22%;
-    --bubble-own-foreground: 262 15% 90%;
-    --bubble-partner: 260 20% 14%;
-    --bubble-partner-foreground: 260 10% 90%;
+    --bubble-own: 262 38% 26%;       /* deep accent plum */
+    --bubble-own-foreground: 262 20% 94%;
+    --bubble-partner: 32 8% 15%;     /* warm graphite */
+    --bubble-partner-foreground: 40 14% 92%;
 
-    --online: 145 63% 42%;
-    --seen: 210 100% 56%;
+    --online: 142 56% 46%;
+    --seen: 211 100% 58%;
 
-    --chat-bg: 260 20% 8%;
+    --chat-bg: 30 9% 8%;
 
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-background: 30 9% 7%;
+    --sidebar-foreground: 40 14% 86%;
+    --sidebar-primary: 262 60% 67%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 32 8% 16%;
+    --sidebar-accent-foreground: 40 14% 86%;
+    --sidebar-border: 34 7% 19%;
+    --sidebar-ring: 262 60% 67%;
   }
 }
 
@@ -113,47 +122,136 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Nunito', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Nunito', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Quicksand', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Quicksand', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  /* Utility for emoji-heavy UI (picker, reactions): force the color-emoji
+     fallback chain so newer codepoints never render as tofu boxes. */
+  .emoji-font {
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
+  }
+
+  /* emoji-mart picker — themed to match the app's surface, no "pasted" look. */
+  .emoji-mart-wrap {
+    padding: 0 4px 4px;
+  }
+  .emoji-mart-wrap em-emoji-picker {
+    --rgb-accent: 139, 92, 246;          /* primary purple */
+    --rgb-background: 254, 253, 250;      /* cream paper */
+    --rgb-input: 244, 241, 234;
+    --color-border: hsl(38 18% 88% / 0.6);
+    --border-radius: 18px;
+    --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Nunito', sans-serif;
+    --shadow: none;
+    width: 100%;
+    max-width: 100%;
+    height: 300px;
+    border: none;
+  }
+  .dark .emoji-mart-wrap em-emoji-picker {
+    --rgb-background: 28, 26, 24;          /* warm charcoal */
+    --rgb-input: 40, 37, 34;
+    --color-border: hsl(34 7% 19% / 0.7);
   }
 }
 
 @layer utilities {
   .glass {
-    background: hsl(var(--card) / 0.92);
+    background: hsl(var(--card) / 0.72);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid hsl(var(--border) / 0.5);
-    box-shadow: 0 4px 16px hsl(var(--foreground) / 0.06);
+    border: 0.5px solid hsl(var(--border) / 0.7);
+    box-shadow: 0 4px 16px hsl(var(--foreground) / 0.05);
   }
   .glass-subtle {
-    background: hsl(var(--card) / 0.78);
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
-    border: 1px solid hsl(var(--border) / 0.4);
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    border: 0.5px solid hsl(var(--border) / 0.5);
   }
   .glass-accent {
     background: hsl(var(--primary) / 0.08);
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid hsl(var(--primary) / 0.15);
+    border: 0.5px solid hsl(var(--primary) / 0.15);
   }
+  /* Apple-style scrollbar — thin, rounded, translucent, fades into
+     the surface. Appears as a soft overlay rather than a chrome track. */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-color: hsl(var(--foreground) / 0.18) transparent;
   }
   .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
+    width: 7px;
+    height: 7px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: hsl(var(--foreground) / 0.16);
     border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: background 0.2s ease;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--foreground) / 0.32);
+    background-clip: content-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--foreground) / 0.42);
+    background-clip: content-box;
+  }
+  /* Hidden until hover/scroll — the most Apple variant, for the chat list */
+  .scrollbar-overlay {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scrollbar-overlay::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+  .scrollbar-overlay::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-overlay::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: background 0.25s ease;
+  }
+  .scrollbar-overlay:hover {
+    scrollbar-color: hsl(var(--foreground) / 0.2) transparent;
+  }
+  .scrollbar-overlay:hover::-webkit-scrollbar-thumb {
+    background: hsl(var(--foreground) / 0.2);
+    background-clip: content-box;
+  }
+  .scrollbar-overlay::-webkit-scrollbar-thumb:active {
+    background: hsl(var(--foreground) / 0.4);
+    background-clip: content-box;
+  }
+  /* Apple spring + press-feedback helpers */
+  .tappable {
+    transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1),
+                opacity 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .tappable:active {
+    transform: scale(0.96);
+    opacity: 0.9;
+  }
+  .ease-spring {
+    transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
   }
   .safe-area-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -162,19 +260,19 @@
     background: hsl(var(--card) / 0.72);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-bottom: 1px solid hsl(var(--border) / 0.3);
+    border-bottom: 0.5px solid hsl(var(--border) / 0.7);
   }
   .glass-chat-input {
     background: hsl(var(--card) / 0.72);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-top: 1px solid hsl(var(--border) / 0.3);
+    border-top: 0.5px solid hsl(var(--border) / 0.7);
   }
   .bubble-shadow-own {
-    box-shadow: 0 1px 6px -1px hsl(var(--primary) / 0.12), 0 1px 2px -1px hsl(var(--primary) / 0.06);
+    box-shadow: 0 1px 2px hsl(var(--primary) / 0.08), 0 4px 12px -6px hsl(var(--primary) / 0.14);
   }
   .bubble-shadow-partner {
-    box-shadow: 0 1px 6px -1px hsl(var(--foreground) / 0.06), 0 1px 2px -1px hsl(var(--foreground) / 0.04);
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05), 0 4px 12px -8px hsl(var(--foreground) / 0.08);
   }
 }
 
@@ -522,6 +620,47 @@
   box-shadow: 0 2px 12px hsl(340 55% 55% / 0.12);
 }
 
+/* ── GALAXY (secret — unlocked by naming the planets in order) ── */
+.theme-galaxy {
+  --background: 245 45% 6%;
+  --bubble-own: 262 60% 40%;
+  --bubble-own-foreground: 250 40% 96%;
+  --bubble-partner: 240 35% 16%;
+  --bubble-partner-foreground: 240 30% 92%;
+  --chat-bg: 245 45% 6%;
+  --card: 244 40% 10%;
+  --card-foreground: 240 30% 92%;
+  --border: 250 35% 22%;
+  --foreground: 240 30% 92%;
+  --muted: 244 35% 14%;
+  --muted-foreground: 245 20% 62%;
+  --primary: 270 80% 68%;
+  --primary-foreground: 0 0% 100%;
+  --input: 244 35% 14%;
+  --popover: 244 40% 10%;
+  --popover-foreground: 240 30% 92%;
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.9), transparent),
+    radial-gradient(1px 1px at 60% 70%, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1.5px 1.5px at 80% 20%, rgba(190,180,255,0.8), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(255,255,255,0.6), transparent),
+    radial-gradient(1.5px 1.5px at 90% 60%, rgba(210,190,255,0.7), transparent),
+    radial-gradient(ellipse at 50% 0%, rgba(120,80,220,0.22), transparent 60%),
+    radial-gradient(ellipse at 100% 100%, rgba(60,120,220,0.18), transparent 55%);
+  background-attachment: fixed;
+}
+.theme-galaxy [class*="bg-bubble-own"] {
+  box-shadow: 0 2px 18px hsl(270 80% 60% / 0.35);
+  border: 1px solid hsl(270 70% 70% / 0.3);
+}
+.theme-galaxy [class*="bg-bubble-partner"] {
+  box-shadow: 0 2px 14px hsl(240 60% 40% / 0.3);
+  border: 1px solid hsl(240 50% 60% / 0.2);
+}
+.theme-galaxy header h2 {
+  text-shadow: 0 0 12px hsl(270 80% 70% / 0.6);
+}
+
 /* ══════════════════════════════════════════════════════════
    THEME AMBIENT EFFECTS — CSS Animations & Overlays
    ══════════════════════════════════════════════════════════ */
@@ -790,4 +929,52 @@
 @keyframes touch-overlay-out {
   0% { opacity: 1; filter: blur(0); }
   100% { opacity: 0; filter: blur(8px); }
+}
+
+/* ══════════════════════════════════════════════════
+   APPLE SHEETS & MODALS — spring presentation
+   ══════════════════════════════════════════════════ */
+
+@keyframes apple-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Bottom sheet — rises from the bottom edge with a spring settle */
+@keyframes apple-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* Centered modal — scales up gently from 96% */
+@keyframes apple-modal-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Side panel — slides in from the trailing edge */
+@keyframes apple-panel-in {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.animate-apple-backdrop {
+  animation: apple-backdrop-in 0.28s ease-out both;
+}
+.animate-apple-sheet {
+  animation: apple-sheet-up 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.animate-apple-modal {
+  animation: apple-modal-in 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.animate-apple-panel {
+  animation: apple-panel-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-apple-sheet,
+  .animate-apple-modal,
+  .animate-apple-panel {
+    animation: apple-backdrop-in 0.2s ease-out both;
+  }
 }

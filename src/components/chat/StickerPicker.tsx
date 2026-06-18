@@ -123,7 +123,8 @@ const STICKER_PACKS: Record<string, string[]> = {
 
 const StickerPicker: React.FC<StickerPickerProps> = ({ onSelect }) => {
   const { user } = useAuth();
-  const [activePack, setActivePack] = useState<string>("My Stickers");
+  // Default to a populated pack so the grid is never empty on first open.
+  const [activePack, setActivePack] = useState<string>("Love");
   const [customStickers, setCustomStickers] = useState<string[]>([]);
 
   useEffect(() => {
@@ -175,7 +176,7 @@ const StickerPicker: React.FC<StickerPickerProps> = ({ onSelect }) => {
                 onClick={() => onSelect(url)}
                 className="aspect-square rounded-lg hover:bg-muted p-1 transition-transform hover:scale-105 active:scale-95"
               >
-                <img src={url} alt="sticker" className="w-full h-full object-contain" loading="lazy" />
+                <img src={url} alt="sticker" className="w-full h-full object-contain" loading="lazy" onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = "none"; }} />
               </button>
             ))}
           </div>

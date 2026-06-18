@@ -6,6 +6,7 @@ import TypingIndicator from "./TypingIndicator";
 import ScrollToBottom from "./ScrollToBottom";
 import ImageLightbox from "./ImageLightbox";
 import SkyBackground from "./SkyBackground";
+import MessageListSkeleton from "./MessageListSkeleton";
 import { isSameDay } from "@/lib/dateUtils";
 import { Loader2 } from "lucide-react";
 import { useReactions } from "@/hooks/useReactions";
@@ -26,10 +27,13 @@ interface MessageListProps {
   typingText?: string;
   onPin?: (message: Tables<"messages">) => void;
   isMessagePinned?: (messageId: string) => boolean;
+  onTeachAi?: (message: Tables<"messages">) => void;
+  onAskCompanion?: (message: Tables<"messages">) => void;
+  onEmptyDoubleTap?: () => void;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
-  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned,
+  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -92,6 +96,23 @@ const MessageList: React.FC<MessageListProps> = ({
 
   const prevScrollHeightRef = useRef(0);
 
+  // Double-tap on empty chat background → secret scratch card.
+  const lastBgTap = useRef(0);
+  const handleBgClick = useCallback((e: React.MouseEvent) => {
+    if (!onEmptyDoubleTap) return;
+    // Only react to taps on the scroll container / padding wrapper itself —
+    // never on a message bubble or interactive child.
+    const target = e.target as HTMLElement;
+    if (target.closest("[id^='msg-']")) return;
+    const now = Date.now();
+    if (now - lastBgTap.current < 300) {
+      lastBgTap.current = 0;
+      onEmptyDoubleTap();
+    } else {
+      lastBgTap.current = now;
+    }
+  }, [onEmptyDoubleTap]);
+
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -113,11 +134,7 @@ const MessageList: React.FC<MessageListProps> = ({
   }, [wallpaper]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-chat-bg">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <MessageListSkeleton />;
   }
 
   return (
@@ -126,7 +143,8 @@ const MessageList: React.FC<MessageListProps> = ({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-3 py-3 space-y-1 scrollbar-thin"
+        onClick={handleBgClick}
+        className="h-full overflow-y-auto px-3 py-3 scrollbar-overlay"
       >
         {loadingMore && (
           <div className="flex justify-center py-3">
@@ -135,11 +153,18 @@ const MessageList: React.FC<MessageListProps> = ({
         )}
 
         {messages.map((msg, i) => {
-          const showDate = i === 0 || !isSameDay(messages[i - 1].created_at ?? "", msg.created_at ?? "");
+          const prev = i > 0 ? messages[i - 1] : null;
+          const showDate = i === 0 || !isSameDay(prev?.created_at ?? "", msg.created_at ?? "");
+          // Group consecutive messages from the same sender (tighter spacing),
+          // unless a date separator breaks the run.
+          const grouped = !showDate && !!prev && prev.user_id === msg.user_id;
           return (
             <React.Fragment key={msg.id}>
               {showDate && <DateSeparator date={msg.created_at ?? ""} />}
-              <div id={`msg-${msg.id}`} className="transition-all duration-300 rounded-xl group relative py-[1px]">
+              <div
+                id={`msg-${msg.id}`}
+                className={`group relative ${grouped ? "mt-1" : "mt-3"}`}
+              >
                 <MessageBubble
                   message={msg}
                   isOwn={msg.user_id === currentUserId}
@@ -153,6 +178,8 @@ const MessageList: React.FC<MessageListProps> = ({
                   onBookmark={(msg) => setBookmarkMsg(msg)}
                   onPin={onPin}
                   isPinned={isMessagePinned?.(msg.id) ?? false}
+                  onTeachAi={onTeachAi}
+                  onAskCompanion={onAskCompanion}
                 />
               </div>
             </React.Fragment>

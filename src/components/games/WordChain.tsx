@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Send, Clock, Zap } from "lucide-react";
+import { ArrowLeft, Send, Clock, Zap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import GameOverCelebration from "./GameOverCelebration";
+import { aiValidateWord } from "@/lib/aiGame";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 interface WordChainState {
@@ -53,6 +54,7 @@ const WordChain: React.FC<Props> = ({
 }) => {
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TURN_TIME_SECONDS);
   const inputRef = useRef<HTMLInputElement>(null);
   const wordsEndRef = useRef<HTMLDivElement>(null);
@@ -126,6 +128,17 @@ const WordChain: React.FC<Props> = ({
       if (err) {
         setError(err);
         setTimeout(() => setError(""), 2000);
+        return;
+      }
+
+      // AI checks the word actually exists. Fails open — if the AI is
+      // unavailable, the word is accepted so play never stalls.
+      setChecking(true);
+      const { valid } = await aiValidateWord(clean);
+      setChecking(false);
+      if (!valid) {
+        setError("Hmm, that's not a real word");
+        setTimeout(() => setError(""), 2200);
         return;
       }
 
@@ -312,8 +325,8 @@ const WordChain: React.FC<Props> = ({
                 )}
               </AnimatePresence>
             </div>
-            <Button type="submit" size="icon" disabled={!isMyTurn || !input.trim()}>
-              <Send className="h-4 w-4" />
+            <Button type="submit" size="icon" disabled={!isMyTurn || !input.trim() || checking}>
+              {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
           {isMyTurn && state.words.length > 0 && (

@@ -19,7 +19,6 @@ import AdminDashboard from "./pages/AdminDashboard";
 // Lazy loaded
 const Chat = lazy(() => import("./pages/Chat"));
 const Home = lazy(() => import("./pages/Home"));
-const Profile = lazy(() => import("./pages/Profile"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const Stats = lazy(() => import("./pages/Stats"));
 const ScheduledMessages = lazy(() => import("./pages/ScheduledMessages"));
@@ -33,6 +32,9 @@ const SharedCalendar = lazy(() => import("./pages/SharedCalendar"));
 const ComplimentBox = lazy(() => import("./pages/ComplimentBox"));
 const DailyChecklist = lazy(() => import("./pages/DailyChecklist"));
 const Games = lazy(() => import("./pages/Games"));
+const Wrapped = lazy(() => import("./pages/Wrapped"));
+const SecretGarden = lazy(() => import("./pages/SecretGarden"));
+const Forest = lazy(() => import("./pages/Forest"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -79,7 +81,7 @@ const App = () => (
                 <Route path="/you/control" element={<AdminRoute><Chat /></AdminRoute>} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/home" element={<P><Home /></P>} />
-                <Route path="/profile" element={<P><Profile /></P>} />
+                <Route path="/profile" element={<Navigate to="/settings" replace />} />
                 <Route path="/settings" element={<P><SettingsPage /></P>} />
                 <Route path="/stats" element={<P><Stats /></P>} />
                 <Route path="/scheduled-messages" element={<P><ScheduledMessages /></P>} />
@@ -93,6 +95,9 @@ const App = () => (
                 <Route path="/compliments" element={<P><ComplimentBox /></P>} />
                 <Route path="/daily-checklist" element={<P><DailyChecklist /></P>} />
                 <Route path="/games" element={<P><Games /></P>} />
+                <Route path="/wrapped" element={<P><Wrapped /></P>} />
+                <Route path="/garden" element={<P><SecretGarden /></P>} />
+                <Route path="/forest" element={<P><Forest /></P>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

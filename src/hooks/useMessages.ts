@@ -9,6 +9,14 @@ const PAGE_SIZE = 50;
 
 const URL_REGEX = /https?:\/\/[^\s]+/;
 
+// Explicit column list — avoids shipping unused columns x50 rows on every fetch.
+const MESSAGE_COLUMNS =
+  "id, user_id, username, content, message_type, created_at, " +
+  "seen, seen_at, delivered, delivered_at, read_at, status, revealed, is_memory, " +
+  "reply_to_id, emoji, image_url, video, " +
+  "file_url, file_name, file_type, file_size, gif_url, sticker_url, " +
+  "link_title, link_description, link_image, link_target_url, link_preview_active";
+
 async function fetchAndStoreLinkPreview(messageId: string, url: string) {
   try {
     const { data } = await supabase.functions.invoke("fetch-link-preview", {
@@ -42,12 +50,12 @@ export function useMessages(userId: string | undefined) {
     setLoading(true);
     const { data, error } = await supabase
       .from("messages")
-      .select("*")
+      .select(MESSAGE_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE);
 
     if (!error && data) {
-      const sorted = data.reverse();
+      const sorted = (data as unknown as Message[]).reverse();
       setMessages(sorted);
       oldestRef.current = sorted[0]?.created_at ?? null;
       setHasMore(data.length === PAGE_SIZE);
@@ -60,13 +68,13 @@ export function useMessages(userId: string | undefined) {
     setLoadingMore(true);
     const { data } = await supabase
       .from("messages")
-      .select("*")
+      .select(MESSAGE_COLUMNS)
       .order("created_at", { ascending: false })
       .lt("created_at", oldestRef.current)
       .limit(PAGE_SIZE);
 
     if (data && data.length > 0) {
-      const sorted = data.reverse();
+      const sorted = (data as unknown as Message[]).reverse();
       oldestRef.current = sorted[0]?.created_at ?? oldestRef.current;
       setMessages(prev => [...sorted, ...prev]);
       if (data.length < PAGE_SIZE) {
@@ -140,6 +148,61 @@ export function useMessages(userId: string | undefined) {
     if (!userId) return;
     fetchMessages();
 
+    // Single catch-up pass: pull anything realtime would have delivered.
+    // Runs once on reconnect and on each fallback-poll tick (only while disconnected).
+    const catchUp = async () => {
+      const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+      if (lastMsg?.created_at) {
+        const { data } = await supabase
+          .from("messages")
+          .select(MESSAGE_COLUMNS)
+          .gt("created_at", lastMsg.created_at)
+          .order("created_at", { ascending: true })
+          .limit(50);
+        if (data && data.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newOnes = (data as unknown as Message[]).filter(m => !existingIds.has(m.id));
+            return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+          });
+        }
+      }
+
+      // Sync seen/delivered for our recently-sent, still-unseen messages.
+      const ids = unseenIdsRef.current.slice(-20);
+      if (ids.length > 0) {
+        const { data } = await supabase
+          .from("messages")
+          .select("id, seen, seen_at, delivered, delivered_at")
+          .in("id", ids);
+        if (data && data.length > 0) {
+          setMessages(curr =>
+            curr.map(m => {
+              const updated = data.find(d => d.id === m.id);
+              if (updated && (updated.seen !== m.seen || updated.delivered !== m.delivered)) {
+                return { ...m, ...updated };
+              }
+              return m;
+            })
+          );
+        }
+      }
+    };
+
+    // Fallback poll only runs while realtime is NOT connected.
+    let fallbackPoll: ReturnType<typeof setInterval> | null = null;
+    const startFallback = () => {
+      if (fallbackPoll) return;
+      catchUp(); // immediate catch-up on disconnect
+      fallbackPoll = setInterval(catchUp, 4000);
+    };
+    const stopFallback = () => {
+      if (fallbackPoll) {
+        clearInterval(fallbackPoll);
+        fallbackPoll = null;
+      }
+    };
+
     let channel = supabase
       .channel("messages-realtime")
       .on("postgres_changes", {
@@ -162,55 +225,22 @@ export function useMessages(userId: string | undefined) {
         setMessages(prev => prev.map(m => m.id === updated.id ? updated : m));
       })
       .subscribe((status) => {
-        console.log("Realtime subscription status:", status);
+        // Realtime healthy -> no polling. Realtime down -> poll as a safety net.
+        if (status === "SUBSCRIBED") {
+          stopFallback();
+          catchUp(); // close any gap that opened during (re)connection
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          startFallback();
+        }
       });
-
-    // Fallback: poll for new messages every 5s in case realtime drops
-    const messagePoll = setInterval(async () => {
-      const lastMsg = messagesRef.current[messagesRef.current.length - 1];
-      if (!lastMsg?.created_at) return;
-      const { data } = await supabase
-        .from("messages")
-        .select("*")
-        .gt("created_at", lastMsg.created_at)
-        .order("created_at", { ascending: true })
-        .limit(50);
-      if (data && data.length > 0) {
-        setMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          const newOnes = data.filter(m => !existingIds.has(m.id));
-          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
-        });
-      }
-    }, 5000);
-
-    // Polling fallback for seen/delivered status every 3s
-    const statusPoll = setInterval(async () => {
-      const ids = unseenIdsRef.current.slice(-20);
-      if (ids.length === 0) return;
-
-      const { data } = await supabase
-        .from("messages")
-        .select("id, seen, seen_at, delivered, delivered_at")
-        .in("id", ids);
-
-      if (data && data.length > 0) {
-        setMessages(curr =>
-          curr.map(m => {
-            const updated = data.find(d => d.id === m.id);
-            if (updated && (updated.seen !== m.seen || updated.delivered !== m.delivered)) {
-              return { ...m, ...updated };
-            }
-            return m;
-          })
-        );
-      }
-    }, 3000);
 
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(messagePoll);
-      clearInterval(statusPoll);
+      stopFallback();
     };
   }, [userId, fetchMessages]);
 

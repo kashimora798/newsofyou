@@ -6,6 +6,17 @@ export type TouchEmotion =
   | "tears" | "comfort" | "goodnight" | "good_morning"
   | "lol" | "boo" | "magic" | "poke" | "blush" | "sleepy" | "butterfly";
 
+/** Each emotion plays one of these distinct choreographies. */
+export type TouchMotion =
+  | "embrace"    // arms/hearts sweep inward and squeeze — warmth
+  | "kiss"       // lips swoop + plant + heart-ring pop
+  | "comfort"    // slow warm breathing, gentle falling softness
+  | "celebrate"  // confetti cannon from below, big bounce
+  | "tears"      // droplets fall, cool tint, slow
+  | "hype"       // fast upward energy + shake
+  | "poke"       // single sharp nudge, quick
+  | "drift";     // dreamy float (default)
+
 interface EmotionConfig {
   emoji: string;
   label: string;
@@ -13,33 +24,34 @@ interface EmotionConfig {
   color: string;
   vibration: number[];
   particles: string[];
+  motion: TouchMotion;
   shake?: boolean;
   flash?: boolean;
 }
 
 export const TOUCH_EMOTIONS: Record<TouchEmotion, EmotionConfig> = {
-  hug:          { emoji: "🤗", label: "Hug",          verb: "hugging",        color: "rgba(255,183,77,0.85)",   vibration: [200,100,200,100,400], particles: ["🤗","🫂","🧸","💛"] },
-  love:         { emoji: "❤️", label: "Love",         verb: "sending love to", color: "rgba(220,40,60,0.85)",    vibration: [300,200,300,200,300], particles: ["❤️","💕","💖","💗"] },
-  cuddle:       { emoji: "🥰", label: "Cuddle",       verb: "cuddling",       color: "rgba(255,200,170,0.85)",  vibration: [400,200,400],         particles: ["🥰","💞","🧸","💝"] },
-  miss_you:     { emoji: "💕", label: "Miss You",     verb: "missing",        color: "rgba(180,160,220,0.85)",  vibration: [300,300,300,300,300], particles: ["💕","💫","⭐","💜"] },
-  rose:         { emoji: "🌹", label: "Rose",         verb: "sending a rose to", color: "rgba(220,60,80,0.85)", vibration: [100,50,100,50,100],   particles: ["🌹","🌺","🌷","💐"] },
-  kiss:         { emoji: "💋", label: "Kiss",         verb: "kissing",        color: "rgba(240,80,120,0.85)",   vibration: [150,80,150,80,300],   particles: ["💋","💕","❤️","✨"] },
-  celebrate:    { emoji: "🎉", label: "Celebrate",    verb: "celebrating with", color: "rgba(255,200,50,0.85)", vibration: [100,50,100,50,100,50,300], particles: ["🎉","🎊","🎈","🥳"] },
-  proud:        { emoji: "🏆", label: "Proud",        verb: "proud of",       color: "rgba(255,215,0,0.85)",    vibration: [200,100,200,100,200], particles: ["🏆","✨","💪","👑"] },
-  fire:         { emoji: "🔥", label: "Fire",         verb: "hyping up",      color: "rgba(255,100,30,0.85)",   vibration: [100,30,100,30,100,30,500], particles: ["🔥","💥","✨","🌟"] },
-  high_five:    { emoji: "🙌", label: "High Five",    verb: "high-fiving",    color: "rgba(255,220,60,0.85)",   vibration: [80,40,80,40,200],     particles: ["🙌","✋","⭐","💫"], flash: true },
-  cheer:        { emoji: "📣", label: "Cheer",        verb: "cheering for",   color: "rgba(255,140,50,0.85)",   vibration: [60,30,60,30,60,30,60,30,300], particles: ["📣","🎉","🎊","🥳"] },
-  tears:        { emoji: "😢", label: "Tears",        verb: "crying with",    color: "rgba(120,160,200,0.85)",  vibration: [400,300,400],         particles: ["😢","💧","💔","💙"] },
-  comfort:      { emoji: "💙", label: "Comfort",      verb: "comforting",     color: "rgba(100,180,230,0.85)",  vibration: [200,200,200,200,200], particles: ["💙","🌊","🫂","🤗"] },
-  goodnight:    { emoji: "😴", label: "Goodnight",    verb: "saying goodnight to", color: "rgba(30,40,100,0.85)", vibration: [400,300,300,300,200], particles: ["🌙","⭐","💤","✨"] },
-  good_morning: { emoji: "🌅", label: "Good Morning", verb: "saying good morning to", color: "rgba(255,180,80,0.85)", vibration: [100,100,200,100,100], particles: ["🌅","☀️","🌻","🌸"] },
-  lol:          { emoji: "😂", label: "LOL",          verb: "laughing with",  color: "rgba(255,230,80,0.85)",   vibration: [50,30,50,30,50,30,50,30], particles: ["😂","🤣","😆","😅"], shake: true },
-  boo:          { emoji: "👻", label: "Boo!",         verb: "scaring",        color: "rgba(20,20,40,0.9)",      vibration: [1000],                particles: ["👻","🎃","🕷️","🌚"], flash: true },
-  magic:        { emoji: "✨", label: "Magic",        verb: "enchanting",     color: "rgba(140,80,200,0.85)",   vibration: [50,100,50,100,50,100,300], particles: ["✨","💫","🌟","🪄"] },
-  poke:         { emoji: "👉", label: "Poke",         verb: "poking",         color: "rgba(255,180,100,0.85)",  vibration: [60,120,60],           particles: ["👉","👈","😜","💨"], shake: true },
-  blush:        { emoji: "😊", label: "Blush",        verb: "making blush",   color: "rgba(255,170,180,0.85)",  vibration: [100,150,100],         particles: ["😊","🌸","💗","✨"] },
-  sleepy:       { emoji: "🥱", label: "Sleepy",       verb: "yawning with",   color: "rgba(40,50,100,0.85)",    vibration: [300,400,300],         particles: ["🥱","💤","🌙","⭐"] },
-  butterfly:    { emoji: "🦋", label: "Butterflies",  verb: "giving butterflies to", color: "rgba(160,100,220,0.85)", vibration: [50,80,50,80,50,80,200], particles: ["🦋","💜","✨","🌸"] },
+  hug:          { emoji: "🤗", label: "Hug",          verb: "hugging",        color: "rgba(255,183,77,0.85)",   vibration: [120,80,180,80,260], particles: ["🤗","🫂","🧸","💛"], motion: "embrace" },
+  love:         { emoji: "❤️", label: "Love",         verb: "sending love to", color: "rgba(220,40,60,0.85)",    vibration: [220,140,220,140,260], particles: ["❤️","💕","💖","💗"], motion: "embrace" },
+  cuddle:       { emoji: "🥰", label: "Cuddle",       verb: "cuddling",       color: "rgba(255,200,170,0.85)",  vibration: [300,150,300],         particles: ["🥰","💞","🧸","💝"], motion: "embrace" },
+  miss_you:     { emoji: "💕", label: "Miss You",     verb: "missing",        color: "rgba(180,160,220,0.85)",  vibration: [260,260,260],         particles: ["💕","💫","⭐","💜"], motion: "comfort" },
+  rose:         { emoji: "🌹", label: "Rose",         verb: "sending a rose to", color: "rgba(220,60,80,0.85)", vibration: [100,50,100,50,100],   particles: ["🌹","🌺","🌷","💐"], motion: "drift" },
+  kiss:         { emoji: "💋", label: "Kiss",         verb: "kissing",        color: "rgba(240,80,120,0.85)",   vibration: [90,60,220],           particles: ["💋","💕","❤️","✨"], motion: "kiss" },
+  celebrate:    { emoji: "🎉", label: "Celebrate",    verb: "celebrating with", color: "rgba(255,200,50,0.85)", vibration: [80,40,80,40,80,40,260], particles: ["🎉","🎊","🎈","🥳"], motion: "celebrate" },
+  proud:        { emoji: "🏆", label: "Proud",        verb: "proud of",       color: "rgba(255,215,0,0.85)",    vibration: [160,90,160,90,200],   particles: ["🏆","✨","💪","👑"], motion: "celebrate" },
+  fire:         { emoji: "🔥", label: "Fire",         verb: "hyping up",      color: "rgba(255,100,30,0.85)",   vibration: [80,30,80,30,80,30,400], particles: ["🔥","💥","✨","🌟"], motion: "hype", shake: true },
+  high_five:    { emoji: "🙌", label: "High Five",    verb: "high-fiving",    color: "rgba(255,220,60,0.85)",   vibration: [60,40,200],           particles: ["🙌","✋","⭐","💫"], motion: "celebrate", flash: true },
+  cheer:        { emoji: "📣", label: "Cheer",        verb: "cheering for",   color: "rgba(255,140,50,0.85)",   vibration: [60,30,60,30,60,30,260], particles: ["📣","🎉","🎊","🥳"], motion: "celebrate" },
+  tears:        { emoji: "😢", label: "Tears",        verb: "crying with",    color: "rgba(120,160,200,0.85)",  vibration: [400,300,400],         particles: ["😢","💧","💔","💙"], motion: "tears" },
+  comfort:      { emoji: "💙", label: "Comfort",      verb: "comforting",     color: "rgba(100,180,230,0.85)",  vibration: [220,220,220],         particles: ["💙","🌊","🫂","🤗"], motion: "comfort" },
+  goodnight:    { emoji: "😴", label: "Goodnight",    verb: "saying goodnight to", color: "rgba(30,40,100,0.85)", vibration: [400,300,300],        particles: ["🌙","⭐","💤","✨"], motion: "drift" },
+  good_morning: { emoji: "🌅", label: "Good Morning", verb: "saying good morning to", color: "rgba(255,180,80,0.85)", vibration: [100,100,200],     particles: ["🌅","☀️","🌻","🌸"], motion: "drift" },
+  lol:          { emoji: "😂", label: "LOL",          verb: "laughing with",  color: "rgba(255,230,80,0.85)",   vibration: [50,30,50,30,50,30,50], particles: ["😂","🤣","😆","😅"], motion: "hype", shake: true },
+  boo:          { emoji: "👻", label: "Boo!",         verb: "scaring",        color: "rgba(20,20,40,0.9)",      vibration: [1000],                particles: ["👻","🎃","🕷️","🌚"], motion: "hype", flash: true },
+  magic:        { emoji: "✨", label: "Magic",        verb: "enchanting",     color: "rgba(140,80,200,0.85)",   vibration: [50,100,50,100,260],   particles: ["✨","💫","🌟","🪄"], motion: "hype" },
+  poke:         { emoji: "👉", label: "Poke",         verb: "poking",         color: "rgba(255,180,100,0.85)",  vibration: [60,120,60],           particles: ["👉","👈","😜","💨"], motion: "poke", shake: true },
+  blush:        { emoji: "😊", label: "Blush",        verb: "making blush",   color: "rgba(255,170,180,0.85)",  vibration: [100,150,100],         particles: ["😊","🌸","💗","✨"], motion: "comfort" },
+  sleepy:       { emoji: "🥱", label: "Sleepy",       verb: "yawning with",   color: "rgba(40,50,100,0.85)",    vibration: [300,400,300],         particles: ["🥱","💤","🌙","⭐"], motion: "drift" },
+  butterfly:    { emoji: "🦋", label: "Butterflies",  verb: "giving butterflies to", color: "rgba(160,100,220,0.85)", vibration: [50,80,50,80,200], particles: ["🦋","💜","✨","🌸"], motion: "drift" },
 };
 
 export interface CustomEmotionConfig {
@@ -70,8 +82,6 @@ interface TouchReactionOverlayProps {
   onReactBack?: (emotion: TouchEmotion) => void;
 }
 
-const FG_COUNT = 28;
-const BG_COUNT = 14;
 const DURATION = 4200;
 
 const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, customConfig, senderName, onDismiss, onReactBack }) => {
@@ -85,6 +95,7 @@ const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, cu
   const particleSize = isCustom ? customConfig.particle_size : 28;
   const shakeEffect = isCustom ? customConfig.shake : builtinConfig?.shake ?? false;
   const flashEffect = isCustom ? customConfig.flash : builtinConfig?.flash ?? false;
+  const motion: TouchMotion = isCustom ? "drift" : builtinConfig?.motion ?? "drift";
   const vibration = isCustom
     ? VIBRATION_MAP[customConfig.vibration_strength] ?? VIBRATION_MAP.medium
     : builtinConfig?.vibration ?? [];
@@ -93,47 +104,43 @@ const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, cu
   const [phase, setPhase] = useState<"in" | "show" | "out">("in");
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Foreground particles — burst outward then float up with sway
-  const fgParticles = useMemo(() =>
-    Array.from({ length: FG_COUNT }, () => {
+  const isUrl = (s: string) => s.startsWith("http");
+  const pick = () => (particlesArr.length > 0 ? particlesArr[Math.floor(Math.random() * particlesArr.length)] : "✨");
+
+  // Particle field shaped by motion.
+  const field = useMemo(() => {
+    const count = motion === "poke" ? 8 : motion === "comfort" ? 16 : motion === "tears" ? 18 : 26;
+    return Array.from({ length: count }, () => {
       const angle = Math.random() * Math.PI * 2;
-      const radius = 60 + Math.random() * 120;
+      const radius = 50 + Math.random() * 130;
       return {
         burstX: Math.cos(angle) * radius,
         burstY: Math.sin(angle) * radius,
-        swayX: (Math.random() - 0.5) * 80,
-        delay: Math.random() * 1.2,
-        duration: 2.5 + Math.random() * 1.5,
-        char: particlesArr.length > 0 ? particlesArr[Math.floor(Math.random() * particlesArr.length)] : "✨",
+        startX: (Math.random() - 0.5) * 100,   // for fall/rise lanes
+        drift: (Math.random() - 0.5) * 70,
+        left: Math.random() * 100,
+        delay: Math.random() * (motion === "celebrate" ? 0.5 : 1.1),
+        duration: (motion === "hype" ? 1.6 : motion === "comfort" ? 3.4 : 2.6) + Math.random() * 1.4,
+        char: pick(),
         size: (isCustom ? particleSize : 22) + Math.random() * 14,
       };
-    }),
-    [particlesArr, particleSize, isCustom]
-  );
-
-  // Background particles — slow, blurred, dreamy
-  const bgParticles = useMemo(() =>
-    Array.from({ length: BG_COUNT }, () => ({
-      left: Math.random() * 100,
-      delay: Math.random() * 2.5,
-      duration: 3 + Math.random() * 2,
-      char: particlesArr.length > 0 ? particlesArr[Math.floor(Math.random() * particlesArr.length)] : "✨",
-      size: (isCustom ? particleSize * 0.5 : 14) + Math.random() * 8,
-    })),
-    [particlesArr, particleSize, isCustom]
-  );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motion, particlesArr, particleSize, isCustom]);
 
   useEffect(() => {
     if (navigator.vibrate && vibration.length > 0) navigator.vibrate(vibration);
+    const dur = motion === "poke" ? 2600 : DURATION;
     const t1 = setTimeout(() => setPhase("show"), 400);
-    const t2 = setTimeout(() => setPhase("out"), DURATION - 600);
-    timerRef.current = setTimeout(onDismiss, DURATION);
+    const t2 = setTimeout(() => setPhase("out"), dur - 600);
+    timerRef.current = setTimeout(onDismiss, dur);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(timerRef.current);
       if (navigator.vibrate) navigator.vibrate(0);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDismiss = () => {
@@ -141,6 +148,40 @@ const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, cu
     setTimeout(onDismiss, 600);
     if (timerRef.current) clearTimeout(timerRef.current);
   };
+
+  // Center-emoji animation per motion.
+  const centerAnim: Record<TouchMotion, string> = {
+    embrace: "tr-embrace 1s cubic-bezier(0.34,1.56,0.64,1) forwards",
+    kiss: "tr-kiss 0.9s cubic-bezier(0.34,1.56,0.64,1) forwards",
+    comfort: "tr-breathe 3s ease-in-out infinite",
+    celebrate: "tr-bounce-in 0.8s cubic-bezier(0.34,1.7,0.5,1) forwards",
+    tears: "tr-sink 1.2s ease-out forwards",
+    hype: "tr-hype 0.5s ease-in-out infinite",
+    poke: "tr-poke 0.5s cubic-bezier(0.34,1.7,0.5,1) forwards",
+    drift: "emoji-spring-in 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards",
+  };
+
+  // Particle keyframe per motion.
+  const particleAnim = (p: typeof field[number]) => {
+    switch (motion) {
+      case "tears":
+        return `tr-fall ${p.duration}s ease-in ${p.delay}s forwards`;
+      case "celebrate":
+        return `tr-confetti ${p.duration}s cubic-bezier(0.2,0.8,0.3,1) ${p.delay}s forwards`;
+      case "hype":
+        return `tr-rise-fast ${p.duration}s ease-out ${p.delay}s forwards`;
+      case "comfort":
+        return `tr-soft-fall ${p.duration}s ease-in-out ${p.delay}s forwards`;
+      case "embrace":
+        return `tr-converge ${p.duration}s cubic-bezier(0.22,1,0.36,1) ${p.delay}s forwards`;
+      default:
+        return `particle-burst ${p.duration}s cubic-bezier(0.22,1,0.36,1) ${p.delay}s forwards`;
+    }
+  };
+
+  const tint =
+    motion === "tears" ? "saturate(0.7) brightness(0.85)" :
+    motion === "comfort" ? "saturate(0.95)" : undefined;
 
   return (
     <div
@@ -154,87 +195,91 @@ const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, cu
           : undefined,
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
+        filter: tint,
       }}
       onClick={handleDismiss}
     >
+      <style>{`
+        @keyframes tr-embrace { 0%{transform:scale(0.2);opacity:0} 40%{transform:scale(1.4) scaleX(1.5);opacity:1} 70%{transform:scale(0.92) scaleX(0.9)} 100%{transform:scale(1);opacity:1} }
+        @keyframes tr-kiss { 0%{transform:translate(-60px,80px) rotate(-25deg) scale(0.3);opacity:0} 55%{transform:translate(0,0) rotate(0) scale(1.5);opacity:1} 72%{transform:scale(0.85)} 100%{transform:scale(1);opacity:1} }
+        @keyframes tr-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+        @keyframes tr-bounce-in { 0%{transform:translateY(40px) scale(0.3);opacity:0} 60%{transform:translateY(0) scale(1.35);opacity:1} 80%{transform:scale(0.92)} 100%{transform:scale(1)} }
+        @keyframes tr-sink { 0%{transform:translateY(-10px) scale(0.4);opacity:0} 50%{transform:translateY(0) scale(1.1);opacity:1} 100%{transform:translateY(14px) scale(1);opacity:1} }
+        @keyframes tr-hype { 0%,100%{transform:scale(1.12) rotate(-4deg)} 50%{transform:scale(1.22) rotate(4deg)} }
+        @keyframes tr-poke { 0%{transform:scale(0.4);opacity:0} 45%{transform:scale(1.5) translateX(10px);opacity:1} 65%{transform:translateX(-8px)} 100%{transform:scale(1) translateX(0)} }
+
+        @keyframes tr-fall { 0%{transform:translateY(-20px) scale(0.6);opacity:0} 15%{opacity:1} 100%{transform:translateY(60vh) scale(1);opacity:0} }
+        @keyframes tr-confetti { 0%{transform:translateY(0) rotate(0) scale(0.6);opacity:0} 12%{opacity:1} 100%{transform:translateY(-65vh) rotate(540deg) scale(1);opacity:0} }
+        @keyframes tr-rise-fast { 0%{transform:translateY(0) scale(0.5);opacity:0} 18%{opacity:1} 100%{transform:translateY(-60vh) scale(1.1);opacity:0} }
+        @keyframes tr-soft-fall { 0%{transform:translate(0,-10px) scale(0.5);opacity:0} 25%{opacity:0.85} 100%{transform:translate(var(--sx,0),45vh) scale(1);opacity:0} }
+        @keyframes tr-converge { 0%{transform:translate(var(--bx,0),var(--by,0)) scale(0.4);opacity:0} 30%{opacity:1} 70%{transform:translate(0,0) scale(1.1);opacity:1} 100%{transform:translate(0,-40px) scale(0.9);opacity:0} }
+      `}</style>
+
       {/* Flash effect */}
       {flashEffect && phase === "in" && (
         <div className="absolute inset-0 bg-white pointer-events-none animate-[flash-scare_0.3s_ease-out]" />
       )}
 
-      {/* Background particles — dreamy, blurred, slow */}
-      {bgParticles.map((p, i) => {
-        const isUrl = p.char.startsWith("http");
+      {/* Particle field */}
+      {field.map((p, i) => {
+        const fall = motion === "tears" || motion === "comfort" || motion === "celebrate" || motion === "hype";
         return (
           <span
-            key={`bg-${i}`}
+            key={`p-${i}`}
             className="absolute pointer-events-none"
             style={{
-              left: `${p.left}%`,
-              bottom: "5%",
-              fontSize: isUrl ? undefined : `${p.size}px`,
-              animationName: "particle-drift",
-              animationTimingFunction: "ease-out",
-              animationFillMode: "forwards",
-              animationDelay: `${p.delay}s`,
-              animationDuration: `${p.duration}s`,
+              left: fall ? `${p.left}%` : "50%",
+              top: motion === "tears" ? "0%" : fall ? "auto" : "50%",
+              bottom: motion === "celebrate" || motion === "hype" ? "8%" : motion === "comfort" ? "auto" : undefined,
+              fontSize: isUrl(p.char) ? undefined : `${p.size}px`,
+              ["--bx" as any]: `${p.burstX}px`,
+              ["--by" as any]: `${p.burstY}px`,
+              ["--sx" as any]: `${p.drift}px`,
+              animation: particleAnim(p),
               opacity: 0,
             }}
           >
-            {isUrl ? (
-              <img src={p.char} alt="" className="pointer-events-none" style={{ width: p.size, height: p.size }} />
-            ) : p.char}
+            {isUrl(p.char) ? <img src={p.char} alt="" style={{ width: p.size, height: p.size }} /> : p.char}
           </span>
         );
       })}
 
-      {/* Foreground particles — burst outward then float with sway */}
-      {fgParticles.map((p, i) => {
-        const isUrl = p.char.startsWith("http");
-        return (
-          <span
-            key={`fg-${i}`}
-            className="absolute pointer-events-none"
-            style={{
-              left: "50%",
-              top: "50%",
-              fontSize: isUrl ? undefined : `${p.size}px`,
-              ["--burst-x" as any]: `${p.burstX}px`,
-              ["--burst-y" as any]: `${p.burstY}px`,
-              ["--sway-x" as any]: `${p.swayX}px`,
-              animationName: "particle-burst",
-              animationTimingFunction: "cubic-bezier(0.22,1,0.36,1)",
-              animationFillMode: "forwards",
-              animationDelay: `${p.delay}s`,
-              animationDuration: `${p.duration}s`,
-              opacity: 0,
-            }}
-          >
-            {isUrl ? (
-              <img src={p.char} alt="" className="pointer-events-none" style={{ width: p.size, height: p.size }} />
-            ) : p.char}
-          </span>
-        );
-      })}
+      {/* Embrace: two arms sweep in from the sides */}
+      {motion === "embrace" && phase !== "out" && (
+        <>
+          <span className="absolute text-6xl pointer-events-none" style={{ left: "8%", top: "46%", animation: "tr-arm-l 1.1s cubic-bezier(0.22,1,0.36,1) forwards" }}>🫶</span>
+          <style>{`@keyframes tr-arm-l{0%{transform:translateX(-120px) rotate(-30deg);opacity:0}60%{transform:translateX(60px) rotate(0);opacity:1}100%{transform:translateX(80px);opacity:0.9}}`}</style>
+        </>
+      )}
+
+      {/* Kiss: expanding heart ring */}
+      {motion === "kiss" && (
+        <div
+          className="absolute rounded-full border-2 pointer-events-none"
+          style={{
+            width: 80, height: 80, borderColor: "rgba(255,120,160,0.7)",
+            top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+            animation: "tr-ring 1s ease-out 0.4s forwards", opacity: 0,
+          }}
+        />
+      )}
+      {motion === "kiss" && <style>{`@keyframes tr-ring{0%{width:20px;height:20px;opacity:0.9}100%{width:320px;height:320px;opacity:0}}`}</style>}
 
       {/* Glow ring behind emoji */}
       <div
         className="absolute rounded-full pointer-events-none"
         style={{
-          width: 140,
-          height: 140,
+          width: 140, height: 140,
           background: `radial-gradient(circle, ${bgColor.replace(/[\d.]+\)$/, "0.5)")}, transparent 70%)`,
-          animation: "glow-pulse 2s ease-in-out infinite",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
+          animation: motion === "comfort" ? "glow-pulse 3s ease-in-out infinite" : "glow-pulse 2s ease-in-out infinite",
+          top: "50%", left: "50%", transform: "translate(-50%, -50%)",
         }}
       />
 
       {/* Center content */}
       <div className="text-center z-10">
-        <div style={{ animation: "emoji-spring-in 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards" }}>
-          {emoji.startsWith("http") ? (
+        <div style={{ animation: centerAnim[motion] }}>
+          {isUrl(emoji) ? (
             <img src={emoji} alt={label} className="mx-auto mb-4" style={{ width: 80, height: 80 }} />
           ) : (
             <div className="text-8xl mb-4 drop-shadow-lg">{emoji}</div>
@@ -248,13 +293,11 @@ const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, cu
         </p>
       </div>
 
-      {/* React back button — glassmorphic */}
+      {/* React back button */}
       {onReactBack && emotion && (
         <button
           onClick={(e) => { e.stopPropagation(); onReactBack(emotion); handleDismiss(); }}
-          className="mt-8 z-10 px-7 py-3 rounded-full text-white font-semibold text-sm
-            border border-white/20 shadow-lg
-            hover:bg-white/25 active:scale-95 transition-all duration-200"
+          className="mt-8 z-10 px-7 py-3 rounded-full text-white font-semibold text-sm border border-white/20 shadow-lg hover:bg-white/25 active:scale-95 transition-all duration-200"
           style={{
             background: "rgba(255,255,255,0.12)",
             backdropFilter: "blur(16px)",
@@ -263,7 +306,7 @@ const TouchReactionOverlay: React.FC<TouchReactionOverlayProps> = ({ emotion, cu
             boxShadow: "0 0 20px rgba(255,255,255,0.1), inset 0 1px 0 rgba(255,255,255,0.15)",
           }}
         >
-          {emoji.startsWith("http") ? "" : emoji + " "}{label} Back
+          {isUrl(emoji) ? "" : emoji + " "}{label} Back
         </button>
       )}
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame } from "lucide-react";
+import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaPanel from "./MediaPanel";
@@ -8,6 +8,7 @@ import SchedulePicker from "./SchedulePicker";
 import TouchReactionPicker from "./TouchReactionPicker";
 import { TOUCH_EMOTIONS, type TouchEmotion } from "./TouchReactionOverlay";
 import { toast } from "@/hooks/use-toast";
+import { SECRET_COMMANDS } from "@/lib/secretCommands";
 import type { Tables } from "@/integrations/supabase/types";
 import type { CustomReaction } from "@/pages/CustomTouchReactions";
 
@@ -18,14 +19,17 @@ interface MessageInputProps {
   replyTo: Tables<"messages"> | null;
   onCancelReply: () => void;
   onOpenLetter?: () => void;
+  onOpenProposal?: () => void;
+  onComposeHelp?: (draft: string) => Promise<string | null>;
   placeholder?: string;
   secretPlaceholder?: string;
   sendLabel?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [composing, setComposing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showMedia, setShowMedia] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -91,6 +95,31 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
     }
   };
 
+  // Slash-command suggestions (/flip, /dice, …)
+  const commandQuery = text.startsWith("/") ? text.slice(1).toLowerCase() : null;
+  const matchedCommands =
+    commandQuery !== null
+      ? SECRET_COMMANDS.filter((c) => c.cmd.slice(1).startsWith(commandQuery))
+      : [];
+
+  const runCommand = useCallback(async (cmd: string) => {
+    setText("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    await onSend(cmd, {});
+  }, [onSend]);
+
+  const handleComposeHelp = useCallback(async () => {
+    if (!onComposeHelp || composing) return;
+    setComposing(true);
+    const suggestion = await onComposeHelp(text.trim());
+    if (suggestion) {
+      setText(suggestion);
+      setTimeout(adjustHeight, 0);
+    }
+    setComposing(false);
+    textareaRef.current?.focus();
+  }, [onComposeHelp, composing, text]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -149,6 +178,14 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
     onCancelReply();
   };
 
+  const handleVideoSelect = async (videoUrl: string) => {
+    const extras: any = { video: true, vidUrl: videoUrl, message_type: "video" };
+    if (replyTo) extras.reply_to_id = replyTo.id;
+    await onSend("", extras);
+    setShowMedia(false);
+    onCancelReply();
+  };
+
   const handleTouchReaction = useCallback(async (emotion: TouchEmotion) => {
     await onSend(emotion, { message_type: "touch_reaction" });
     setShowTouchReactions(false);
@@ -180,7 +217,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             <button onClick={() => setShowMedia(false)} className="absolute top-1 right-4 z-10 h-6 w-6 flex items-center justify-center rounded-full bg-muted hover:bg-muted/80 transition-colors">
               <X className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
-            <MediaPanel onEmojiSelect={handleEmojiSelect} onGifSelect={handleGifSelect} onStickerSelect={handleStickerSelect} />
+            <MediaPanel onEmojiSelect={handleEmojiSelect} onGifSelect={handleGifSelect} onStickerSelect={handleStickerSelect} onVideoSelect={handleVideoSelect} draft={text} />
           </motion.div>
         )}
 
@@ -225,15 +262,43 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             transition={{ duration: 0.2 }}
             className="px-3 pb-1 overflow-hidden"
           >
-            <div className="flex gap-1.5 glass rounded-2xl p-2 shadow-lg items-center">
+            <div className="flex gap-1.5 glass rounded-[20px] p-2 shadow-lg items-center">
               <MoreBtn icon={<Paperclip className="h-5 w-5" />} label="File" onClick={() => { fileInputRef.current?.click(); closeAll(); }} />
               <MoreBtn icon={<Heart className="h-5 w-5" />} label="Touch" onClick={() => { closeAll(); setShowTouchReactions(true); }} />
               <MoreBtn icon={<Clock className="h-5 w-5" />} label="Schedule" onClick={() => { closeAll(); setShowSchedule(true); }} />
               <MoreBtn icon={<Mail className="h-5 w-5" />} label="Letter" onClick={() => { onOpenLetter?.(); closeAll(); }} />
+              <MoreBtn icon={<Handshake className="h-5 w-5" />} label="Pact" onClick={() => { onOpenProposal?.(); closeAll(); }} />
               <MoreBtn icon={<Flame className="h-5 w-5" />} label="Lantern" onClick={() => { (window as any).__skyLanternComposer?.show?.(); closeAll(); }} />
               <button onClick={() => setShowMore(false)} className="ml-auto h-6 w-6 flex items-center justify-center rounded-full bg-muted/50 hover:bg-muted transition-colors">
                 <X className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {matchedCommands.length > 0 && (
+          <motion.div
+            key="cmd-suggest"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.16 }}
+            className="px-3 pb-1.5"
+          >
+            <div className="glass rounded-[18px] p-1.5 shadow-lg">
+              {matchedCommands.map((c) => (
+                <button
+                  key={c.cmd}
+                  onClick={() => runCommand(c.cmd)}
+                  className="flex items-center gap-3 w-full px-3 py-2 rounded-[12px] hover:bg-muted/60 transition-colors text-left tappable"
+                >
+                  <span className="text-xl">{c.emoji}</span>
+                  <span className="text-[14px] font-semibold text-foreground">{c.cmd}</span>
+                  <span className="text-[12px] text-muted-foreground">{c.label}</span>
+                </button>
+              ))}
             </div>
           </motion.div>
         )}
@@ -283,8 +348,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             onKeyDown={handleKeyDown}
             placeholder={secretMode ? secretPlaceholder : placeholder}
             rows={1}
-            className={`w-full resize-none rounded-2xl border-0 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 scrollbar-thin transition-all ${
-              secretMode ? "bg-primary/8 ring-1 ring-primary/20" : "bg-muted/40"
+            className={`w-full resize-none rounded-[20px] border-0 px-4 py-2.5 text-[15px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/20 scrollbar-thin transition-all ${
+              secretMode ? "bg-primary/8 ring-1 ring-primary/20" : "bg-muted/50 ring-1 ring-border/40"
             }`}
             style={{ maxHeight: 120 }}
           />
@@ -301,12 +366,24 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
           <Lock className="h-4 w-4" />
         </motion.button>
 
+        {onComposeHelp && (
+          <motion.button
+            whileTap={{ scale: 0.88 }}
+            onClick={handleComposeHelp}
+            disabled={composing}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-muted/60 disabled:opacity-40"
+            title="Help me write this"
+          >
+            {composing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          </motion.button>
+        )}
+
         <motion.button
           whileTap={{ scale: 0.88 }}
           whileHover={{ scale: 1.05 }}
           onClick={handleSend}
           disabled={(!text.trim() && !uploading) || sending}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-30 transition-all"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-30 transition-all shadow-sm shadow-primary/20"
         >
           <Send className="h-[18px] w-[18px]" />
         </motion.button>

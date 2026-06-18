@@ -1,9 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Pencil, Eraser, Undo2, Clock, Send, Eye, Palette } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft, Pencil, Eraser, Undo2, Clock, Send, Eye, Trash2, RefreshCw, Loader2 } from "lucide-react";
 import GameOverCelebration from "./GameOverCelebration";
 import { supabase } from "@/integrations/supabase/client";
+import { aiDrawWords } from "@/lib/aiGame";
 import type { GameSession } from "@/hooks/useGameSessions";
 
 const WORD_BANK = [
@@ -93,19 +93,31 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   const [guess, setGuess] = useState("");
   const [timer, setTimer] = useState(TIMER_SECONDS);
   const [wordOptions, setWordOptions] = useState<string[]>([]);
+  const [loadingWords, setLoadingWords] = useState(false);
 
   // Sync remote strokes
   useEffect(() => {
     if (isGuesser) setLocalStrokes(state.strokes);
   }, [state.strokes, isGuesser]);
 
-  // Generate word options for choosing phase
+  // Fetch fun, age-appropriate things to draw from AI, falling back to the local
+  // word bank if the AI is unavailable.
+  const fetchWordOptions = useCallback(async () => {
+    setLoadingWords(true);
+    const ai = await aiDrawWords();
+    const pool = (ai && ai.length >= 3 ? ai : [...WORD_BANK]).sort(() => Math.random() - 0.5);
+    setWordOptions(pool.slice(0, 3));
+    setLoadingWords(false);
+  }, []);
+
+  // Fresh words each new round.
+  useEffect(() => { setWordOptions([]); }, [state.round]);
+
   useEffect(() => {
-    if (state.phase === "choosing" && isDrawer && wordOptions.length === 0) {
-      const shuffled = [...WORD_BANK].sort(() => Math.random() - 0.5);
-      setWordOptions(shuffled.slice(0, 3));
+    if (state.phase === "choosing" && isDrawer && wordOptions.length === 0 && !loadingWords) {
+      fetchWordOptions();
     }
-  }, [state.phase, isDrawer]);
+  }, [state.phase, isDrawer, wordOptions.length, loadingWords, fetchWordOptions]);
 
   // Timer
   useEffect(() => {
@@ -349,31 +361,48 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
   // CHOOSING PHASE
   if (state.phase === "choosing") {
     return (
-      <div className="flex flex-col h-full">
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
-          <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-          <div className="flex-1">
-            <h2 className="text-sm font-bold text-foreground">Quick Draw</h2>
-            <p className="text-[10px] text-muted-foreground">Round {state.round}/{state.totalRounds} · You: {myScore} · {partnerName ?? "P"}: {opScore}</p>
-          </div>
-        </header>
+      <div className="flex flex-col h-full bg-background" style={{ fontFamily: APPLE_FONT }}>
+        <QuickDrawHeader title="Quick Draw" subtitle={`Round ${state.round}/${state.totalRounds} · You ${myScore} · ${partnerName ?? "P"} ${opScore}`} onBack={onBack} />
         <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6">
           {isDrawer ? (
             <>
-              <Pencil className="h-10 w-10 text-primary" />
-              <p className="text-sm font-semibold text-foreground">Pick a word to draw!</p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {wordOptions.map((w) => (
-                  <Button key={w} variant="outline" onClick={() => handleChooseWord(w)} className="capitalize text-sm">
-                    {w}
-                  </Button>
-                ))}
+              <div className="h-16 w-16 rounded-[20px] bg-primary/10 flex items-center justify-center">
+                <Pencil className="h-8 w-8 text-primary" />
               </div>
+              <p className="text-[17px] font-semibold text-foreground">Pick a word to draw</p>
+              {loadingWords && wordOptions.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <p className="text-[13px] text-muted-foreground">Dreaming up fun things…</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 w-full max-w-xs">
+                  {wordOptions.map((w) => (
+                    <motion.button
+                      key={w}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handleChooseWord(w)}
+                      className="rounded-[18px] bg-card ring-1 ring-border/50 px-5 py-4 text-[17px] font-semibold text-foreground capitalize shadow-sm ease-spring"
+                    >
+                      {w}
+                    </motion.button>
+                  ))}
+                  <button
+                    onClick={() => { setWordOptions([]); }}
+                    disabled={loadingWords}
+                    className="mt-1 inline-flex items-center justify-center gap-1.5 text-[13px] font-medium text-primary disabled:opacity-40 tappable"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingWords ? "animate-spin" : ""}`} /> New words
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <>
-              <Eye className="h-10 w-10 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground animate-pulse">
+              <div className="h-16 w-16 rounded-[20px] bg-muted flex items-center justify-center">
+                <Eye className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-[15px] text-muted-foreground animate-pulse">
                 {partnerName ?? "Partner"} is picking a word…
               </p>
             </>
@@ -385,27 +414,23 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
 
   // DRAWING / RESULT PHASE
   return (
-    <div className="flex flex-col h-full">
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
-        <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-bold text-foreground truncate">
-            {isDrawer ? `Draw: "${state.word}"` : "Guess the drawing!"}
-          </h2>
-          <p className="text-[10px] text-muted-foreground">
-            Rd {state.round}/{state.totalRounds} · You: {myScore} · {partnerName ?? "P"}: {opScore}
-          </p>
-        </div>
-        {state.phase === "drawing" && !state.guessed && (
-          <div className={`flex items-center gap-1 text-xs font-bold ${timer <= 10 ? "text-destructive" : "text-muted-foreground"}`}>
-            <Clock className="h-3.5 w-3.5" /> {timer}s
-          </div>
-        )}
-      </header>
+    <div className="flex flex-col h-full bg-background" style={{ fontFamily: APPLE_FONT }}>
+      <QuickDrawHeader
+        title={isDrawer ? `Draw: "${state.word}"` : "Guess the drawing!"}
+        subtitle={`Round ${state.round}/${state.totalRounds} · You ${myScore} · ${partnerName ?? "P"} ${opScore}`}
+        onBack={onBack}
+        right={
+          state.phase === "drawing" && !state.guessed ? (
+            <div className={`flex items-center gap-1 text-[13px] font-bold tabular-nums ${timer <= 10 ? "text-destructive" : "text-muted-foreground"}`}>
+              <Clock className="h-4 w-4" /> {timer}s
+            </div>
+          ) : undefined
+        }
+      />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Canvas */}
-        <div className="flex-1 relative mx-2 mt-2 rounded-xl overflow-hidden border border-border">
+        <div className="flex-1 relative mx-3 mt-3 rounded-[20px] overflow-hidden ring-1 ring-border/60 shadow-sm">
           <canvas
             ref={canvasRef}
             className="w-full h-full touch-none"
@@ -440,14 +465,14 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
 
         {/* Drawer tools */}
         {isDrawer && state.phase === "drawing" && !state.guessed && (
-          <div className="flex items-center gap-2 px-3 py-2 border-t border-border/40">
+          <div className="flex items-center gap-2 px-3 py-3">
             {!eraserMode && (
-              <div className="flex gap-1">
+              <div className="flex gap-1.5">
                 {COLORS.map((c) => (
                   <button
                     key={c}
                     onClick={() => { setPenColor(c); setEraserMode(false); }}
-                    className={`h-6 w-6 rounded-full border-2 transition-all ${penColor === c && !eraserMode ? "border-primary scale-110" : "border-transparent"}`}
+                    className={`h-7 w-7 rounded-full transition-all ease-spring ${penColor === c && !eraserMode ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-110" : "ring-1 ring-border/50"}`}
                     style={{ backgroundColor: c }}
                   />
                 ))}
@@ -455,58 +480,62 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
             )}
             {!eraserMode && (
               <>
-                <div className="h-4 w-px bg-border mx-1" />
-                <div className="flex gap-1">
+                <div className="h-5 w-px bg-border mx-1" />
+                <div className="flex gap-1 p-1 rounded-full bg-muted/60">
                   {WIDTHS.map((w) => (
                     <button
                       key={w}
                       onClick={() => setPenWidth(w)}
-                      className={`h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-bold transition-all ${penWidth === w ? "bg-primary/20 text-primary" : "text-muted-foreground"}`}
+                      className={`h-7 w-7 rounded-full flex items-center justify-center transition-all ease-spring ${penWidth === w ? "bg-card shadow-sm text-primary" : "text-muted-foreground"}`}
                     >
-                      {w}
+                      <span className="rounded-full bg-current" style={{ width: w + 2, height: w + 2 }} />
                     </button>
                   ))}
                 </div>
               </>
             )}
             <div className="flex-1" />
-            <Button
-              size="icon"
-              variant={eraserMode ? "default" : "ghost"}
+            <button
               onClick={() => setEraserMode(!eraserMode)}
-              className={`h-7 w-7 ${eraserMode ? "bg-primary text-primary-foreground" : ""}`}
               title="Eraser"
+              className={`h-9 w-9 rounded-full flex items-center justify-center tappable ${eraserMode ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground"}`}
             >
-              <Eraser className="h-3.5 w-3.5" />
-            </Button>
-            <Button size="icon" variant="ghost" onClick={handleUndo} className="h-7 w-7"><Undo2 className="h-3.5 w-3.5" /></Button>
-            <Button size="icon" variant="ghost" onClick={handleClear} className="h-7 w-7 text-destructive"><Eraser className="h-3.5 w-3.5" /></Button>
+              <Eraser className="h-4 w-4" />
+            </button>
+            <button onClick={handleUndo} className="h-9 w-9 rounded-full flex items-center justify-center bg-muted/60 text-muted-foreground tappable" title="Undo">
+              <Undo2 className="h-4 w-4" />
+            </button>
+            <button onClick={handleClear} className="h-9 w-9 rounded-full flex items-center justify-center bg-destructive/10 text-destructive tappable" title="Clear">
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         )}
 
         {/* Guesser input */}
         {isGuesser && state.phase === "drawing" && !state.guessed && (
-          <div className="px-3 py-2 border-t border-border/40 space-y-2">
+          <div className="px-3 py-3 space-y-2">
             {state.guesses.length > 0 && (
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {state.guesses.map((g, i) => (
-                  <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full ${g.startsWith("✅") ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground line-through"}`}>
+                  <span key={i} className={`text-[12px] px-2.5 py-1 rounded-full ${g.startsWith("✅") ? "bg-primary/15 text-primary font-semibold" : "bg-muted text-muted-foreground line-through"}`}>
                     {g}
                   </span>
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={guess}
                 onChange={(e) => setGuess(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleGuess()}
                 placeholder="Type your guess…"
-                className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                className="flex-1 rounded-full bg-muted/60 ring-1 ring-border/40 px-4 py-2.5 text-[15px] focus:outline-none focus:ring-2 focus:ring-primary/30"
                 autoFocus
               />
-              <Button size="icon" onClick={handleGuess}><Send className="h-4 w-4" /></Button>
+              <button onClick={handleGuess} className="h-11 w-11 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center tappable shadow-sm shadow-primary/20">
+                <Send className="h-[18px] w-[18px]" />
+              </button>
             </div>
           </div>
         )}
@@ -528,5 +557,20 @@ const QuickDraw: React.FC<QuickDrawProps> = ({ session, userId, partnerName, onM
     </div>
   );
 };
+
+const APPLE_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Nunito', sans-serif";
+
+const QuickDrawHeader: React.FC<{ title: string; subtitle: string; onBack: () => void; right?: React.ReactNode }> = ({ title, subtitle, onBack, right }) => (
+  <header className="glass-chat-header flex items-center gap-3 px-4 py-3 shrink-0">
+    <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted/60 transition-colors">
+      <ArrowLeft className="h-5 w-5 text-foreground" />
+    </motion.button>
+    <div className="flex-1 min-w-0">
+      <h2 className="text-[16px] font-semibold text-foreground truncate tracking-tight">{title}</h2>
+      <p className="text-[12px] text-muted-foreground truncate">{subtitle}</p>
+    </div>
+    {right}
+  </header>
+);
 
 export default QuickDraw;

@@ -38,6 +38,25 @@ export function useAnimationQueue(userId: string | undefined) {
       }
     };
     fetchAndClear();
+
+    // Realtime: play animations that arrive while the chat is already open
+    // (e.g. a mystery prize or synced secret event from an online partner).
+    const channel = supabase
+      .channel(`pending-anim-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "pending_animations", filter: `target_user_id=eq.${userId}` },
+        async (payload) => {
+          const row = payload.new as any;
+          await supabase.from("pending_animations").delete().eq("id", row.id);
+          setQueue((prev) => (prev.some((p) => p.id === row.id) ? prev : [...prev, row]));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [userId]);
 
   // Process queue one by one

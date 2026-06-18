@@ -14,6 +14,16 @@ interface Props {
 
 const gameLabels: Record<string, string> = {
   tic_tac_toe: "Tic Tac Toe",
+  word_chain: "Word Chain",
+  hangman: "Hangman",
+  bingo: "Bingo",
+  quick_draw: "Quick Draw",
+  tap_duel: "Tap Duel",
+  math_sprint: "Math Sprint",
+  color_clash: "Color Clash",
+  quiz_buzzer: "Quiz Buzzer",
+  memory_race: "Memory Race",
+  emoji_riddle: "Emoji Riddle",
 };
 
 const GameInvite: React.FC<Props> = ({ invite, partnerName, isOutgoing, onAccept, onDecline }) => {

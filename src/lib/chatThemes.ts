@@ -4,6 +4,8 @@ export interface ChatTheme {
   emoji: string;
   description: string;
   cssClass: string;
+  /** Hidden until unlocked (e.g. galaxy via the planet sequence). */
+  secret?: boolean;
 }
 
 export const CHAT_THEMES: ChatTheme[] = [
@@ -48,6 +50,14 @@ export const CHAT_THEMES: ChatTheme[] = [
     emoji: "📖",
     description: "Script font — parchment — rose petals",
     cssClass: "theme-romance",
+  },
+  {
+    id: "galaxy",
+    label: "Galaxy",
+    emoji: "🌌",
+    description: "Deep space — starfield — cosmic glow",
+    cssClass: "theme-galaxy",
+    secret: true,
   },
 ];
 

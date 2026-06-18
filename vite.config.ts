@@ -17,18 +17,44 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Prevent the dep optimizer from trying to resolve onnxruntime-web —
+  // it's an optional native module inside @imgly/background-removal
+  // that is never actually used at runtime in this app.
+  optimizeDeps: {
+    exclude: ["@imgly/background-removal", "onnxruntime-web"],
+    rolldownOptions: {
+      external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
+    },
+  },
   build: {
     target: "es2020",
+    rolldownOptions: {
+      external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
+    },
     rollupOptions: {
+      external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
       output: {
-        manualChunks: {
-          vendor: ["react", "react-dom", "react-router-dom"],
-          supabase: ["@supabase/supabase-js"],
-          ui: ["@radix-ui/react-dialog", "@radix-ui/react-popover", "@radix-ui/react-tooltip"],
-          charts: ["recharts"],
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("three") || id.includes("@react-three")) {
+              return "three";
+            }
+            if (id.includes("react") || id.includes("react-dom") || id.includes("react-router-dom")) {
+              return "vendor";
+            }
+            if (id.includes("@supabase")) {
+              return "supabase";
+            }
+            if (id.includes("@radix-ui")) {
+              return "ui";
+            }
+            if (id.includes("recharts")) {
+              return "charts";
+            }
+          }
         },
       },
     },
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000,
   },
 }));

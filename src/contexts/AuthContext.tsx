@@ -83,12 +83,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userId = session?.user?.id;
     if (!userId) return;
 
-    const poll = setInterval(async () => {
-      const isBanned = await getActiveBan(userId);
-      if (isBanned) {
-        await forceInvalidUserLogout();
-      }
-    }, 5000);
+    // Ban enforcement is primarily server-side (RLS via is_banned()).
+    // This realtime channel gives an immediate client-side logout when a ban
+    // lands; a one-time check on mount covers a ban created while offline.
+    void enforceBanIfNeeded(userId);
 
     const channel = supabase
       .channel(`ban-watch-${userId}`)
@@ -111,7 +109,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .subscribe();
 
     return () => {
-      clearInterval(poll);
       supabase.removeChannel(channel);
     };
   }, [session?.user?.id]);

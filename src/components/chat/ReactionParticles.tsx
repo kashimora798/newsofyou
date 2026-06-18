@@ -3,11 +3,10 @@ import React, { useEffect, useState } from "react";
 interface Particle {
   id: number;
   emoji: string;
-  x: number;
-  y: number;
   angle: number;
   speed: number;
   size: number;
+  delay: number;
 }
 
 interface ReactionParticlesProps {
@@ -16,12 +15,12 @@ interface ReactionParticlesProps {
 }
 
 const EMOJI_MAP: Record<string, string[]> = {
-  "❤️": ["❤️", "💕", "💗"],
+  "❤️": ["❤️", "💕", "💗", "💞"],
   "🔥": ["🔥", "✨", "💥"],
-  "👍": ["👍", "👍"],
-  "😂": ["😂", "🤣"],
+  "👍": ["👍", "✨"],
+  "😂": ["😂", "🤣", "😆"],
   "😢": ["😢", "💧"],
-  "😮": ["😮", "⭐"],
+  "😮": ["😮", "⭐", "✨"],
 };
 
 const ReactionParticles: React.FC<ReactionParticlesProps> = ({ emoji, isOwn }) => {
@@ -29,18 +28,18 @@ const ReactionParticles: React.FC<ReactionParticlesProps> = ({ emoji, isOwn }) =
 
   useEffect(() => {
     const emojis = EMOJI_MAP[emoji] ?? [emoji];
-    const newParticles: Particle[] = Array.from({ length: 6 }, (_, i) => ({
+    // More particles + a wider spray gives the burst real "weight".
+    const newParticles: Particle[] = Array.from({ length: 10 }, (_, i) => ({
       id: i,
       emoji: emojis[i % emojis.length],
-      x: (isOwn ? -1 : 1) * (Math.random() * 20 - 10),
-      y: 0,
-      angle: -90 + (Math.random() * 60 - 30),
-      speed: 40 + Math.random() * 30,
-      size: 12 + Math.random() * 8,
+      angle: -90 + (Math.random() * 120 - 60),
+      speed: 45 + Math.random() * 40,
+      size: 13 + Math.random() * 11,
+      delay: Math.random() * 0.08,
     }));
     setParticles(newParticles);
 
-    const timer = setTimeout(() => setParticles([]), 800);
+    const timer = setTimeout(() => setParticles([]), 1100);
     return () => clearTimeout(timer);
   }, [emoji, isOwn]);
 
@@ -48,31 +47,55 @@ const ReactionParticles: React.FC<ReactionParticlesProps> = ({ emoji, isOwn }) =
 
   return (
     <div className="absolute inset-0 pointer-events-none overflow-visible z-30">
-      {particles.map((p) => (
-        <span
-          key={p.id}
-          className="absolute"
-          style={{
-            left: "50%",
-            top: "50%",
-            fontSize: p.size,
-            animation: `particle-burst-${p.id % 3} 0.7s ease-out forwards`,
-            transform: `translate(${p.x}px, 0px)`,
-            opacity: 1,
-          }}
-        >
-          <style>{`
-            @keyframes particle-burst-${p.id % 3} {
-              0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
-              100% { 
-                transform: translate(${Math.cos((p.angle * Math.PI) / 180) * p.speed}px, ${Math.sin((p.angle * Math.PI) / 180) * p.speed}px) scale(1.2); 
-                opacity: 0; 
+      {/* Central pop — the reaction itself springs in big, then settles */}
+      <span
+        className="absolute"
+        style={{
+          left: "50%",
+          top: "50%",
+          fontSize: 30,
+          transform: "translate(-50%, -50%)",
+          animation: "reaction-pop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
+        }}
+      >
+        {emoji}
+      </span>
+
+      {/* Radial particle burst */}
+      {particles.map((p) => {
+        const dx = Math.cos((p.angle * Math.PI) / 180) * p.speed;
+        const dy = Math.sin((p.angle * Math.PI) / 180) * p.speed;
+        return (
+          <span
+            key={p.id}
+            className="absolute"
+            style={{
+              left: "50%",
+              top: "50%",
+              fontSize: p.size,
+              opacity: 0,
+              animation: `reaction-fly-${p.id % 4} 1s ease-out ${p.delay}s forwards`,
+            }}
+          >
+            <style>{`
+              @keyframes reaction-pop {
+                0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+                45% { transform: translate(-50%, -50%) scale(1.35); opacity: 1; }
+                70% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+                100% { transform: translate(-50%, -70%) scale(0.85); opacity: 0; }
               }
-            }
-          `}</style>
-          {p.emoji}
-        </span>
-      ))}
+              @keyframes reaction-fly-${p.id % 4} {
+                0% { transform: translate(-50%, -50%) scale(0.4); opacity: 1; }
+                100% {
+                  transform: translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.1) rotate(${dx * 2}deg);
+                  opacity: 0;
+                }
+              }
+            `}</style>
+            {p.emoji}
+          </span>
+        );
+      })}
     </div>
   );
 };

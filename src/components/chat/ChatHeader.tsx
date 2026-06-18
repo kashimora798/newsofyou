@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import PresenceStatus from "./PresenceStatus";
-import { Search, ArrowLeft, LogOut, Eye, EyeOff, ShieldBan } from "lucide-react";
+import { Search, ArrowLeft, LogOut, Eye, EyeOff, ShieldBan, VenetianMask } from "lucide-react";
 import { motion } from "framer-motion";
 import type { Tables } from "@/integrations/supabase/types";
 import type { ThemeEffectsConfig } from "@/hooks/useThemeEffects";
@@ -13,6 +13,7 @@ interface ChatHeaderProps {
   partnerTyping: boolean;
   onSearchToggle?: () => void;
   onProfileToggle?: () => void;
+  onSecretTap?: () => void;
   immersiveMode?: boolean;
   onImmersiveToggle?: () => void;
   showImmersiveButton?: boolean;
@@ -21,11 +22,32 @@ interface ChatHeaderProps {
   onBanPartner?: () => void;
   banButtonTitle?: string;
   partnerAwayMessage?: string | null;
+  showDecoyButton?: boolean;
+  onDecoy?: () => void;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle, immersiveMode, onImmersiveToggle, showImmersiveButton, themeEffects, canBanPartner, onBanPartner, banButtonTitle, partnerAwayMessage }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle, onSecretTap, immersiveMode, onImmersiveToggle, showImmersiveButton, themeEffects, canBanPartner, onBanPartner, banButtonTitle, partnerAwayMessage, showDecoyButton, onDecoy }) => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
+
+  // Tap the name area 3× quickly → crack a fortune cookie (Phase 2 easter egg).
+  // A single settled tap still opens the profile; only a rapid triple-tap fires
+  // the secret, so the two gestures don't fight.
+  const tapCount = React.useRef(0);
+  const tapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTitleTap = () => {
+    tapCount.current += 1;
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    if (tapCount.current >= 3) {
+      tapCount.current = 0;
+      onSecretTap?.();
+      return;
+    }
+    tapTimer.current = setTimeout(() => {
+      if (tapCount.current === 1) onProfileToggle?.();
+      tapCount.current = 0;
+    }, 320);
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -64,7 +86,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
 
       <motion.div
         className="relative cursor-pointer z-10"
-        onClick={onProfileToggle}
+        onClick={handleTitleTap}
         whileTap={{ scale: 0.95 }}
       >
         <Avatar className="h-10 w-10 ring-2 ring-primary/10 ring-offset-1 ring-offset-background">
@@ -82,7 +104,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         )}
       </motion.div>
 
-      <div className="flex-1 min-w-0 cursor-pointer z-10" onClick={onProfileToggle}>
+      <div className="flex-1 min-w-0 cursor-pointer z-10" onClick={handleTitleTap}>
         {themeEffects?.headerDecoration === "marquee" ? (
           <div className="overflow-hidden">
             <h2 className="text-sm font-bold text-foreground whitespace-nowrap theme-marquee">
@@ -90,7 +112,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
             </h2>
           </div>
         ) : (
-          <h2 className="text-sm font-bold text-foreground truncate">{themedName}</h2>
+          <h2 className="text-[16px] font-semibold text-foreground truncate tracking-tight">{themedName}</h2>
         )}
         {themeEffects?.headerSubtitle && !partnerTyping && !partnerAwayMessage ? (
           <p className="text-[10px] text-muted-foreground truncate">{themeEffects.headerSubtitle}</p>
@@ -106,6 +128,11 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         </div>
       )}
 
+      {showDecoyButton && (
+        <HeaderBtn onClick={onDecoy} title="Quick hide">
+          <VenetianMask className="h-[18px] w-[18px] text-muted-foreground" />
+        </HeaderBtn>
+      )}
       {canBanPartner && (
         <HeaderBtn onClick={onBanPartner} title={banButtonTitle ?? "Ban user for 5 minutes"}>
           <ShieldBan className="h-[18px] w-[18px] text-rose-500" />

@@ -10,12 +10,11 @@ export type EffectType =
 export { detectEffect };
 
 const KEYWORD_MAP: [RegExp, EffectType][] = [
-  // Most frequent first for priority
-  [/good\s*night|gn\b|shubh\s*ratri/i, "goodnight"],
-  [/sorry|maaf/i, "sorry"],
+  // Most frequent first for priority.
+  // Note: "good night", "good morning" and "sorry" are handled by the richer
+  // full-screen secret overlays (starrynight / sunrise / mending-heart).
   [/i\s*love\s*you|love\s*you|pyaar|mohabbat/i, "hearts"],
   [/thank\s*you|thanks|shukriya|dhanyavaad/i, "thankyou"],
-  [/good\s*morning|gm\b|suprabhat/i, "goodmorning"],
   [/beautiful|sundar|khoobsurat/i, "flowers"],
   [/cute|cutiepie|cutie/i, "cute"],
   [/\bhug\b|gale\s*lag|jaadu\s*ki\s*jhappi/i, "hug"],

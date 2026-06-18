@@ -23,7 +23,18 @@ export function usePartner(currentUserId: string | undefined) {
 
     fetchPartner();
 
-    const poll = setInterval(fetchPartner, 10000);
+    // Fallback poll only runs while realtime is NOT connected.
+    let fallbackPoll: ReturnType<typeof setInterval> | null = null;
+    const startFallback = () => {
+      if (fallbackPoll) return;
+      fallbackPoll = setInterval(fetchPartner, 10000);
+    };
+    const stopFallback = () => {
+      if (fallbackPoll) {
+        clearInterval(fallbackPoll);
+        fallbackPoll = null;
+      }
+    };
 
     const channelName = `partner-status-${Date.now()}`;
     const channel = supabase
@@ -36,12 +47,23 @@ export function usePartner(currentUserId: string | undefined) {
       }, (payload) => {
         setPartner(payload.new as UserStatus);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          stopFallback();
+          fetchPartner(); // close any gap opened during (re)connection
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          startFallback();
+        }
+      });
 
     channelRef.current = channel;
 
     return () => {
-      clearInterval(poll);
+      stopFallback();
       supabase.removeChannel(channel);
       channelRef.current = null;
     };

@@ -9,7 +9,7 @@ interface ReplyPreviewProps {
 
 const ReplyPreview: React.FC<ReplyPreviewProps> = ({ message, onCancel }) => {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-card border-t border-border animate-fade-in">
+    <div className="flex items-center gap-2 px-3 py-2 bg-card border-t-[0.5px] border-border/60 animate-fade-in">
       <div className="w-1 h-8 rounded-full bg-primary shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-primary">{message.username ?? "Unknown"}</p>

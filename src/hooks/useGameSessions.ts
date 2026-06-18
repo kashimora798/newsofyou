@@ -66,6 +66,37 @@ export function useGameSessions(userId: string) {
           ? { gridSize: 5, phase: "setup", boards: {}, calledNumbers: [], readyPlayers: [], linesToWin: 5 }
           : gameType === "quick_draw"
           ? { phase: "choosing", drawer: userId, word: "", strokes: [], guesses: [], guessed: false, round: 1, totalRounds: 6, scores: {} }
+          : gameType === "story_battle"
+          ? {
+              story: [],
+              phase: "writing",
+              requiredWords: ["samosa", "bts", "autorickshaw", "biryani", "pani puri", "maggi", "chai", "jalebi", "shah rukh khan", "cricket", "spatula", "nebraska", "mosquito", "chutney", "aeroplane", "selfie", "reels", "momos"]
+                .sort(() => Math.random() - 0.5)
+                .slice(0, 3)
+            }
+          : gameType === "emoji_story"
+          ? { story: "", answer: "", hint: "", category: "", guesses: [], solved: false }
+          : gameType === "tap_duel" ||
+            gameType === "math_sprint" ||
+            gameType === "color_clash" ||
+            gameType === "quiz_buzzer" ||
+            gameType === "memory_race" ||
+            gameType === "emoji_riddle" ||
+            gameType === "emoji_reflex" ||
+            gameType === "odd_one_out" ||
+            gameType === "this_or_that" ||
+            gameType === "number_ninja" ||
+            gameType === "hot_cold" ||
+            gameType === "true_false_blitz" ||
+            gameType === "word_blurt" ||
+            gameType === "wordle_duel" ||
+            gameType === "caption_this" ||
+            gameType === "wrong_answers_only" ||
+            gameType === "sudoku_speedrun" ||
+            gameType === "this_or_that_rapid" ||
+            gameType === "memory_matrix" ||
+            gameType === "alphabet_sprint"
+          ? { live: true, scores: {}, finished: false }
           : [];
 
       const { data, error } = await supabase
@@ -144,16 +175,29 @@ export function useGameSessions(userId: string) {
     []
   );
 
+  const STALE_INVITE_MS = 60 * 60 * 1000; // 1 hour
+  const STALE_ACTIVE_MS = 30 * 60 * 1000; // 30 minutes
+  const now = Date.now();
+  const ageMs = (s: GameSession) => now - new Date(s.updated_at).getTime();
+
+  // Expired invites simply drop out of the lobby (no DB write needed) so it
+  // self-cleans instead of accumulating dead challenges.
   const pendingInvites = sessions.filter(
-    (s) => s.status === "pending" && s.opponent_id === userId
+    (s) => s.status === "pending" && s.opponent_id === userId && ageMs(s) < STALE_INVITE_MS
   );
-  const activeGames = sessions.filter((s) => s.status === "active");
+  const outgoingInvites = sessions.filter(
+    (s) => s.status === "pending" && s.created_by === userId && ageMs(s) < STALE_INVITE_MS
+  );
+
+  const allActive = sessions.filter((s) => s.status === "active");
+  // Fresh = recently touched; stale = abandoned mid-game (shown separately so
+  // the user can swipe them away).
+  const activeGames = allActive.filter((s) => ageMs(s) < STALE_ACTIVE_MS);
+  const staleGames = allActive.filter((s) => ageMs(s) >= STALE_ACTIVE_MS);
+
   const recentGames = sessions.filter(
     (s) => s.status === "completed" || s.status === "declined"
   ).slice(0, 10);
-  const outgoingInvites = sessions.filter(
-    (s) => s.status === "pending" && s.created_by === userId
-  );
 
   return {
     sessions,
@@ -161,6 +205,7 @@ export function useGameSessions(userId: string) {
     pendingInvites,
     outgoingInvites,
     activeGames,
+    staleGames,
     recentGames,
     createGame,
     acceptGame,

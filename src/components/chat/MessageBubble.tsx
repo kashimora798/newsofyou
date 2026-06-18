@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin } from "lucide-react";
+import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin, Brain, Sparkles, MoreHorizontal } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
 import FileBubble from "./FileBubble";
@@ -10,6 +10,9 @@ import SecretMessage from "./SecretMessage";
 import LetterBubble from "./LetterBubble";
 import { TOUCH_EMOTIONS, type TouchEmotion } from "./TouchReactionOverlay";
 import { QUICK_REACTIONS } from "@/lib/emojiData";
+import { DieFace } from "@/components/secrets/DieFace";
+import { decodeRps, RPS_EMOJI } from "@/lib/secretCommands";
+import { haptic } from "@/lib/haptics";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface MessageBubbleProps {
@@ -24,19 +27,22 @@ interface MessageBubbleProps {
   onScrollToMessage?: (id: string) => void;
   onBookmark?: (message: Tables<"messages">) => void;
   onPin?: (message: Tables<"messages">) => void;
+  onTeachAi?: (message: Tables<"messages">) => void;
+  onAskCompanion?: (message: Tables<"messages">) => void;
   isPinned?: boolean;
 }
 
 const SWIPE_THRESHOLD = 60;
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, isPinned,
+  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
   const [showMsgInfo, setShowMsgInfo] = useState(false);
   const [reactionAnimation, setReactionAnimation] = useState<string | null>(null);
   const [swipeX, setSwipeX] = useState(0);
+  const [swipeReleasing, setSwipeReleasing] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const isSwiping = useRef(false);
@@ -52,7 +58,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const handleReact = useCallback((emoji: string) => {
     setReactionAnimation(emoji);
-    setTimeout(() => setReactionAnimation(null), 600);
+    setTimeout(() => setReactionAnimation(null), 900);
+    haptic.success();
     onReact?.(emoji);
     setShowReactions(false);
     setShowFullEmojiPicker(false);
@@ -62,9 +69,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     isSwiping.current = false;
     hapticTriggered.current = false;
+    setSwipeReleasing(false);
     longPressTimer.current = setTimeout(() => {
-      if (!isSwiping.current) setShowReactions(true);
-    }, 500);
+      if (!isSwiping.current) {
+        haptic.impact();
+        setShowMsgInfo(true);
+      }
+    }, 450);
   }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
@@ -84,11 +95,20 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       isSwiping.current = true;
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
       const swipeDir = isOwn ? Math.min(0, dx) : Math.max(0, dx);
-      const clamped = isOwn ? Math.max(swipeDir, -100) : Math.min(swipeDir, 100);
-      setSwipeX(clamped);
-      if (Math.abs(clamped) >= SWIPE_THRESHOLD && !hapticTriggered.current) {
+      // Rubber-band resistance past the threshold so the pull feels physical.
+      const raw = isOwn ? Math.max(swipeDir, -120) : Math.min(swipeDir, 120);
+      const over = Math.abs(raw) - SWIPE_THRESHOLD;
+      const eased =
+        over > 0
+          ? Math.sign(raw) * (SWIPE_THRESHOLD + over * 0.35)
+          : raw;
+      setSwipeX(eased);
+      if (Math.abs(raw) >= SWIPE_THRESHOLD && !hapticTriggered.current) {
         hapticTriggered.current = true;
-        if (navigator.vibrate) navigator.vibrate(20);
+        haptic.impact();
+      } else if (Math.abs(raw) < SWIPE_THRESHOLD && hapticTriggered.current) {
+        // Pulled back below threshold — re-arm so re-crossing buzzes again.
+        hapticTriggered.current = false;
       }
     } else if (absDx > 10 || dy > 10) {
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
@@ -98,9 +118,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const handleTouchEnd = useCallback(() => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
     if (isSwiping.current && Math.abs(swipeX) >= SWIPE_THRESHOLD) {
+      haptic.success();
       onReply?.(message);
     }
     isSwiping.current = false;
+    setSwipeReleasing(true);
     setSwipeX(0);
   }, [swipeX, message, onReply]);
 
@@ -108,11 +130,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const handleDoubleTap = useCallback(() => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
-      setShowMsgInfo(!showMsgInfo);
-      setShowReactions(false);
+      // Double-tap → instant ❤️ react (the modern chat standard).
+      handleReact("❤️");
+      setShowMsgInfo(false);
+      lastTap.current = 0;
+    } else {
+      lastTap.current = now;
     }
-    lastTap.current = now;
-  }, [showMsgInfo]);
+  }, [handleReact]);
 
   const handleCopy = () => {
     if (message.content) navigator.clipboard.writeText(message.content);
@@ -126,6 +151,123 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const replyIconScale = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
   const showReplyIcon = Math.abs(swipeX) > 10;
+  const committed = Math.abs(swipeX) >= SWIPE_THRESHOLD;
+
+  // Coin flip result — persistent card
+  if (msgType === "coinflip") {
+    const isHeads = (message.content ?? "heads") !== "tails";
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
+        <div className="rounded-[20px] px-3.5 py-2.5 flex items-center gap-3 bubble-shadow-own bg-bubble-partner">
+          <div
+            className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+            style={{ background: "radial-gradient(circle at 35% 28%, #fff4c4, #f5c542 46%, #d99a25 78%, #b8791a)", boxShadow: "inset 0 -3px 6px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.4)" }}
+          >
+            {isHeads ? "H" : "T"}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-foreground leading-tight">{isHeads ? "Heads" : "Tails"}</p>
+            <p className="text-[11px] text-muted-foreground">{isOwn ? "You" : message.username} flipped a coin 🪙</p>
+            <StatusRow isOwn={isOwn} message={message} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Dice roll result — persistent card
+  if (msgType === "diceroll") {
+    const n = Math.min(6, Math.max(1, Number(message.content) || 1));
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
+        <div className="rounded-[20px] px-3.5 py-2.5 flex items-center gap-3 bubble-shadow-own bg-bubble-partner">
+          <DieFace n={n} size={40} rounded={10} />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-foreground leading-tight">Rolled a {n}</p>
+            <p className="text-[11px] text-muted-foreground">{isOwn ? "You" : message.username} rolled the dice 🎲</p>
+            <StatusRow isOwn={isOwn} message={message} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Magic 8-ball answer — persistent card
+  if (msgType === "eightball") {
+    const answer = message.content ?? "...";
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
+        <div className="rounded-[20px] px-3.5 py-2.5 flex items-center gap-3 bubble-shadow-own bg-bubble-partner max-w-[80%]">
+          <div
+            className="h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
+            style={{ background: "radial-gradient(circle at 34% 28%, #4a4a52, #1a1a1f 60%, #000)" }}
+          >
+            8
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-foreground leading-snug">"{answer}"</p>
+            <p className="text-[11px] text-muted-foreground">{isOwn ? "You" : message.username} asked the 8-ball 🎱</p>
+            <StatusRow isOwn={isOwn} message={message} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Lucky number — persistent card
+  if (msgType === "lucky") {
+    const num = message.content ?? "?";
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
+        <div className="rounded-[20px] px-3.5 py-2.5 flex items-center gap-3 bubble-shadow-own bg-bubble-partner">
+          <div className="h-10 w-10 rounded-full flex items-center justify-center text-lg shrink-0 bg-[hsl(142_50%_45%/0.15)]">🍀</div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-foreground leading-tight">Lucky number {num}</p>
+            <p className="text-[11px] text-muted-foreground">{isOwn ? "You" : message.username} — match it for a bonus</p>
+            <StatusRow isOwn={isOwn} message={message} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Rock-paper-scissors — persistent card
+  if (msgType === "rps") {
+    const { mine, opp, outcome } = decodeRps(message.content ?? "");
+    const verb = outcome === "win" ? "won" : outcome === "lose" ? "lost" : "tied";
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
+        <div className="rounded-[20px] px-3.5 py-2.5 flex items-center gap-3 bubble-shadow-own bg-bubble-partner">
+          <div className="flex items-center gap-1 text-xl shrink-0">
+            <span>{RPS_EMOJI[mine]}</span>
+            <span className="text-[10px] text-muted-foreground">vs</span>
+            <span>{RPS_EMOJI[opp]}</span>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-foreground leading-tight">{isOwn ? "You" : message.username} {verb}</p>
+            <p className="text-[11px] text-muted-foreground">Rock · Paper · Scissors ✊</p>
+            <StatusRow isOwn={isOwn} message={message} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Surprise — persistent card
+  if (msgType === "surprise") {
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
+        <div className="rounded-[20px] px-3.5 py-2.5 flex items-center gap-3 bubble-shadow-own bg-bubble-partner">
+          <div className="h-10 w-10 rounded-full flex items-center justify-center text-lg shrink-0 bg-primary/10">🎁</div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-foreground leading-tight">A little surprise</p>
+            <p className="text-[11px] text-muted-foreground">{isOwn ? "You" : message.username} sent a surprise ✨</p>
+            <StatusRow isOwn={isOwn} message={message} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Touch reaction — special card
   if (msgType === "touch_reaction") {
@@ -134,7 +276,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     return (
       <div className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isOwn ? "animate-msg-own" : "animate-msg-partner"}`}>
         <div
-          className="rounded-2xl px-5 py-3 text-center max-w-[200px] bubble-shadow-own"
+          className="rounded-[24px] px-5 py-3 text-center max-w-[200px] bubble-shadow-own"
           style={{ background: emotionConfig.color.replace(/[\d.]+\)$/, "0.12)") }}
         >
           <div className="text-4xl mb-1">{emotionConfig.emoji}</div>
@@ -177,18 +319,38 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       onTouchEnd={handleTouchEnd}
       onClick={handleDoubleTap}
     >
+      {/* Tap-away backdrop to dismiss any open menu/picker */}
+      {(showMsgInfo || showReactions || showFullEmojiPicker) && (
+        <div
+          className="fixed inset-0 z-20"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowMsgInfo(false);
+            setShowReactions(false);
+            setShowFullEmojiPicker(false);
+          }}
+        />
+      )}
       {reactionAnimation && (
         <ReactionParticles emoji={reactionAnimation} isOwn={isOwn} />
       )}
 
-      {/* Swipe reply icon */}
+      {/* Swipe reply icon — grows, rotates and brightens as you pass the commit point */}
       {showReplyIcon && (
         <div
-          className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? "right-2" : "left-2"} z-10 transition-opacity`}
-          style={{ opacity: replyIconScale, transform: `translateY(-50%) scale(${replyIconScale})` }}
+          className={`absolute top-1/2 ${isOwn ? "right-2" : "left-2"} z-10`}
+          style={{
+            opacity: replyIconScale,
+            transform: `translateY(-50%) scale(${0.6 + replyIconScale * 0.55}) rotate(${committed ? (isOwn ? 360 : -360) : 0}deg)`,
+            transition: "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          }}
         >
-          <div className={`h-8 w-8 rounded-full flex items-center justify-center ${replyIconScale >= 1 ? "bg-primary/25" : "bg-primary/15"}`}>
-            <Reply className="h-4 w-4 text-primary" />
+          <div
+            className={`h-9 w-9 rounded-full flex items-center justify-center transition-colors ${
+              committed ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30" : "bg-primary/15 text-primary"
+            }`}
+          >
+            <Reply className="h-4 w-4" />
           </div>
         </div>
       )}
@@ -197,7 +359,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
         className="relative max-w-[80%] md:max-w-[65%]"
         style={{
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
-          transition: swipeX === 0 ? "transform 0.25s ease-out" : "none",
+          transition:
+            swipeX === 0
+              ? swipeReleasing
+                ? "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                : "transform 0.25s ease-out"
+              : "none",
         }}
       >
         {/* Quick reaction bar */}
@@ -217,12 +384,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Message info popup */}
         {showMsgInfo && (
-          <div className={`absolute ${isOwn ? "right-0" : "left-0"} -top-2 -translate-y-full z-30 rounded-2xl shadow-xl py-1.5 min-w-[180px] animate-scale-in`}
+          <div className={`absolute ${isOwn ? "right-0" : "left-0"} -top-2 -translate-y-full z-30 rounded-[18px] shadow-xl py-1.5 min-w-[190px] animate-scale-in overflow-hidden`}
             style={{
-              background: "hsl(var(--card) / 0.92)",
-              backdropFilter: "blur(20px) saturate(180%)",
-              WebkitBackdropFilter: "blur(20px) saturate(180%)",
-              border: "1px solid hsl(var(--border) / 0.5)",
+              background: "hsl(var(--popover) / 0.82)",
+              backdropFilter: "blur(24px) saturate(180%)",
+              WebkitBackdropFilter: "blur(24px) saturate(180%)",
+              border: "0.5px solid hsl(var(--border) / 0.7)",
             }}
           >
             {onReply && (
@@ -238,6 +405,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             {onPin && (
               <InfoBtn icon={<Pin className="h-3.5 w-3.5 text-muted-foreground" />} label={isPinned ? "Unpin Message" : "Pin Message"} onClick={() => { onPin(message); setShowMsgInfo(false); }} />
             )}
+            {onTeachAi && message.content && (
+              <InfoBtn icon={<Brain className="h-3.5 w-3.5 text-muted-foreground" />} label="Teach AI" onClick={() => { onTeachAi(message); setShowMsgInfo(false); }} />
+            )}
+            {onAskCompanion && !isOwn && message.content && (
+              <InfoBtn icon={<Sparkles className="h-3.5 w-3.5 text-muted-foreground" />} label="Ask companion" onClick={() => { onAskCompanion(message); setShowMsgInfo(false); }} />
+            )}
             <div className="border-t border-border/40 my-1" />
             <div className="px-3 py-2 text-[10px] text-muted-foreground space-y-0.5">
               <p>Sent: {formatFullDate(message.created_at ?? "")}</p>
@@ -250,10 +423,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Bubble */}
         <div
-          className={`rounded-2xl px-3.5 py-2 ${
+          className={`rounded-[20px] px-3.5 py-2 ${
             isOwn
-              ? "bg-bubble-own text-bubble-own-foreground rounded-br-sm bubble-shadow-own"
-              : "bg-bubble-partner text-bubble-partner-foreground rounded-bl-sm bubble-shadow-partner"
+              ? "bg-bubble-own text-bubble-own-foreground rounded-br-[6px] bubble-shadow-own"
+              : "bg-bubble-partner text-bubble-partner-foreground rounded-bl-[6px] bubble-shadow-partner"
           }`}
         >
           {/* Reply reference */}
@@ -348,7 +521,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <button
                   key={emoji}
                   onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
-                  className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-muted/50 hover:bg-muted text-xs transition-all active:scale-110"
+                  className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-card/70 ring-1 ring-border/50 hover:bg-card text-xs transition-all active:scale-110"
                 >
                   <span>{emoji}</span>
                   {count > 1 && <span className="text-muted-foreground">{count}</span>}
@@ -361,13 +534,28 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           <StatusRow isOwn={isOwn} message={message} />
         </div>
 
-        {/* Desktop hover reply */}
-        <div className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-8" : "-right-8"} opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex`}>
+        {/* Desktop hover actions */}
+        <div className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-16" : "-right-16"} opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex items-center gap-0.5`}>
           <button
             onClick={(e) => { e.stopPropagation(); onReply?.(message); }}
-            className="p-1 rounded-full hover:bg-muted transition-colors"
+            className="p-1.5 rounded-full hover:bg-muted transition-colors"
+            title="Reply"
           >
             <Reply className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowReactions(true); }}
+            className="p-1.5 rounded-full hover:bg-muted transition-colors"
+            title="React"
+          >
+            <SmilePlus className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowMsgInfo(true); }}
+            className="p-1.5 rounded-full hover:bg-muted transition-colors"
+            title="More"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
         </div>
       </div>
@@ -411,25 +599,32 @@ const QuickReactionBar: React.FC<{
   <div
     className={`absolute ${isOwn ? "right-0" : "left-0"} -top-11 flex gap-0.5 rounded-full px-1.5 py-1 shadow-xl z-20 animate-scale-in`}
     style={{
-      background: "hsl(var(--card) / 0.92)",
-      backdropFilter: "blur(20px) saturate(180%)",
-      WebkitBackdropFilter: "blur(20px) saturate(180%)",
-      border: "1px solid hsl(var(--border) / 0.5)",
+      background: "hsl(var(--popover) / 0.82)",
+      backdropFilter: "blur(24px) saturate(180%)",
+      WebkitBackdropFilter: "blur(24px) saturate(180%)",
+      border: "0.5px solid hsl(var(--border) / 0.7)",
     }}
     onClick={(e) => e.stopPropagation()}
   >
-    {QUICK_REACTIONS.map((emoji) => (
+    {QUICK_REACTIONS.map((emoji, i) => (
       <button
         key={emoji}
         onClick={() => onReact(emoji)}
-        className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted/50 text-lg transition-transform hover:scale-125 active:scale-150"
+        className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted/50 text-lg transition-transform hover:scale-125 active:scale-150 hover:-translate-y-1"
+        style={{ animation: `reaction-bar-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.04}s both` }}
       >
         {emoji}
       </button>
     ))}
-    <button onClick={onMore} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted/50 text-sm">
+    <button onClick={onMore} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-muted/50 text-sm" style={{ animation: `reaction-bar-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) ${QUICK_REACTIONS.length * 0.04}s both` }}>
       <SmilePlus className="h-4 w-4 text-muted-foreground" />
     </button>
+    <style>{`
+      @keyframes reaction-bar-pop {
+        0% { transform: scale(0) translateY(8px); opacity: 0; }
+        100% { transform: scale(1) translateY(0); opacity: 1; }
+      }
+    `}</style>
   </div>
 );
 
