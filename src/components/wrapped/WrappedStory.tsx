@@ -33,7 +33,7 @@ const WrappedStory: React.FC<Props> = ({ data, onClose }) => {
     if (data.firstMessage) list.push(<FirstMessageCard data={data} years={years} />);
     
     // New Intimate Slides
-    if (data.forestCount > 0) list.push(<SecretGardenCard data={data} years={years} />);
+    // if (data.forestCount > 0) list.push(<SecretGardenCard data={data} years={years} />);
     if (data.randomCompliment) list.push(<ComplimentCard data={data} years={years} />);
     if (data.longestStreak > 0) list.push(<StreakCard data={data} years={years} />);
     if (data.randomBookmark) list.push(<BookmarkCard data={data} years={years} />);

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import DuelShell from "./DuelShell";
 import { useDuelMatch } from "@/hooks/useDuelMatch";
 import { EMOJI_RIDDLES } from "@/lib/emojiRiddleData";
 import type { GameSession } from "@/hooks/useGameSessions";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   session: GameSession;
@@ -22,13 +23,45 @@ interface RoundData {
 
 const TOTAL = 6;
 
-function buildRound(): RoundData {
-  const item = EMOJI_RIDDLES[Math.floor(Math.random() * EMOJI_RIDDLES.length)];
-  const options = [item.answer, ...item.decoys].sort(() => Math.random() - 0.5);
-  return { emojis: item.emojis, options, answer: item.answer };
-}
-
 const EmojiRiddle: React.FC<Props> = ({ session, userId, partnerName, onMakeMove, onBack, onPlayAgain }) => {
+  const isHost = session.created_by === userId;
+  const aiRiddlesRef = useRef<RoundData[]>([]);
+
+  useEffect(() => {
+    if (!isHost) return;
+
+    const fetchAiRiddles = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("ai-game", {
+          body: { action: "generate_emoji_riddles", count: TOTAL }
+        });
+        if (data && Array.isArray(data.riddles) && data.riddles.length >= TOTAL) {
+          const formatted: RoundData[] = data.riddles.map((r: any) => ({
+            emojis: r.emojis,
+            options: [r.answer, ...r.decoys].sort(() => Math.random() - 0.5),
+            answer: r.answer
+          }));
+          aiRiddlesRef.current = formatted;
+        }
+      } catch (err) {
+        console.error("Failed to generate AI emoji riddles:", err);
+      }
+    };
+
+    fetchAiRiddles();
+  }, [isHost]);
+
+  const buildRound = useCallback((roundNum: number): RoundData => {
+    const list = aiRiddlesRef.current;
+    if (list.length >= roundNum) {
+      return list[roundNum - 1];
+    }
+    // Fallback to local
+    const item = EMOJI_RIDDLES[Math.floor(Math.random() * EMOJI_RIDDLES.length)];
+    const options = [item.answer, ...item.decoys].sort(() => Math.random() - 0.5);
+    return { emojis: item.emojis, options, answer: item.answer };
+  }, []);
+
   const match = useDuelMatch<RoundData>({
     session,
     userId,

@@ -58,7 +58,7 @@ export function parseSecretCommand(text: string): ParsedSecretCommand | null {
   if (/^\s*surprise\s*me\s*$/i.test(t)) {
     return { message_type: "surprise", result: SURPRISE_POOL[Math.floor(Math.random() * SURPRISE_POOL.length)] };
   }
-  if (/^\s*i'?m\s+bored\s*!*$|^\s*so\s*bored\s*!*$|^\s*bored\s*!*$/i.test(t)) {
+  if (/^\s*(?:i'?m|i\s+am)\s+bored\s*!*$|^\s*so\s*bored\s*!*$|^\s*bored\s*!*$/i.test(t)) {
     const quickGames = GAME_CATALOG.filter(g => g.category === "quick" && g.status === "ready");
     const pick = quickGames[Math.floor(Math.random() * quickGames.length)];
     return { message_type: "bored", result: pick.type };

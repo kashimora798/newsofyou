@@ -43,9 +43,9 @@ const BoredLauncherOverlay: React.FC<Props> = ({ gameType, isMine, onDismiss }) 
           if (isMine) {
             navigate(`/games?boredChallenge=${gameType}`);
           } else {
-            navigate(`/games?expectBoredInvite=1`);
+            navigate(`/games`);
           }
-        }, 1000);
+        }, 1200);
       }
     }, TICK_INTERVAL_MS);
 
@@ -63,19 +63,21 @@ const BoredLauncherOverlay: React.FC<Props> = ({ gameType, isMine, onDismiss }) 
         <p className="mb-2 text-sm font-medium tracking-widest text-muted-foreground uppercase">I'm Bored!</p>
         <h2 className="mb-8 text-2xl font-semibold text-foreground">Let's play...</h2>
 
-        <div className="relative flex h-24 w-64 items-center justify-center overflow-hidden rounded-2xl bg-black/20 shadow-inner">
-          <AnimatePresence mode="popLayout">
+        <div className="relative flex h-24 w-64 items-center justify-center overflow-hidden rounded-2xl bg-black/20 shadow-inner px-4 text-center">
+          {isSpinning ? (
+            <div className="text-3xl font-bold tracking-tight text-white/90 animate-pulse truncate max-w-full">
+              {displayGameLabel}
+            </div>
+          ) : (
             <motion.div
-              key={displayGameLabel}
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -40, opacity: 0 }}
-              transition={{ duration: 0.1 }}
-              className="absolute text-3xl font-bold tracking-tight text-white"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 350, damping: 15 }}
+              className="text-3xl font-black tracking-tight text-primary-foreground bg-primary px-6 py-2 rounded-2xl shadow-lg border border-primary/20 line-clamp-1"
             >
               {displayGameLabel}
             </motion.div>
-          </AnimatePresence>
+          )}
         </div>
 
         {!isSpinning && (

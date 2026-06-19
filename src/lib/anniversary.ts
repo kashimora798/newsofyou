@@ -83,14 +83,14 @@ export function ordinal(n: number): string {
 const AUTO_KEY = "wrapped-autolaunched";
 export function hasAutoLaunchedThisSession(): boolean {
   try {
-    return sessionStorage.getItem(AUTO_KEY) === lastAnniversaryDate().toISOString().slice(0, 10);
+    return localStorage.getItem(AUTO_KEY) === lastAnniversaryDate().toISOString().slice(0, 10);
   } catch {
     return false;
   }
 }
 export function markAutoLaunched(): void {
   try {
-    sessionStorage.setItem(AUTO_KEY, lastAnniversaryDate().toISOString().slice(0, 10));
+    localStorage.setItem(AUTO_KEY, lastAnniversaryDate().toISOString().slice(0, 10));
   } catch {
     /* ignore */
   }

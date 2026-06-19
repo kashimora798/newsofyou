@@ -129,6 +129,57 @@ Deno.serve(async (req) => {
       return json({ words: [...new Set(words)].slice(0, 8) });
     }
 
+    if (action === "validate_theme_word") {
+      const category = String(payload.category ?? "").trim();
+      const letter = String(payload.letter ?? "").trim().toUpperCase();
+      const word = String(payload.word ?? "").trim();
+
+      if (!word || !letter) return json({ valid: false });
+
+      if (!word.toUpperCase().startsWith(letter)) {
+        return json({ valid: false, reason: "Does not start with correct letter" });
+      }
+
+      const text = await callOpenRouter(
+        [
+          {
+            role: "system",
+            content: "You are a strict game referee for a word game. Decide if the given word fits the category/theme. Be reasonably lenient with spelling and synonyms but reject obviously wrong or unrelated answers. Indian / Bollywood terms are allowed. Reply ONLY with JSON: {\"valid\": true|false}."
+          },
+          {
+            role: "user",
+            content: `Category: "${category}"\nWord: "${word}"`
+          }
+        ],
+        { json: true, maxTokens: 20, temperature: 0 }
+      );
+      const parsed = parseJsonLoose<{ valid: boolean }>(text);
+      return json({ valid: parsed?.valid ?? true });
+    }
+
+    if (action === "generate_emoji_riddles") {
+      const count = Number(payload.count ?? 6);
+      const sys = 
+        "You generate emoji riddles for a movie/show guessing game. The players are friends in India. " +
+        "Produce a list of emoji riddles. Each riddle has: " +
+        "- emojis: A string of 1-3 emojis representing the movie or show. " +
+        "- answer: The correct name of the movie or show. " +
+        "- decoys: 3 plausible incorrect names of similar genre/origin. " +
+        "Please generate a mix of famous Indian (Bollywood, Tollywood, popular Indian web series) and popular global Hollywood movies/shows. " +
+        "Avoid any romantic or explicit keywords. Return ONLY JSON: " +
+        '{"riddles": [{"emojis": "...", "answer": "...", "decoys": ["...", "...", "..."]}, ...]}';
+
+      const text = await callOpenRouter(
+        [
+          { role: "system", content: sys },
+          { role: "user", content: `Give me ${count} fresh, fun emoji riddles. Mix famous Bollywood films, Indian TV shows (e.g. Sarabhai vs Sarabhai, TMKOC, Mirzapur), and popular Hollywood blockbusters.` }
+        ],
+        { json: true, temperature: 0.85, maxTokens: 800 }
+      );
+      const parsed = parseJsonLoose<{ riddles: any[] }>(text);
+      return json({ riddles: Array.isArray(parsed?.riddles) ? parsed!.riddles : [] });
+    }
+
     if (action === "ask") {
       const prompt = String(payload.prompt ?? "");
       const system = String(payload.system ?? "You are a helpful game assistant. Keep replies short.");

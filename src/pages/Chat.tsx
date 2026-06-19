@@ -446,6 +446,9 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
       } else if (lastType === "surprise") {
         lastSecretEventId.current = last.id;
         setSecretEvent({ type: (last.content ?? "mirror") as SecretOverlayState["type"], senderName });
+      } else if (lastType === "bored") {
+        lastSecretEventId.current = last.id;
+        setSecretEvent({ type: "bored", result: last.content ?? "tic_tac_toe", isMine: false, senderName });
       } else if ((!lastType || lastType === "text") && last.content) {
         // Plain text from the partner may carry a rich trigger (sorry, angry…).
         const rich = detectRichTrigger(last.content);
@@ -579,7 +582,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
             canBanPartner={canBanAction}
             onBanPartner={handleBanAction}
             banButtonTitle={role === "admin" ? "Ban partner for 5 minutes" : "Hide this account for 5 minutes"}
-            showDecoyButton={decoyEnabled}
+            showDecoyButton={true}
             onDecoy={activateDecoy}
           />
         </div>

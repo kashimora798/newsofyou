@@ -44,6 +44,7 @@ const AlphabetSprint: React.FC<Props> = ({ session, userId, partnerName, onMakeM
   const [inputText, setInputText] = useState("");
   const [submittedWords, setSubmittedWords] = useState<{ letter: string; word: string; authorName: string }[]>([]);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMEOUT_SEC);
+  const [isValidating, setIsValidating] = useState(false);
 
   const channelRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -60,18 +61,67 @@ const AlphabetSprint: React.FC<Props> = ({ session, userId, partnerName, onMakeM
     send("play_click", {});
   };
 
-  const handleWordSubmit = (e?: React.FormEvent) => {
+  const handleWordSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (phase !== "playing" || currentTurn !== userId || !inputText.trim()) return;
+    if (phase !== "playing" || currentTurn !== userId || !inputText.trim() || isValidating) return;
 
     const word = inputText.trim();
     const targetLetter = ALPHABET[letterIndex];
-    const isCorrect = word.toUpperCase().startsWith(targetLetter);
+    
+    // Local letter check first
+    if (!word.toUpperCase().startsWith(targetLetter)) {
+      setInputText("");
+      handleIncorrectWord();
+      return;
+    }
 
+    setIsValidating(true);
     setInputText("");
 
-    if (isCorrect) {
-      const nextWordEntry = { letter: targetLetter, word, authorName: "You" };
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-game", {
+        body: {
+          action: "validate_theme_word",
+          category,
+          letter: targetLetter,
+          word
+        }
+      });
+
+      setIsValidating(false);
+      const isValid = !error && data && data.valid;
+
+      if (isValid) {
+        const nextWordEntry = { letter: targetLetter, word, authorName: "You" };
+        setSubmittedWords(prev => [...prev, nextWordEntry]);
+        
+        const nextIdx = letterIndex + 1;
+        const isSprintDone = nextIdx >= ALPHABET.length;
+        
+        if (isSprintDone) {
+          handleGameFinished(userId, lives);
+        } else {
+          setLetterIndex(nextIdx);
+          setCurrentTurn(opponentId);
+          setTimeLeft(TURN_TIMEOUT_SEC);
+          send("word_added", {
+            word,
+            letter: targetLetter,
+            by: userId,
+            nextIndex: nextIdx,
+            nextTurn: opponentId,
+            livesLeft: lives
+          });
+        }
+      } else {
+        handleIncorrectWord();
+      }
+    } catch (err) {
+      console.error("AI validation failed, falling back to basic check:", err);
+      setIsValidating(false);
+      
+      // Fallback: accept word if starts with correct letter
+      const nextWordEntry = { letter: targetLetter, word, authorName: "You (Fallback)" };
       setSubmittedWords(prev => [...prev, nextWordEntry]);
       
       const nextIdx = letterIndex + 1;
@@ -92,31 +142,33 @@ const AlphabetSprint: React.FC<Props> = ({ session, userId, partnerName, onMakeM
           livesLeft: lives
         });
       }
+    }
+  };
+
+  const handleIncorrectWord = () => {
+    // Incorrect letter or theme, lose a life
+    const nextLives = { ...lives, [userId]: Math.max(0, lives[userId] - 1) };
+    setLives(nextLives);
+    
+    const isDead = nextLives[userId] <= 0;
+    if (isDead) {
+      handleGameFinished(opponentId, nextLives);
     } else {
-      // Incorrect letter match, lose a life
-      const nextLives = { ...lives, [userId]: Math.max(0, lives[userId] - 1) };
-      setLives(nextLives);
-      
-      const isDead = nextLives[userId] <= 0;
-      if (isDead) {
+      // Keep turn but advance letter index to help them move forward
+      const nextIdx = letterIndex + 1;
+      const isSprintDone = nextIdx >= ALPHABET.length;
+      if (isSprintDone) {
         handleGameFinished(opponentId, nextLives);
       } else {
-        // Keep turn but advance letter index to help them move forward
-        const nextIdx = letterIndex + 1;
-        const isSprintDone = nextIdx >= ALPHABET.length;
-        if (isSprintDone) {
-          handleGameFinished(opponentId, nextLives);
-        } else {
-          setLetterIndex(nextIdx);
-          setCurrentTurn(opponentId);
-          setTimeLeft(TURN_TIMEOUT_SEC);
-          send("foul_life", {
-            by: userId,
-            nextIndex: nextIdx,
-            nextTurn: opponentId,
-            livesLeft: nextLives
-          });
-        }
+        setLetterIndex(nextIdx);
+        setCurrentTurn(opponentId);
+        setTimeLeft(TURN_TIMEOUT_SEC);
+        send("foul_life", {
+          by: userId,
+          nextIndex: nextIdx,
+          nextTurn: opponentId,
+          livesLeft: nextLives
+        });
       }
     }
   };
@@ -402,20 +454,20 @@ const AlphabetSprint: React.FC<Props> = ({ session, userId, partnerName, onMakeM
             {/* Submit Box */}
             <form onSubmit={handleWordSubmit} className="w-full flex gap-2 mt-3 relative">
               <input
-                disabled={!myTurn}
+                disabled={!myTurn || isValidating}
                 autoFocus={myTurn}
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder={myTurn ? `Type starting with ${ALPHABET[letterIndex]}...` : "Waiting for partner..."}
-                className="flex-1 py-3 px-4 rounded-xl bg-card border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/45 font-semibold text-sm"
+                placeholder={isValidating ? "AI is verifying your word..." : myTurn ? `Type starting with ${ALPHABET[letterIndex]}...` : "Waiting for partner..."}
+                className="flex-1 py-3 px-4 rounded-xl bg-card border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/45 font-semibold text-sm disabled:opacity-75"
               />
               <button
                 type="submit"
-                disabled={!myTurn || !inputText.trim()}
+                disabled={!myTurn || !inputText.trim() || isValidating}
                 className="h-[46px] w-[46px] bg-primary text-primary-foreground flex items-center justify-center rounded-xl disabled:opacity-50 transition-all shrink-0"
               >
-                <Send className="h-4 w-4" />
+                {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </form>
           </div>

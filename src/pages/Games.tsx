@@ -92,26 +92,17 @@ const GamesView: React.FC<{ userId: string }> = ({ userId }) => {
 
     const challenge = searchParams.get("boredChallenge");
     if (challenge && partner?.user_id && !activeSessionId) {
-      // We are the sender. Create the game and join it.
-      createGame(partner.user_id, challenge).then((session) => {
-        if (session) setActiveSessionId(session.id);
-      });
+      // We are the sender. Create the game in the background.
+      createGame(partner.user_id, challenge);
       searchParams.delete("boredChallenge");
       setSearchParams(searchParams, { replace: true });
       return;
     }
 
     const expectInvite = searchParams.get("expectBoredInvite");
-    if (expectInvite && pendingInvites.length > 0 && !activeSessionId) {
-      // We are the receiver. Auto-accept the first incoming invite from our partner.
-      const invite = pendingInvites.find(i => i.created_by === partner?.user_id);
-      if (invite) {
-        acceptGame(invite.id).then(() => {
-          setActiveSessionId(invite.id);
-        });
-        searchParams.delete("expectBoredInvite");
-        setSearchParams(searchParams, { replace: true });
-      }
+    if (expectInvite) {
+      searchParams.delete("expectBoredInvite");
+      setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams, partner?.user_id, activeSessionId, createGame, pendingInvites, acceptGame]);
 

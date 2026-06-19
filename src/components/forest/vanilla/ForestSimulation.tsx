@@ -20,6 +20,7 @@ export default function ForestSimulation({ isMobile, totalMessages }: Props) {
     const container = containerRef.current;
     if (!container) return;
 
+    let isUnmounted = false;
     let animationFrameId: number;
     const clock = new THREE.Clock();
 
@@ -133,6 +134,7 @@ export default function ForestSimulation({ isMobile, totalMessages }: Props) {
 
     const treesPerFrame = isMobile ? 3 : 5;
     function loadMoreTrees() {
+      if (isUnmounted) return;
       if (treesLoadedCount < treeCount) {
         const limit = Math.min(treeCount, treesLoadedCount + treesPerFrame);
         for (let i = treesLoadedCount; i < limit; i++) {
@@ -201,6 +203,7 @@ export default function ForestSimulation({ isMobile, totalMessages }: Props) {
 
     // 11. Clean Up on Unmount
     return () => {
+      isUnmounted = true;
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       container.removeChild(renderer.domElement);
