@@ -366,17 +366,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
           <Lock className="h-4 w-4" />
         </motion.button>
 
-        {onComposeHelp && (
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={handleComposeHelp}
-            disabled={composing}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-muted/60 disabled:opacity-40"
-            title="Help me write this"
-          >
-            {composing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          </motion.button>
-        )}
+
 
         <motion.button
           whileTap={{ scale: 0.88 }}
