@@ -133,16 +133,6 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
           <VenetianMask className="h-[18px] w-[18px] text-muted-foreground" />
         </HeaderBtn>
       )}
-      {canBanPartner && (
-        <HeaderBtn onClick={onBanPartner} title={banButtonTitle ?? "Ban user for 5 minutes"}>
-          <ShieldBan className="h-[18px] w-[18px] text-rose-500" />
-        </HeaderBtn>
-      )}
-      {showImmersiveButton && (
-        <HeaderBtn onClick={onImmersiveToggle}>
-          {immersiveMode ? <EyeOff className="h-[18px] w-[18px] text-muted-foreground" /> : <Eye className="h-[18px] w-[18px] text-muted-foreground" />}
-        </HeaderBtn>
-      )}
       <HeaderBtn onClick={onSearchToggle}>
         <Search className="h-[18px] w-[18px] text-muted-foreground" />
       </HeaderBtn>
