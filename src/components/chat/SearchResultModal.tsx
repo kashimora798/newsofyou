@@ -1,5 +1,5 @@
 import React from "react";
-import { X, FileText, Download, CornerDownRight } from "lucide-react";
+import { X, FileText, Download, CornerDownRight, Play } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
@@ -99,9 +99,20 @@ const SearchResultModal: React.FC<SearchResultModalProps> = ({
           {message.video && message.vidUrl && (
             <button
               onClick={() => onOpenMedia(message.vidUrl!, "video")}
-              className="block w-full tappable"
+              className="relative block w-full rounded-2xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-black/10 group/vid"
             >
-              <video src={message.vidUrl} className="rounded-2xl w-full max-h-[50vh] object-contain bg-black" preload="metadata" />
+              <video 
+                src={message.vidUrl} 
+                className="rounded-2xl w-full max-h-[50vh] object-contain bg-black block" 
+                preload="metadata" 
+                playsInline 
+                muted 
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/vid:bg-black/40">
+                <div className="h-12 w-12 rounded-full bg-white/90 shadow-md flex items-center justify-center text-black hover:scale-105 transition-transform">
+                  <Play className="h-6 w-6 fill-current ml-0.5" />
+                </div>
+              </div>
             </button>
           )}
 

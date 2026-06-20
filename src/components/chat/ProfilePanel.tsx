@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Image as ImageIcon, FileText, Film, Download } from "lucide-react";
+import { X, Image as ImageIcon, FileText, Film, Download, Play } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatLastSeen } from "@/lib/dateUtils";
 import { supabase } from "@/integrations/supabase/client";
@@ -173,7 +173,20 @@ const ProfilePanel: React.FC<ProfilePanelProps> = ({ partner, onClose }) => {
                           onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = "none"; }}
                         />
                       ) : (
-                        <video src={m.vidUrl!} className="w-full h-full object-cover" preload="metadata" />
+                        <div className="relative w-full h-full group/vid flex items-center justify-center">
+                          <video 
+                            src={m.vidUrl!} 
+                            className="w-full h-full object-cover block" 
+                            preload="metadata" 
+                            playsInline 
+                            muted 
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/35 transition-colors group-hover/vid:bg-black/45">
+                            <div className="h-9 w-9 rounded-full bg-white/95 shadow-md flex items-center justify-center text-black hover:scale-105 transition-transform">
+                              <Play className="h-4.5 w-4.5 fill-current ml-0.5" />
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </button>
                   ))}

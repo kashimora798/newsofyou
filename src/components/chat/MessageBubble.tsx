@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin, Brain, Sparkles, MoreHorizontal } from "lucide-react";
+import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin, Brain, Sparkles, MoreHorizontal, Play } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
 import FileBubble from "./FileBubble";
@@ -459,10 +459,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           {/* Video */}
           {hasVideo && (
             <div
-              className="rounded-xl mb-1.5 max-h-64 w-full overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+              className="relative rounded-xl mb-1.5 max-h-64 w-full overflow-hidden cursor-pointer hover:opacity-90 transition-opacity bg-black/10 group/vid flex items-center justify-center"
               onClick={(e) => { e.stopPropagation(); onVideoClick?.(message.vidUrl!); }}
             >
-              <video src={message.vidUrl!} className="w-full max-h-64 object-cover" preload="metadata" />
+              <video 
+                src={message.vidUrl!} 
+                className="w-full max-h-64 object-cover block" 
+                preload="metadata" 
+                playsInline 
+                muted 
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/vid:bg-black/40">
+                <div className="h-12 w-12 rounded-full bg-white/90 shadow-md flex items-center justify-center text-black hover:scale-105 transition-transform">
+                  <Play className="h-6 w-6 fill-current ml-0.5" />
+                </div>
+              </div>
             </div>
           )}
 
