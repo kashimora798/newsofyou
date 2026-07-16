@@ -120,12 +120,16 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
     textareaRef.current?.focus();
   }, [onComposeHelp, composing, text]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadAndSendFile = async (file: File) => {
     setUploading(true);
-    const fileExt = file.name.split(".").pop();
+    let fileExt = file.name ? file.name.split(".").pop() : "";
+    if (!fileExt || fileExt === file.name) {
+      if (file.type === "image/gif") fileExt = "gif";
+      else if (file.type === "image/png") fileExt = "png";
+      else if (file.type === "image/jpeg") fileExt = "jpg";
+      else if (file.type.startsWith("image/")) fileExt = "png";
+      else fileExt = "bin";
+    }
     const filePath = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
     const isVideo = file.type.startsWith("video/");
     const isImage = file.type.startsWith("image/");
@@ -140,21 +144,54 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
       const extras: any = {};
       if (replyTo) extras.reply_to_id = replyTo.id;
 
+      const isGif = file.type === "image/gif" || fileExt === "gif";
+
       if (isAudio) {
-        await onSend(text.trim() || "", { ...extras, file_url: urlData.publicUrl, file_name: file.name, file_type: file.type, file_size: file.size, message_type: "audio" });
+        await onSend(text.trim() || "", { ...extras, file_url: urlData.publicUrl, file_name: file.name || `audio.${fileExt}`, file_type: file.type, file_size: file.size, message_type: "audio" });
       } else if (isVideo) {
         await onSend(text.trim() || "", { ...extras, video: true, vidUrl: urlData.publicUrl, message_type: "video" });
+      } else if (isGif) {
+        await onSend(text.trim() || "", { ...extras, gif_url: urlData.publicUrl, message_type: "gif" });
       } else if (isImage) {
         await onSend(text.trim() || "", { ...extras, image_url: urlData.publicUrl, message_type: "image" });
       } else {
-        await onSend(text.trim() || "", { ...extras, file_url: urlData.publicUrl, file_name: file.name, file_type: file.type, file_size: file.size, message_type: "file" });
+        await onSend(text.trim() || "", { ...extras, file_url: urlData.publicUrl, file_name: file.name || `file.${fileExt}`, file_type: file.type, file_size: file.size, message_type: "file" });
       }
       setText("");
       onCancelReply();
+    } else {
+      toast({ title: "Failed to upload file 😢", description: uploadError.message, variant: "destructive" });
     }
 
     setUploading(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadAndSendFile(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items;
+    let fileToUpload: File | null = null;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          fileToUpload = file;
+          break;
+        }
+      }
+    }
+
+    if (fileToUpload) {
+      e.preventDefault();
+      await uploadAndSendFile(fileToUpload);
+    }
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -346,6 +383,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             value={text}
             onChange={(e) => { setText(e.target.value); adjustHeight(); onTyping(); }}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={secretMode ? secretPlaceholder : placeholder}
             rows={1}
             className={`w-full resize-none rounded-[20px] border-0 px-4 py-2.5 text-[15px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/20 scrollbar-thin transition-all ${
