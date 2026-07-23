@@ -35,6 +35,7 @@ const GifPicker: React.FC<GifPickerProps> = ({ onSelect }) => {
   const [search, setSearch] = useState("");
   const [activeCat, setActiveCat] = useState<string>("");
   const [gifs, setGifs] = useState<GiphyGif[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [next, setNext] = useState<string>("");
@@ -49,7 +50,7 @@ const GifPicker: React.FC<GifPickerProps> = ({ onSelect }) => {
     const base = query.trim()
       ? `https://api.giphy.com/v1/gifs/search?q=${encodeURIComponent(query)}`
       : `https://api.giphy.com/v1/gifs/trending?`;
-    return `${base}&api_key=${keyToUse}&limit=24&rating=g${pos ? `&offset=${pos}` : ""}`;
+    return `${base}&api_key=${keyToUse}&limit=24&rating=pg-13${pos ? `&offset=${pos}` : ""}`;
   };
 
   const fetchGifs = useCallback(async (query: string) => {
@@ -97,6 +98,30 @@ const GifPicker: React.FC<GifPickerProps> = ({ onSelect }) => {
       fetchGifs("");
     }
   }, [fetchGifs, apiKey]);
+
+  // Fetch suggestions when search changes
+  useEffect(() => {
+    if (!apiKey || !search.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      try {
+        const res = await fetch(`https://api.giphy.com/v1/gifs/search/tags?q=${encodeURIComponent(search)}&api_key=${apiKey}&limit=5`);
+        const data = await res.json();
+        if (data && data.data) {
+          const terms = data.data.map((item: any) => item.name).filter(Boolean);
+          setSuggestions(terms);
+        }
+      } catch (err) {
+        console.error("Error fetching suggestions:", err);
+      }
+    };
+
+    const timer = setTimeout(fetchSuggestions, 300);
+    return () => clearTimeout(timer);
+  }, [search, apiKey]);
 
   useEffect(() => {
     if (apiKey) {
@@ -178,6 +203,27 @@ const GifPicker: React.FC<GifPickerProps> = ({ onSelect }) => {
             className="h-8 pl-8 text-xs bg-muted/50 border-0"
           />
         </div>
+        
+        {/* Search suggestions */}
+        {suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1.5 pb-1 items-center border-t border-border/30 mt-1">
+            <span className="text-[10px] text-muted-foreground mr-1">Suggestions:</span>
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                onClick={() => {
+                  setSearch(suggestion);
+                  setSuggestions([]);
+                  fetchGifs(suggestion);
+                }}
+                className="text-[10px] bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 rounded transition-colors font-medium"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Category chips */}
         <div className="flex gap-1.5 overflow-x-auto scrollbar-thin pb-0.5">
           {GIF_CATEGORIES.map((cat) => (
