@@ -108,7 +108,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
     const fetchLast = async () => {
       const { data } = await supabase
         .from("messages")
-        .select("content, created_at, user_id, image_url, gif_url, sticker_url, file_name")
+        .select("content, created_at, user_id, image_url, gif_url, sticker_url, file_name, video")
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
@@ -116,6 +116,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
       if (data) {
         const preview = data.content
           || (data.image_url ? "📷 Photo" : "")
+          || (data.video ? "📹 Video" : "")
           || ((data as any).gif_url ? "GIF" : "")
           || ((data as any).sticker_url ? "🎨 Sticker" : "")
           || ((data as any).file_name ? `📎 ${(data as any).file_name}` : "")

@@ -13,7 +13,7 @@ const URL_REGEX = /https?:\/\/[^\s]+/;
 const MESSAGE_COLUMNS =
   "id, user_id, username, content, message_type, created_at, " +
   "seen, seen_at, delivered, delivered_at, read_at, status, revealed, is_memory, " +
-  "reply_to_id, emoji, image_url, video, " +
+  "reply_to_id, emoji, image_url, video, vidUrl, " +
   "file_url, file_name, file_type, file_size, gif_url, sticker_url, " +
   "link_title, link_description, link_image, link_target_url, link_preview_active";
 
