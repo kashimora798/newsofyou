@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompliments } from "@/hooks/useCompliments";
-import { ArrowLeft, Plus, Heart, Trash2, Loader2, Inbox } from "lucide-react";
-import { formatLastSeen } from "@/lib/dateUtils";
+import { ArrowLeft, Plus, Heart, Trash2, Loader2, Inbox, Calendar, Clock } from "lucide-react";
+import { formatLastSeen, formatFullDate } from "@/lib/dateUtils";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import BottomNav from "@/components/layout/BottomNav";
 
@@ -109,12 +109,31 @@ const ComplimentBox: React.FC = () => {
             ) : (
               <div className="space-y-2 mt-2">
                 {received.map((c) => (
-                  <div key={c.id} className="bg-card rounded-xl border border-primary/20 p-3 relative overflow-hidden">
-                    <div className="absolute top-2 right-2 text-lg opacity-30">💌</div>
-                    <p className="text-sm text-foreground pr-6">{c.content}</p>
-                    <span className="text-[10px] text-muted-foreground mt-1.5 block">
-                      {c.delivered_at ? formatLastSeen(c.delivered_at) : formatLastSeen(c.created_at)}
-                    </span>
+                  <div key={c.id} className="bg-card rounded-xl border border-primary/20 p-4 relative overflow-hidden"
+                    style={{ background: "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.04) 100%)" }}
+                  >
+                    <div className="absolute top-3 right-3 text-xl opacity-25">💌</div>
+                    <p className="text-sm text-foreground pr-8 leading-relaxed">{c.content}</p>
+
+                    {/* Creation date — when your partner wrote it */}
+                    <div className="mt-3 pt-2.5 border-t border-border/50 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="h-3 w-3 text-primary/60" />
+                        <span className="text-[10px] text-muted-foreground">
+                          <span className="font-medium text-primary/80">Written:</span>{" "}
+                          {formatFullDate(c.created_at)}
+                        </span>
+                      </div>
+                      {c.delivered_at && (
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="h-3 w-3 text-green-500/70" />
+                          <span className="text-[10px] text-muted-foreground">
+                            <span className="font-medium text-green-600/80">Received:</span>{" "}
+                            {formatLastSeen(c.delivered_at)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

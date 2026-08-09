@@ -1,8 +1,14 @@
+/* All @imports must be first in the file */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Quicksand:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital@0;1&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Quicksand:wght@400;500;600;700&display=swap');
 
 @layer base {
   /* ───────────────────────────────────────────────────────────
@@ -162,6 +168,49 @@
     --color-border: hsl(34 7% 19% / 0.7);
   }
 }
+
+/* ─── Cross-Browser Compatibility Fixes ───────────────────────────── */
+
+/* dvh fallback for browsers that don't support dynamic viewport height
+   (older Vivo browsers, Safari < 15.4, Chrome < 108, Firefox < 101) */
+.h-dvh {
+  height: 100vh; /* fallback */
+  height: 100dvh;
+}
+.min-h-dvh {
+  min-height: 100vh; /* fallback */
+  min-height: 100dvh;
+}
+
+/* iOS Safari safe-area support */
+@supports (height: -webkit-fill-available) {
+  .h-dvh {
+    height: -webkit-fill-available;
+    height: 100dvh;
+  }
+}
+
+/* Smooth scrolling for all touch devices */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Better tap highlight removal for mobile browsers */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Force GPU acceleration for animations on mobile */
+.animate-spin,
+.animate-pulse,
+.animate-bounce {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: transform;
+}
+
 
 @layer utilities {
   .glass {
@@ -438,7 +487,6 @@
    ══════════════════════════════════════════════════════════ */
 
 /* ── SPY DOCUMENTS ── */
-@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
 
 .theme-spy {
   --background: 0 0% 8%;
@@ -472,7 +520,6 @@
 }
 
 /* ── GEOCITIES '98 ── */
-@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
 
 .theme-geocities {
   --background: 210 50% 92%;
@@ -504,7 +551,6 @@
 }
 
 /* ── GAMEBOY ── */
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
 
 .theme-gameboy {
   --background: 80 40% 72%;
@@ -538,7 +584,6 @@
 }
 
 /* ── HORROR ARG ── */
-@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap');
 
 .theme-horror {
   --background: 0 0% 3%;
@@ -580,7 +625,6 @@
 }
 
 /* ── ROMANCE NOVEL ── */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital@0;1&display=swap');
 
 .theme-romance {
   --background: 35 40% 92%;

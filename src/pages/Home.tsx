@@ -106,26 +106,32 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
 
   useEffect(() => {
     const fetchLast = async () => {
-      const { data } = await supabase
-        .from("messages")
-        .select("content, created_at, user_id, image_url, gif_url, sticker_url, file_name, video")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+      try {
+        const { data } = await supabase
+          .from("messages")
+          .select("content, created_at, user_id, image_url, gif_url, sticker_url, file_name, video")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (data) {
-        const preview = data.content
-          || (data.image_url ? "📷 Photo" : "")
-          || (data.video ? "📹 Video" : "")
-          || ((data as any).gif_url ? "GIF" : "")
-          || ((data as any).sticker_url ? "🎨 Sticker" : "")
-          || ((data as any).file_name ? `📎 ${(data as any).file_name}` : "")
-          || "Message";
-        setLastMessage(preview);
-        setLastMessageTime(data.created_at);
+        if (data) {
+          const preview = data.content
+            || (data.image_url ? "📷 Photo" : "")
+            || (data.video ? "📹 Video" : "")
+            || ((data as any).gif_url ? "GIF" : "")
+            || ((data as any).sticker_url ? "🎨 Sticker" : "")
+            || ((data as any).file_name ? `📎 ${(data as any).file_name}` : "")
+            || "Message";
+          setLastMessage(preview);
+          setLastMessageTime(data.created_at);
+        }
+      } catch {
+        // Non-critical — silently ignore
       }
     };
-    fetchLast();
+    // Defer this non-critical fetch so home renders first
+    const timer = setTimeout(fetchLast, 500);
+    return () => clearTimeout(timer);
   }, [userId]);
 
   const themeConfig = getThemeById(chatTheme);

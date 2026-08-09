@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    target: "es2020",
+    target: ["es2015", "chrome58", "firefox57", "safari11"],
     rolldownOptions: {
       external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
     },
