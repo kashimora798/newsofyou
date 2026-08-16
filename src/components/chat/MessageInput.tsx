@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,6 +16,7 @@ import { VoiceNoteRecorder, MicButton } from "./VoiceNoteRecorder";
 interface MessageInputProps {
   onSend: (content: string, extras?: any) => Promise<any>;
   onTyping: () => void;
+  onRecording?: (isRecording: boolean) => void;
   userId: string;
   replyTo: Tables<"messages"> | null;
   onCancelReply: () => void;
@@ -27,7 +28,7 @@ interface MessageInputProps {
   sendLabel?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecording, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -250,6 +251,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, userId, r
             key="voice-recorder"
             onSend={onSend}
             replyToId={replyTo?.id}
+            onRecordingChange={onRecording}
             onDone={() => { setShowVoiceRecorder(false); onCancelReply(); }}
           />
         ) : (

@@ -14,7 +14,7 @@ const MESSAGE_COLUMNS =
   "id, user_id, username, content, message_type, created_at, " +
   "seen, seen_at, delivered, delivered_at, read_at, status, revealed, is_memory, " +
   "reply_to_id, emoji, image_url, video, vidUrl, " +
-  "file_url, file_name, file_type, file_size, gif_url, sticker_url, " +
+  "file_url, file_name, file_type, file_size, gif_url, sticker_url, duration, " +
   "link_title, link_description, link_image, link_target_url, link_preview_active";
 
 async function fetchAndStoreLinkPreview(messageId: string, url: string) {
@@ -93,15 +93,33 @@ export function useMessages(userId: string | undefined) {
 
   const sendMessage = useCallback(async (content: string, username: string, extras?: Partial<Message> & Record<string, any>) => {
     if (!userId) return;
-    
-    const msgData: any = {
+
+    const validColumns = new Set([
+      "user_id", "username", "content", "message_type", "reply_to_id",
+      "file_url", "file_name", "file_type", "file_size", "duration",
+      "image_url", "video", "vidUrl", "gif_url", "sticker_url",
+      "revealed", "is_memory", "emoji", "link_title", "link_description",
+      "link_image", "link_target_url", "link_preview_active", "status"
+    ]);
+
+    const rawData: any = {
       content: content || null,
       user_id: userId,
       username,
       ...extras,
     };
 
+    const msgData: any = {};
+    for (const key of Object.keys(rawData)) {
+      if (validColumns.has(key)) {
+        msgData[key] = rawData[key];
+      }
+    }
+
     const { data, error } = await supabase.from("messages").insert(msgData).select().single();
+    if (error) {
+      console.error("[useMessages] sendMessage insert error:", error);
+    }
 
     // Optimistically add sent message to local state so it appears immediately
     if (!error && data) {

@@ -2,9 +2,12 @@ import React from "react";
 import { formatLastSeen } from "@/lib/dateUtils";
 import type { Tables } from "@/integrations/supabase/types";
 
+import { Mic } from "lucide-react";
+
 interface PresenceStatusProps {
   partner: Tables<"user_status"> | null;
   partnerTyping: boolean;
+  partnerRecording?: boolean;
   partnerAwayMessage?: string | null;
 }
 
@@ -19,9 +22,18 @@ const STATUS_PRESETS: Record<string, { emoji: string; label: string }> = {
   exercising: { emoji: "🏃", label: "Exercising" },
 };
 
-const PresenceStatus: React.FC<PresenceStatusProps> = ({ partner, partnerTyping, partnerAwayMessage }) => {
+const PresenceStatus: React.FC<PresenceStatusProps> = ({ partner, partnerTyping, partnerRecording, partnerAwayMessage }) => {
   if (partnerAwayMessage) {
     return <span className="text-xs text-orange-400">{partnerAwayMessage}</span>;
+  }
+
+  if (partnerRecording) {
+    return (
+      <span className="text-xs text-rose-500 font-medium flex items-center gap-1">
+        <Mic className="h-3 w-3 animate-pulse text-rose-500" />
+        <span className="animate-pulse">recording audio...</span>
+      </span>
+    );
   }
 
   if (partnerTyping) {

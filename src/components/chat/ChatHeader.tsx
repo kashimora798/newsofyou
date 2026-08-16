@@ -11,6 +11,7 @@ import type { ThemeEffectsConfig } from "@/hooks/useThemeEffects";
 interface ChatHeaderProps {
   partner: Tables<"user_status"> | null;
   partnerTyping: boolean;
+  partnerRecording?: boolean;
   onSearchToggle?: () => void;
   onProfileToggle?: () => void;
   onSecretTap?: () => void;
@@ -26,7 +27,7 @@ interface ChatHeaderProps {
   onDecoy?: () => void;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearchToggle, onProfileToggle, onSecretTap, immersiveMode, onImmersiveToggle, showImmersiveButton, themeEffects, canBanPartner, onBanPartner, banButtonTitle, partnerAwayMessage, showDecoyButton, onDecoy }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, partnerRecording, onSearchToggle, onProfileToggle, onSecretTap, immersiveMode, onImmersiveToggle, showImmersiveButton, themeEffects, canBanPartner, onBanPartner, banButtonTitle, partnerAwayMessage, showDecoyButton, onDecoy }) => {
   const navigate = useNavigate();
   const { signOut } = useAuth();
 
@@ -114,10 +115,10 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, onSearc
         ) : (
           <h2 className="text-[16px] font-semibold text-foreground truncate tracking-tight">{themedName}</h2>
         )}
-        {themeEffects?.headerSubtitle && !partnerTyping && !partnerAwayMessage ? (
+        {themeEffects?.headerSubtitle && !partnerTyping && !partnerRecording && !partnerAwayMessage ? (
           <p className="text-[10px] text-muted-foreground truncate">{themeEffects.headerSubtitle}</p>
         ) : (
-          <PresenceStatus partner={partner} partnerTyping={partnerTyping} partnerAwayMessage={partnerAwayMessage} />
+          <PresenceStatus partner={partner} partnerTyping={partnerTyping} partnerRecording={partnerRecording} partnerAwayMessage={partnerAwayMessage} />
         )}
       </div>
 

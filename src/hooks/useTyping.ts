@@ -2,95 +2,113 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Uses Supabase Broadcast for instant typing indicators (no DB latency).
+ * Uses Supabase Broadcast for instant typing / recording indicators (no DB latency).
  * Falls back to polling typing_status table for reliability.
  */
 export function useTyping(userId: string | undefined, username: string | undefined) {
   const [partnerTyping, setPartnerTyping] = useState(false);
+  const [partnerRecording, setPartnerRecording] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const partnerTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Send typing status via Broadcast (instant, no DB write)
-  const broadcastTyping = useCallback((isTyping: boolean) => {
+  // Send status via Broadcast (instant, 0 DB latency)
+  const broadcastStatus = useCallback((isTyping: boolean, isRecording = false) => {
     if (!userId) return;
-    supabase.channel("typing-broadcast").send({
-      type: "broadcast",
-      event: "typing",
-      payload: { user_id: userId, username, is_typing: isTyping },
-    });
+    try {
+      supabase.channel("typing-broadcast").send({
+        type: "broadcast",
+        event: "typing",
+        payload: { user_id: userId, username, is_typing: isTyping, is_recording: isRecording },
+      });
+    } catch {}
   }, [userId, username]);
 
-  // Also persist to DB for fallback
-  const setTyping = useCallback(async (isTyping: boolean) => {
+  // Persist status to DB with safe error handling
+  const persistStatus = useCallback(async (isTyping: boolean, isRecording = false) => {
     if (!userId || !username) return;
-    broadcastTyping(isTyping);
-    await supabase.from("typing_status").upsert({
-      user_id: userId,
-      username,
-      is_typing: isTyping,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" });
-  }, [userId, username, broadcastTyping]);
-
-  const handleTyping = useCallback(() => {
-    broadcastTyping(true);
-    // Also write to DB (fire and forget)
-    if (userId && username) {
-      supabase.from("typing_status").upsert({
+    try {
+      await supabase.from("typing_status").upsert({
         user_id: userId,
         username,
-        is_typing: true,
+        is_typing: isTyping,
+        is_recording: isRecording,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-    }
+    } catch {}
+  }, [userId, username]);
+
+  // Called when typing in text input
+  const handleTyping = useCallback(() => {
+    broadcastStatus(true, false);
+    void persistStatus(true, false);
+
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      broadcastTyping(false);
-      if (userId && username) {
-        supabase.from("typing_status").upsert({
-          user_id: userId,
-          username,
-          is_typing: false,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
-      }
+      broadcastStatus(false, false);
+      void persistStatus(false, false);
     }, 3000);
-  }, [broadcastTyping, userId, username]);
+  }, [broadcastStatus, persistStatus]);
+
+  // Called when voice recording starts / stops
+  const handleRecording = useCallback((isRecording: boolean) => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    broadcastStatus(false, isRecording);
+    void persistStatus(false, isRecording);
+  }, [broadcastStatus, persistStatus]);
+
+  const setTyping = useCallback(async (isTyping: boolean) => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    broadcastStatus(isTyping, false);
+    await persistStatus(isTyping, false);
+  }, [broadcastStatus, persistStatus]);
 
   useEffect(() => {
     if (!userId) return;
 
-    // Listen for broadcast typing events (instant)
+    // Listen for broadcast typing & recording events (instant)
     const channel = supabase
       .channel("typing-broadcast")
       .on("broadcast", { event: "typing" }, (payload) => {
         const data = payload.payload;
-        if (data.user_id !== userId) {
-          setPartnerTyping(data.is_typing ?? false);
-          // Auto-clear after 4s if no update
+        if (data && data.user_id !== userId) {
+          const typing = Boolean(data.is_typing);
+          const recording = Boolean(data.is_recording);
+          setPartnerTyping(typing);
+          setPartnerRecording(recording);
+
           if (partnerTimeoutRef.current) clearTimeout(partnerTimeoutRef.current);
-          if (data.is_typing) {
-            partnerTimeoutRef.current = setTimeout(() => setPartnerTyping(false), 4000);
+          if (typing || recording) {
+            // Auto-clear after 4s if no heartbeat
+            partnerTimeoutRef.current = setTimeout(() => {
+              setPartnerTyping(false);
+              setPartnerRecording(false);
+            }, 4000);
           }
         }
       })
-      .subscribe((status) => {
-        console.log("[typing] broadcast channel status:", status);
-      });
+      .subscribe();
 
     // Polling fallback every 2s
     const pollInterval = setInterval(async () => {
-      const { data } = await supabase
-        .from("typing_status")
-        .select("is_typing, updated_at")
-        .neq("user_id", userId)
-        .maybeSingle();
-      if (data) {
-        // Only trust if updated_at is recent (within 5 seconds)
-        const updatedAt = new Date(data.updated_at ?? 0).getTime();
-        const isRecent = Date.now() - updatedAt < 5000;
-        setPartnerTyping(isRecent && (data.is_typing ?? false));
-      }
+      try {
+        const { data } = await supabase
+          .from("typing_status")
+          .select("is_typing, is_recording, updated_at")
+          .neq("user_id", userId)
+          .maybeSingle();
+
+        if (data) {
+          const updatedAt = new Date(data.updated_at ?? 0).getTime();
+          const isRecent = Date.now() - updatedAt < 5000;
+          if (isRecent) {
+            setPartnerTyping(Boolean(data.is_typing));
+            setPartnerRecording(Boolean((data as any).is_recording));
+          } else {
+            setPartnerTyping(false);
+            setPartnerRecording(false);
+          }
+        }
+      } catch {}
     }, 2000);
 
     return () => {
@@ -101,5 +119,5 @@ export function useTyping(userId: string | undefined, username: string | undefin
     };
   }, [userId]);
 
-  return { partnerTyping, handleTyping, setTyping };
+  return { partnerTyping, partnerRecording, handleTyping, handleRecording, setTyping };
 }

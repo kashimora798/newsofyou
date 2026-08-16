@@ -91,7 +91,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const currentUser = useCurrentUser(userId);
   const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
   const { messages, loading, loadingMore, hasMore, loadMore, sendMessage } = useMessages(userId);
-  const { partnerTyping, handleTyping, setTyping } = useTyping(userId, currentUser?.name ?? undefined);
+  const { partnerTyping, partnerRecording, handleTyping, handleRecording, setTyping } = useTyping(userId, currentUser?.name ?? undefined);
   const [replyTo, setReplyTo] = useState<Tables<"messages"> | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -563,6 +563,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
           <ChatHeader
             partner={partner}
             partnerTyping={partnerTyping}
+            partnerRecording={partnerRecording}
             partnerAwayMessage={partnerAwayMessage}
             onSearchToggle={() => {
               if (showSearch) {
@@ -634,6 +635,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
               hasMore={hasMore}
               onLoadMore={loadMore}
               partnerTyping={partnerTyping}
+              partnerRecording={partnerRecording}
               onReply={setReplyTo}
               wallpaper={effectiveWallpaper}
               useSkyBackground={wallpaper === "sky"}
@@ -653,6 +655,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
             <MessageInput
               onSend={handleSend}
               onTyping={handleTyping}
+              onRecording={handleRecording}
               userId={userId}
               replyTo={replyTo}
               onCancelReply={() => setReplyTo(null)}

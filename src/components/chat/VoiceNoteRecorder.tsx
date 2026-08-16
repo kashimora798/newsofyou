@@ -84,6 +84,7 @@ function formatDuration(s: number): string {
 interface VoiceNoteRecorderProps {
   onSend: (content: string, extras?: any) => Promise<any>;
   replyToId?: string;
+  onRecordingChange?: (isRecording: boolean) => void;
   /** Called when recording UI closes (cancel or send) */
   onDone: () => void;
 }
@@ -93,6 +94,7 @@ interface VoiceNoteRecorderProps {
 export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   onSend,
   replyToId,
+  onRecordingChange,
   onDone,
 }) => {
   const [recording, setRecording] = useState(false);
@@ -136,11 +138,14 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       mr.start(100); // collect data every 100ms
       setRecording(true);
       setSeconds(0);
+      onRecordingChange?.(true);
 
       timerRef.current = setInterval(() => {
         setSeconds((s) => s + 1);
       }, 1000);
-    } catch {
+    } catch (err: any) {
+      console.error("[VoiceNoteRecorder] Mic access error:", err);
+      onRecordingChange?.(false);
       toast({
         title: "Microphone access denied",
         description: "Please allow microphone access to send voice notes.",
@@ -154,6 +159,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
     if (!mediaRecorderRef.current || !recording) return;
 
     setSending(true);
+    onRecordingChange?.(false);
     stopStream();
 
     await new Promise<void>((resolve) => {
@@ -166,8 +172,8 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
     const ext = getFileExtension(mimeType);
     const blob = new Blob(chunksRef.current, { type: mimeType });
 
-    if (blob.size < 1000) {
-      // Too short — ignore
+    if (blob.size < 500) {
+      // Too short (< 0.5s) — cancel
       setSending(false);
       onDone();
       return;
@@ -177,9 +183,15 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const filePath = `voice_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("chat-images")
-        .upload(filePath, blob, { contentType: mimeType });
+        .upload(filePath, blob, {
+          contentType: mimeType.split(";")[0], // e.g. "audio/webm"
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("[VoiceNoteRecorder] Upload error:", uploadError);
+        throw uploadError;
+      }
 
       const { data: urlData } = supabase.storage
         .from("chat-images")
@@ -188,28 +200,37 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const extras: any = {
         file_url: urlData.publicUrl,
         file_type: mimeType,
-        file_name: `voice_note.${ext}`,
+        file_name: `voice_note_${seconds}s.${ext}`,
         file_size: blob.size,
         message_type: "voice_note",
         duration: seconds,
       };
       if (replyToId) extras.reply_to_id = replyToId;
 
-      await onSend("", extras);
-    } catch {
-      toast({ title: "Failed to send voice note 😢", variant: "destructive" });
+      const sendErr = await onSend("", extras);
+      if (sendErr) {
+        throw sendErr;
+      }
+    } catch (err: any) {
+      console.error("[VoiceNoteRecorder] send error:", err);
+      toast({
+        title: "Failed to send voice note 😢",
+        description: err?.message || "Please check your connection and try again",
+        variant: "destructive"
+      });
     }
 
     setSending(false);
     onDone();
-  }, [recording, seconds, onSend, replyToId, onDone]);
+  }, [recording, seconds, onSend, replyToId, onDone, onRecordingChange]);
 
   const cancel = useCallback(() => {
+    onRecordingChange?.(false);
     mediaRecorderRef.current?.stop();
     stopStream();
     setRecording(false);
     onDone();
-  }, [onDone]);
+  }, [onDone, onRecordingChange]);
 
   return (
     <motion.div

@@ -21,6 +21,7 @@ interface MessageListProps {
   hasMore: boolean;
   onLoadMore: () => void;
   partnerTyping: boolean;
+  partnerRecording?: boolean;
   onReply: (message: Tables<"messages">) => void;
   wallpaper?: string | null;
   useSkyBackground?: boolean;
@@ -33,7 +34,7 @@ interface MessageListProps {
 }
 
 const MessageList: React.FC<MessageListProps> = ({
-  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
+  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -186,7 +187,9 @@ const MessageList: React.FC<MessageListProps> = ({
           );
         })}
 
-        {partnerTyping && <TypingIndicator themeText={typingText} />}
+        {(partnerRecording || partnerTyping) && (
+          <TypingIndicator themeText={typingText} isRecording={partnerRecording} />
+        )}
         <div ref={bottomRef} />
       </div>
 
