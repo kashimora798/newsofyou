@@ -190,13 +190,18 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         </div>
       </motion.header>
 
-      {/* Content */}
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
+      {/* Content — plain div so Framer transforms don't break touch scroll */}
+      <div
         className="flex-1 overflow-y-auto px-4 pb-4 space-y-3 scrollbar-thin"
+        style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
       >
+        {/* Stagger wrapper — separate from scroll container so it doesn't own the overflow */}
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="show"
+          className="space-y-3"
+        >
         {/* Anniversary Wrapped (appears only near the anniversary) */}
         <motion.div variants={item}>
           <AnniversaryBanner />
@@ -346,8 +351,9 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
           <OnThisDay />
         </motion.div>
 
-        <div className="h-2" />
-      </motion.div>
+          <div className="h-2" />
+        </motion.div>
+      </div>
 
       <ComplimentPopup />
       <BottomNav />

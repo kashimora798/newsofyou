@@ -8,6 +8,7 @@ import EmojiPicker from "./EmojiPicker";
 import ReactionParticles from "./ReactionParticles";
 import SecretMessage from "./SecretMessage";
 import LetterBubble from "./LetterBubble";
+import { VoiceNoteBubble } from "./VoiceNoteBubble";
 import { TOUCH_EMOTIONS, type TouchEmotion } from "./TouchReactionOverlay";
 import { QUICK_REACTIONS } from "@/lib/emojiData";
 import { DieFace } from "@/components/secrets/DieFace";
@@ -477,7 +478,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           )}
 
-          {/* Audio */}
+          {/* Voice Note — custom player */}
+          {msgType === "voice_note" && (message as any).file_url && (
+            <div className="mb-1.5">
+              <VoiceNoteBubble
+                src={(message as any).file_url}
+                mimeType={(message as any).file_type ?? "audio/webm"}
+                recordedDuration={(message as any).duration ?? 0}
+                isOwn={isOwn}
+              />
+            </div>
+          )}
+
+          {/* Legacy audio file attachment */}
           {msgType === "audio" && (message as any).file_url && (
             <div className="mb-1.5">
               <div className="flex items-center gap-2 p-2 rounded-xl bg-muted/30">
@@ -495,7 +508,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
 
           {/* File */}
-          {hasFile && msgType !== "audio" && (
+          {hasFile && msgType !== "audio" && msgType !== "voice_note" && (
             <div className="mb-1.5">
               <FileBubble
                 fileUrl={(message as any).file_url}

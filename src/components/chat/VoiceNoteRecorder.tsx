@@ -1,0 +1,292 @@
+/**
+ * VoiceNoteRecorder
+ *
+ * UX:
+ *  - Single tap  → starts recording (locked mode — hands free)
+ *  - While recording: animated waveform + timer + X cancel button shown
+ *  - Tap mic again (or release after hold) → stops and sends
+ *  - X button → cancels and discards recording
+ *  - Supports webm (Android/Chrome) + mp4 (iOS Safari) automatically
+ */
+
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Mic, X, Send } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+
+// ─── Audio format detection ────────────────────────────────────────────────────
+
+function getSupportedMimeType(): string {
+  const types = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+  ];
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return "";
+}
+
+function getFileExtension(mimeType: string): string {
+  if (mimeType.includes("webm")) return "webm";
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("mp4")) return "mp4";
+  return "audio";
+}
+
+// ─── Waveform bar animation ────────────────────────────────────────────────────
+
+const BARS = 20;
+
+const WaveformBars: React.FC<{ active: boolean }> = ({ active }) => (
+  <div className="flex items-center gap-[2px] h-7">
+    {Array.from({ length: BARS }).map((_, i) => (
+      <motion.div
+        key={i}
+        className="w-[3px] rounded-full bg-primary"
+        animate={
+          active
+            ? {
+                scaleY: [0.3, Math.random() * 0.7 + 0.5, 0.3],
+                opacity: [0.6, 1, 0.6],
+              }
+            : { scaleY: 0.2, opacity: 0.3 }
+        }
+        transition={
+          active
+            ? {
+                duration: 0.5 + Math.random() * 0.4,
+                repeat: Infinity,
+                delay: (i / BARS) * 0.25,
+                ease: "easeInOut",
+              }
+            : { duration: 0.2 }
+        }
+        style={{ height: "100%", originY: "center" }}
+      />
+    ))}
+  </div>
+);
+
+// ─── Timer display ─────────────────────────────────────────────────────────────
+
+function formatDuration(s: number): string {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface VoiceNoteRecorderProps {
+  onSend: (content: string, extras?: any) => Promise<any>;
+  replyToId?: string;
+  /** Called when recording UI closes (cancel or send) */
+  onDone: () => void;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
+  onSend,
+  replyToId,
+  onDone,
+}) => {
+  const [recording, setRecording] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mimeTypeRef = useRef<string>("");
+
+  // Auto-start recording when component mounts
+  useEffect(() => {
+    startRecording();
+    return () => stopStream();
+  }, []);
+
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = getSupportedMimeType();
+      mimeTypeRef.current = mimeType;
+
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+      chunksRef.current = [];
+
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mr.start(100); // collect data every 100ms
+      setRecording(true);
+      setSeconds(0);
+
+      timerRef.current = setInterval(() => {
+        setSeconds((s) => s + 1);
+      }, 1000);
+    } catch {
+      toast({
+        title: "Microphone access denied",
+        description: "Please allow microphone access to send voice notes.",
+        variant: "destructive",
+      });
+      onDone();
+    }
+  };
+
+  const stopAndSend = useCallback(async () => {
+    if (!mediaRecorderRef.current || !recording) return;
+
+    setSending(true);
+    stopStream();
+
+    await new Promise<void>((resolve) => {
+      const mr = mediaRecorderRef.current!;
+      mr.onstop = () => resolve();
+      mr.stop();
+    });
+
+    const mimeType = mimeTypeRef.current || "audio/webm";
+    const ext = getFileExtension(mimeType);
+    const blob = new Blob(chunksRef.current, { type: mimeType });
+
+    if (blob.size < 1000) {
+      // Too short — ignore
+      setSending(false);
+      onDone();
+      return;
+    }
+
+    try {
+      const filePath = `voice_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("chat-images")
+        .upload(filePath, blob, { contentType: mimeType });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("chat-images")
+        .getPublicUrl(filePath);
+
+      const extras: any = {
+        file_url: urlData.publicUrl,
+        file_type: mimeType,
+        file_name: `voice_note.${ext}`,
+        file_size: blob.size,
+        message_type: "voice_note",
+        duration: seconds,
+      };
+      if (replyToId) extras.reply_to_id = replyToId;
+
+      await onSend("", extras);
+    } catch {
+      toast({ title: "Failed to send voice note 😢", variant: "destructive" });
+    }
+
+    setSending(false);
+    onDone();
+  }, [recording, seconds, onSend, replyToId, onDone]);
+
+  const cancel = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+    stopStream();
+    setRecording(false);
+    onDone();
+  }, [onDone]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 400, damping: 28 }}
+      className="flex items-center gap-3 px-3 py-2.5 glass-chat-input"
+    >
+      {/* Cancel button */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={cancel}
+        disabled={sending}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+        aria-label="Cancel recording"
+      >
+        <X className="h-5 w-5" />
+      </motion.button>
+
+      {/* Recording indicator + waveform */}
+      <div className="flex-1 flex items-center gap-2 min-w-0">
+        {/* Pulsing red dot */}
+        <motion.div
+          animate={{ opacity: [1, 0.2, 1] }}
+          transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+          className="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0"
+        />
+        {/* Timer */}
+        <span className="text-sm font-mono font-semibold text-foreground tabular-nums shrink-0">
+          {formatDuration(seconds)}
+        </span>
+        {/* Waveform */}
+        <div className="flex-1 overflow-hidden">
+          <WaveformBars active={recording} />
+        </div>
+      </div>
+
+      {/* Send button */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        whileHover={{ scale: 1.05 }}
+        onClick={stopAndSend}
+        disabled={sending || !recording}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40 transition-all shadow-sm shadow-primary/20"
+        aria-label="Send voice note"
+      >
+        {sending ? (
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+            className="h-4 w-4 border-2 border-white/60 border-t-white rounded-full"
+          />
+        ) : (
+          <Send className="h-[18px] w-[18px]" />
+        )}
+      </motion.button>
+    </motion.div>
+  );
+};
+
+// ─── Mic button (shown in MessageInput when text is empty) ────────────────────
+
+interface MicButtonProps {
+  onClick: () => void;
+}
+
+export const MicButton: React.FC<MicButtonProps> = ({ onClick }) => (
+  <motion.button
+    whileTap={{ scale: 0.88 }}
+    whileHover={{ scale: 1.05 }}
+    onClick={onClick}
+    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm shadow-primary/20 transition-all"
+    aria-label="Record voice note"
+  >
+    <Mic className="h-[18px] w-[18px]" />
+  </motion.button>
+);
+
+export default VoiceNoteRecorder;

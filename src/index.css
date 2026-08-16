@@ -182,11 +182,14 @@
   min-height: 100dvh;
 }
 
-/* iOS Safari safe-area support */
-@supports (height: -webkit-fill-available) {
+/* iOS Safari safe-area support — keep 100dvh as preferred, use -webkit-fill-available only as
+   a fallback for very old Safari (<15) that doesn't understand dvh at all. */
+@supports not (height: 100dvh) {
   .h-dvh {
     height: -webkit-fill-available;
-    height: 100dvh;
+  }
+  .min-h-dvh {
+    min-height: -webkit-fill-available;
   }
 }
 
@@ -200,6 +203,11 @@ html {
 /* Better tap highlight removal for mobile browsers */
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Remove 300ms tap delay on mobile for all interactive elements */
+button, a, [role="button"] {
+  touch-action: manipulation;
 }
 
 /* Force GPU acceleration for animations on mobile */

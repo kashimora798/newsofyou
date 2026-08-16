@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { captureLoginSession } from "@/hooks/useLoginFingerprint";
 
 const INVALID_USER_ERROR = "INVALID_USER";
 const INVALID_REDIRECT = "/you/login?invalid=1";
@@ -128,6 +129,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     sessionStorage.removeItem("invalidUser");
     sessionStorage.removeItem("invalidAttempts");
+
+    // Capture fingerprint + device + location asynchronously — never blocks login
+    void captureLoginSession(signedInUserId);
 
     return { error: null };
   };
