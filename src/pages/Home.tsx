@@ -309,18 +309,17 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
           </h3>
           <div className="grid grid-cols-4 gap-2.5">
             {quickLinks.map((link) => (
-              <motion.button
+              <button
                 key={link.path}
-                whileHover={{ y: -3, scale: 1.03 }}
-                whileTap={{ scale: 0.9 }}
+                type="button"
                 onClick={() => navigate(link.path)}
-                className="flex flex-col items-center gap-1.5 group"
+                className="flex flex-col items-center gap-1.5 group cursor-pointer active:scale-90 transition-transform select-none touch-manipulation focus:outline-none"
               >
-                <div className={`h-12 w-12 rounded-2xl ${link.bg} flex items-center justify-center transition-shadow group-hover:shadow-lg group-hover:shadow-primary/10`}>
+                <div className={`h-12 w-12 rounded-2xl ${link.bg} flex items-center justify-center transition-all group-hover:shadow-lg group-hover:shadow-primary/10 group-active:scale-95`}>
                   <link.icon className={`h-5 w-5 ${link.color}`} />
                 </div>
                 <span className="text-[9.5px] font-semibold text-foreground/80 text-center leading-tight">{link.label}</span>
-              </motion.button>
+              </button>
             ))}
           </div>
         </motion.div>

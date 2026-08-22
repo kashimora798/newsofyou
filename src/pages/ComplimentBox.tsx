@@ -28,10 +28,20 @@ const ComplimentBox: React.FC = () => {
       <header className="px-4 pt-5 pb-3 bg-card border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate(-1)} className="p-1.5 rounded-full hover:bg-muted"><ArrowLeft className="h-5 w-5" /></button>
+            <button
+              onClick={() => navigate(-1)}
+              className="p-1.5 rounded-full hover:bg-muted active:scale-95 transition-transform"
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
             <h1 className="text-lg font-bold text-foreground">Secret Compliments 💌</h1>
           </div>
-          <button onClick={() => setShowAdd(!showAdd)} className="p-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+          <button
+            onClick={() => setShowAdd(!showAdd)}
+            className="p-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 transition-transform"
+            aria-label="Add compliment"
+          >
             <Plus className="h-4 w-4" />
           </button>
         </div>
@@ -49,7 +59,11 @@ const ComplimentBox: React.FC = () => {
               className="w-full text-sm bg-muted rounded-lg px-3 py-2 outline-none resize-none placeholder:text-muted-foreground"
             />
             <div className="flex justify-end">
-              <button onClick={handleAdd} disabled={!content.trim()} className="px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+              <button
+                onClick={handleAdd}
+                disabled={!content.trim()}
+                className="px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg disabled:opacity-50 flex items-center gap-1.5 active:scale-95 transition-transform"
+              >
                 <Heart className="h-3.5 w-3.5" /> Drop in Jar
               </button>
             </div>
@@ -72,13 +86,13 @@ const ComplimentBox: React.FC = () => {
                 <p className="text-xs text-muted-foreground mt-1">Tap + to write one for your partner</p>
               </div>
             ) : (
-              <div className="space-y-2 mt-2">
+              <div className="space-y-2.5 mt-2">
                 {compliments.map((c) => (
                   <div key={c.id} className="bg-card rounded-xl border border-border p-3 group">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="text-sm text-foreground">{c.content}</p>
-                        <div className="flex items-center gap-2 mt-1.5">
+                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{c.content}</p>
+                        <div className="flex items-center gap-2 mt-2">
                           <span className="text-[10px] text-muted-foreground">{formatLastSeen(c.created_at)}</span>
                           {c.is_delivered ? (
                             <span className="text-[10px] text-primary font-medium">💕 Delivered</span>
@@ -87,8 +101,12 @@ const ComplimentBox: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <button onClick={() => deleteCompliment(c.id)} className="p-1 rounded-full hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <button
+                        onClick={() => deleteCompliment(c.id)}
+                        className="p-1.5 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-70 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete note"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -107,13 +125,13 @@ const ComplimentBox: React.FC = () => {
                 <p className="text-xs text-muted-foreground mt-1">Your partner's sweet notes will appear here 💗</p>
               </div>
             ) : (
-              <div className="space-y-2 mt-2">
+              <div className="space-y-2.5 mt-2">
                 {received.map((c) => (
                   <div key={c.id} className="bg-card rounded-xl border border-primary/20 p-4 relative overflow-hidden"
                     style={{ background: "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.04) 100%)" }}
                   >
                     <div className="absolute top-3 right-3 text-xl opacity-25">💌</div>
-                    <p className="text-sm text-foreground pr-8 leading-relaxed">{c.content}</p>
+                    <p className="text-sm text-foreground pr-8 leading-relaxed whitespace-pre-wrap">{c.content}</p>
 
                     {/* Creation date — when your partner wrote it */}
                     <div className="mt-3 pt-2.5 border-t border-border/50 space-y-1">
