@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { X } from "lucide-react";
 
 interface Props {
   streakCount: number;
@@ -37,26 +38,29 @@ const StreakCelebration: React.FC<Props> = ({ streakCount, onDismiss }) => {
     })), []);
 
   useEffect(() => {
-    requestAnimationFrame(() => setVisible(true));
+    const frame = requestAnimationFrame(() => setVisible(true));
     const timer = setTimeout(handleDismiss, 7000);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
   }, []);
 
   const handleDismiss = () => {
     setDismissed(true);
-    setTimeout(onDismiss, 500);
+    setTimeout(onDismiss, 400);
   };
 
   const isMilestone = streakCount === 7 || streakCount === 30 || streakCount === 100 || streakCount === 365;
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={handleDismiss}
       style={{
         opacity: dismissed ? 0 : visible ? 1 : 0,
-        transition: "opacity 0.5s ease",
-        pointerEvents: dismissed ? "none" : "auto",
+        transition: "opacity 0.4s ease",
+        pointerEvents: dismissed ? "none" : visible ? "auto" : "none",
       }}
     >
       {/* Backdrop */}
@@ -67,11 +71,20 @@ const StreakCelebration: React.FC<Props> = ({ streakCount, onDismiss }) => {
         }}
       />
 
+      {/* Close button */}
+      <button
+        onClick={handleDismiss}
+        className="absolute top-5 right-5 z-20 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+        aria-label="Close"
+      >
+        <X className="h-5 w-5" />
+      </button>
+
       {/* Confetti */}
       {confetti.map((c) => (
         <div
           key={c.id}
-          className="absolute rounded-sm"
+          className="absolute rounded-sm pointer-events-none"
           style={{
             width: c.size,
             height: c.size * 0.6,
@@ -88,7 +101,7 @@ const StreakCelebration: React.FC<Props> = ({ streakCount, onDismiss }) => {
       {particles.map((p) => (
         <div
           key={p.id}
-          className="absolute"
+          className="absolute pointer-events-none"
           style={{
             fontSize: p.size,
             left: p.left,
@@ -102,10 +115,10 @@ const StreakCelebration: React.FC<Props> = ({ streakCount, onDismiss }) => {
       ))}
 
       {/* Center content */}
-      <div className="relative flex flex-col items-center gap-3 px-8 max-w-sm text-center z-10">
+      <div className="relative flex flex-col items-center gap-3 px-6 max-w-sm text-center z-10">
         {/* Fire glow */}
         <div
-          className="absolute rounded-full"
+          className="absolute rounded-full pointer-events-none"
           style={{
             width: 200,
             height: 200,
@@ -168,20 +181,17 @@ const StreakCelebration: React.FC<Props> = ({ streakCount, onDismiss }) => {
                 : streakCount === 30
                   ? "A whole month of daily chats! You're on fire! 🔥🔥"
                   : "7 days strong! The spark has been lit! ⚡"
-            : "You both hit 50 messages today! Keep the fire alive! 💪"
+            : "Keep the fire alive! Amazing connection! 💪"
           }
         </p>
 
-        {/* Tap to continue */}
-        <p
-          className="text-xs text-white/30 mt-3"
-          style={{
-            animation: visible ? "streak-text-pop 0.5s 2s ease-out forwards" : "none",
-            opacity: 0,
-          }}
+        {/* Tap to continue button */}
+        <button
+          onClick={handleDismiss}
+          className="mt-4 px-6 py-2.5 rounded-full bg-white/20 hover:bg-white/30 text-white font-semibold text-xs transition-all active:scale-95"
         >
-          Tap to continue
-        </p>
+          Tap to continue ✨
+        </button>
       </div>
     </div>
   );

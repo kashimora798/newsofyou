@@ -251,6 +251,12 @@ export function useCompliments() {
   const dismissCompliment = useCallback(() => {
     setActiveCompliment((prev) => {
       if (!prev) return null;
+      // Defensively ensure marked delivered in DB
+      void (supabase as any)
+        .from("compliments")
+        .update({ is_delivered: true, delivered_at: new Date().toISOString() })
+        .eq("id", prev.id);
+
       // Remove dismissed item from queue
       const idx = sessionQueue.findIndex((c) => c.id === prev.id);
       if (idx !== -1) sessionQueue.splice(idx, 1);
