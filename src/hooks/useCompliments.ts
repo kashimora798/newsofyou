@@ -11,39 +11,32 @@ export interface Compliment {
   created_at: string;
 }
 
-const DAILY_LIMIT = 2; // max compliments shown in a calendar day
+const DAILY_LIMIT = 1; // Strictly 1 surprise compliment per calendar day
 
 function getTodayString(): string {
   return new Date().toISOString().split("T")[0];
 }
 
-function getDailyCount(userId: string): number {
+function hasReceivedToday(userId: string): boolean {
   try {
     const today = getTodayString();
-    const storedDate = localStorage.getItem(`compliment_date_${userId}`);
-    if (storedDate !== today) {
-      localStorage.setItem(`compliment_date_${userId}`, today);
-      localStorage.setItem(`compliment_count_${userId}`, "0");
-      return 0;
-    }
-    return parseInt(localStorage.getItem(`compliment_count_${userId}`) || "0", 10);
+    const storedDate = localStorage.getItem(`compliment_delivered_date_${userId}`);
+    return storedDate === today;
   } catch {
-    return 0;
+    return false;
   }
 }
 
-function incrementDailyCount(userId: string) {
+function markReceivedToday(userId: string) {
   try {
     const today = getTodayString();
-    localStorage.setItem(`compliment_date_${userId}`, today);
-    const c = getDailyCount(userId);
-    localStorage.setItem(`compliment_count_${userId}`, String(c + 1));
+    localStorage.setItem(`compliment_delivered_date_${userId}`, today);
   } catch { /* ignore */ }
 }
 
 function hasCheckedThisSession(userId: string): boolean {
   try {
-    return sessionStorage.getItem(`compliment_session_delivered_${userId}`) === "true";
+    return sessionStorage.getItem(`compliment_session_checked_${userId}`) === "true";
   } catch {
     return false;
   }
@@ -51,7 +44,7 @@ function hasCheckedThisSession(userId: string): boolean {
 
 function markCheckedThisSession(userId: string) {
   try {
-    sessionStorage.setItem(`compliment_session_delivered_${userId}`, "true");
+    sessionStorage.setItem(`compliment_session_checked_${userId}`, "true");
   } catch { /* ignore */ }
 }
 
@@ -112,13 +105,16 @@ export function useCompliments() {
     }
   }, [user]);
 
-  // Check and deliver an undelivered compliment from the partner
+  // Check and deliver exactly 1 undelivered compliment from the partner per day
   const checkSurprise = useCallback(async () => {
     if (!user) return;
 
-    // Check session and daily limits
+    // Strictly enforce 1 per day and 1 check per session
     if (hasCheckedThisSession(user.id)) return;
-    if (getDailyCount(user.id) >= DAILY_LIMIT) return;
+    if (hasReceivedToday(user.id)) {
+      markCheckedThisSession(user.id);
+      return;
+    }
 
     try {
       // Find oldest undelivered compliment written by partner
@@ -145,7 +141,7 @@ export function useCompliments() {
         .eq("id", item.id);
 
       markCheckedThisSession(user.id);
-      incrementDailyCount(user.id);
+      markReceivedToday(user.id);
 
       if (mountedRef.current) {
         setSurpriseCompliment({ ...item, is_delivered: true, delivered_at: now });
@@ -155,7 +151,7 @@ export function useCompliments() {
     }
   }, [user]);
 
-  // Initial load
+  // Initial load of jar contents
   useEffect(() => {
     fetchCompliments();
     fetchReceived();
