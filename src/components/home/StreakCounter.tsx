@@ -24,7 +24,7 @@ const StreakCounter: React.FC = () => {
       setTodayCount(data.todayCount);
       setBreakDate(data.streakBrokenOn);
 
-      // Celebration check
+      // Show celebration only once per calendar day, not every session
       if (data.currentStreak > 0) {
         const todayStr = new Date().toISOString().slice(0, 10);
         const lastCelebratedDate = await getStreakCelebratedDate(user.id);
@@ -34,16 +34,21 @@ const StreakCounter: React.FC = () => {
         }
       }
     } catch (e) {
-      console.error("Streak calculation error:", e);
+      // Never crash Home for a streak error
     }
 
     setLoading(false);
   }, [user?.id]);
 
   useEffect(() => {
-    calculate();
-    const interval = setInterval(calculate, 300000); // Check every 5 min (was 60s)
-    return () => clearInterval(interval);
+    if (!user?.id) return;
+    // Defer by 1.5s so it doesn't block Home's initial paint
+    const initialTimer = setTimeout(calculate, 1500);
+    const interval = setInterval(calculate, 300000); // refresh every 5 min
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
   }, [calculate]);
 
   if (loading) return null;

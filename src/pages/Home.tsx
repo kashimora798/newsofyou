@@ -112,7 +112,11 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
     load();
   }, [userId]);
 
-  useEffect(() => { checkNewYear(userId); }, [userId]);
+  useEffect(() => {
+    // Defer so it never blocks initial render
+    const t = setTimeout(() => checkNewYear(userId), 3000);
+    return () => clearTimeout(t);
+  }, [userId]);
 
   useEffect(() => {
     const fetchLast = async () => {

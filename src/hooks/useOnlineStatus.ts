@@ -28,9 +28,11 @@ export function useOnlineStatus(userId: string | undefined) {
   useEffect(() => {
     if (!userId) return;
 
-    // Set online immediately
-    setOnline(true);
-    updateActivityState("active");
+    // Defer initial status write so it doesn't race with auth or Home render
+    const initTimer = setTimeout(() => {
+      setOnline(true);
+      updateActivityState("active");
+    }, 500);
 
     // Track user interactions for idle detection
     const resetInteraction = () => {
@@ -94,6 +96,7 @@ export function useOnlineStatus(userId: string | undefined) {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      clearTimeout(initTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);

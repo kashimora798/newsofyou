@@ -26,24 +26,31 @@ async function setAchievementFlag(userId: string, field: string, value: any) {
   }
 }
 
-// Helper: get achievement state
+// Helper: get achievement state — never throws, returns null on any failure
 export async function getAchievementState(userId: string) {
-  const { data } = await supabase
-    .from("user_achievement_state" as any)
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (!data) {
-    // Create initial row
-    const { data: created } = await supabase
+  try {
+    const { data, error } = await supabase
       .from("user_achievement_state" as any)
-      .insert({ user_id: userId } as any)
-      .select()
-      .single();
-    return created as any;
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle(); // use maybeSingle to never throw on missing row
+
+    if (error) return null;
+
+    if (!data) {
+      // Create initial row silently
+      const { data: created } = await supabase
+        .from("user_achievement_state" as any)
+        .insert({ user_id: userId } as any)
+        .select()
+        .single();
+      return created as any ?? null;
+    }
+
+    return data as any;
+  } catch {
+    return null; // never crash the caller
   }
-  return data as any;
 }
 
 // ──────────────────────────────────────────────
@@ -84,9 +91,12 @@ export async function checkJinx(
 }
 
 // ──────────────────────────────────────────────
-// 3. Check New Year - call on app load
+// 3. Check New Year - ONCE per session only
 // ──────────────────────────────────────────────
+const _newYearChecked = new Set<string>();
 export async function checkNewYear(userId: string) {
+  if (_newYearChecked.has(userId)) return; // only run once per browser session per user
+  _newYearChecked.add(userId);
   const now = new Date();
   if (now.getMonth() === 0 && now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 5) {
     await setAchievementFlag(userId, "event_newyear", true);
@@ -101,53 +111,58 @@ export async function markTimeTraveler(userId: string) {
 }
 
 // ──────────────────────────────────────────────
-// 5. The One Who Waits
+// 5. The One Who Waits — run only once per mount
 // ──────────────────────────────────────────────
 export function useWaiterAchievement(userId: string | undefined, partnerOnline: boolean | undefined | null) {
   const checkedRef = useRef(false);
 
   useEffect(() => {
-    if (!userId) return;
-    if (checkedRef.current) return;
+    // Only check once per component lifetime AND only after partnerOnline has resolved
+    if (!userId || checkedRef.current || partnerOnline === undefined) return;
+    checkedRef.current = true;
 
     const run = async () => {
-      const state = await getAchievementState(userId);
-      if (state?.event_waiter) return;
+      try {
+        const state = await getAchievementState(userId);
+        if (!state || state.event_waiter) return;
 
-      if (partnerOnline === true) {
-        // Partner online - reset
-        await supabase
-          .from("user_achievement_state" as any)
-          .update({ waiter_open_count: 0, waiter_start_time: 0, updated_at: new Date().toISOString() } as any)
-          .eq("user_id", userId);
-        return;
-      }
-
-      if (partnerOnline === false) {
-        const now = Date.now();
-        const startTime = state?.waiter_start_time ?? 0;
-
-        if (!startTime || now - startTime > 24 * 60 * 60 * 1000) {
+        if (partnerOnline === true) {
           await supabase
             .from("user_achievement_state" as any)
-            .update({ waiter_start_time: now, waiter_open_count: 1, updated_at: new Date().toISOString() } as any)
+            .update({ waiter_open_count: 0, waiter_start_time: 0, updated_at: new Date().toISOString() } as any)
             .eq("user_id", userId);
           return;
         }
 
-        const count = (state?.waiter_open_count ?? 0) + 1;
-        const updates: any = { waiter_open_count: count, updated_at: new Date().toISOString() };
-        if (count >= 20) updates.event_waiter = true;
+        if (partnerOnline === false) {
+          const now = Date.now();
+          const startTime = state?.waiter_start_time ?? 0;
 
-        await supabase
-          .from("user_achievement_state" as any)
-          .update(updates)
-          .eq("user_id", userId);
+          if (!startTime || now - startTime > 24 * 60 * 60 * 1000) {
+            await supabase
+              .from("user_achievement_state" as any)
+              .update({ waiter_start_time: now, waiter_open_count: 1, updated_at: new Date().toISOString() } as any)
+              .eq("user_id", userId);
+            return;
+          }
+
+          const count = (state?.waiter_open_count ?? 0) + 1;
+          const updates: any = { waiter_open_count: count, updated_at: new Date().toISOString() };
+          if (count >= 20) updates.event_waiter = true;
+
+          await supabase
+            .from("user_achievement_state" as any)
+            .update(updates)
+            .eq("user_id", userId);
+        }
+      } catch {
+        // silently ignore — never crash Home for an achievement check
       }
     };
 
-    run();
-    checkedRef.current = true;
+    // Defer slightly so it doesn't block Home initial render
+    const t = setTimeout(run, 2000);
+    return () => clearTimeout(t);
   }, [userId, partnerOnline]);
 }
 
