@@ -24,6 +24,7 @@ import Tamagotchi from "@/components/home/Tamagotchi";
 import ReminderWidget from "@/components/home/ReminderWidget";
 import CalendarWidget from "@/components/home/CalendarWidget";
 import ComplimentPopup from "@/components/home/ComplimentPopup";
+import { useCompliments } from "@/hooks/useCompliments";
 import DailyChecklistWidget from "@/components/home/DailyChecklistWidget";
 import AnniversaryBanner from "@/components/home/AnniversaryBanner";
 
@@ -86,9 +87,18 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const [lastMessageTime, setLastMessageTime] = useState<string | null>(null);
   const [chatTheme, setChatTheme] = useState("default");
   const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
+  const { surpriseCompliment, dismissSurprise, checkSurprise } = useCompliments();
 
   useOnlineStatus(userId);
   useWaiterAchievement(userId, partner?.is_online);
+
+  useEffect(() => {
+    // Check surprise note after initial view renders
+    const timer = setTimeout(() => {
+      checkSurprise();
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [checkSurprise]);
 
   useEffect(() => {
     const load = async () => {
@@ -354,7 +364,10 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         </motion.div>
       </div>
 
-      <ComplimentPopup />
+      <ComplimentPopup
+        compliment={surpriseCompliment}
+        onDismiss={dismissSurprise}
+      />
       <BottomNav />
     </div>
   );
