@@ -7,6 +7,12 @@
  *  - Tap mic again (or release after hold) → stops and sends
  *  - X button → cancels and discards recording
  *  - Supports webm (Android/Chrome) + mp4 (iOS Safari) automatically
+ *
+ * Noise Cancellation Pipeline (no voice modulation):
+ *  getUserMedia (noiseSuppression + echoCancellation + autoGainControl)
+ *    → AudioContext HighPass filter (cuts rumble below 80 Hz)
+ *    → DynamicsCompressor (smooths volume fluctuations)
+ *    → MediaRecorder (records the cleaned stream)
  */
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -105,6 +111,7 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const mimeTypeRef = useRef<string>("");
 
   // Auto-start recording when component mounts
@@ -116,18 +123,79 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    // Close AudioContext to release audio resources
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      audioCtxRef.current.close().catch(() => {});
+    }
+    audioCtxRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
   };
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      // ── Step 1: Request mic with browser-native noise suppression ──────────
+      // These constraints tell the browser's built-in audio processing to:
+      //   • noiseSuppression  – filter out steady background noise (fans, AC, traffic)
+      //   • echoCancellation  – remove room echo and reverb
+      //   • autoGainControl   – stabilise volume so quiet parts aren't silent
+      // These do NOT alter voice pitch or character — purely signal cleanup.
+      const constraints: MediaStreamConstraints = {
+        audio: {
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: true,
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 1 }, // mono — more effective noise processing
+        },
+      };
+
+      const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      // ── Step 2: AudioContext pipeline for additional acoustic cleanup ───────
+      // Pipeline: Source → HighPass → DynamicsCompressor → Destination (stream)
+      //
+      //  HighPass filter:  cuts low-frequency rumble (handling noise, AC hum)
+      //                    below 80 Hz without touching the voice band.
+      //
+      //  DynamicsCompressor: evens out sudden volume spikes / fluctuations
+      //                      so the recording stays consistent throughout.
+      //                      Uses a mild 4:1 ratio — not a voice changer.
+      //
+      // No pitch shift, no frequency modulation — pure dynamics/level control.
+      const audioCtx = new AudioContext({ sampleRate: 48000 });
+      audioCtxRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(rawStream);
+
+      // High-pass filter — removes rumble below 80 Hz
+      const highPass = audioCtx.createBiquadFilter();
+      highPass.type = "highpass";
+      highPass.frequency.value = 80;
+      highPass.Q.value = 0.7;
+
+      // Dynamics compressor — smooths volume fluctuations
+      const compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.value = -24; // start compressing at -24 dB
+      compressor.knee.value = 10;       // soft knee for natural transition
+      compressor.ratio.value = 4;       // gentle 4:1 ratio
+      compressor.attack.value = 0.003;  // 3 ms — fast enough to catch peaks
+      compressor.release.value = 0.25;  // 250 ms — natural release
+
+      // Wire up the processing chain and output to a new stream
+      const destination = audioCtx.createMediaStreamDestination();
+      source.connect(highPass);
+      highPass.connect(compressor);
+      compressor.connect(destination);
+
+      // Record the processed (clean) stream, keep ref to raw for cleanup
+      const processedStream = destination.stream;
+      streamRef.current = rawStream;
+
       const mimeType = getSupportedMimeType();
       mimeTypeRef.current = mimeType;
 
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const mr = new MediaRecorder(processedStream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mr;
       chunksRef.current = [];
 
