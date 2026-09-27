@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { captureLoginSession } from "@/hooks/useLoginFingerprint";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 const INVALID_USER_ERROR = "INVALID_USER";
 const INVALID_REDIRECT = "/you/login?invalid=1";
@@ -47,6 +48,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const forceInvalidUserLogout = async () => {
+    const currentUserId = session?.user?.id;
+    if (currentUserId) {
+      try {
+        await (supabase.rpc as any)("update_user_status", {
+          p_user_id: currentUserId,
+          p_is_online: false,
+          p_last_seen: new Date().toISOString(),
+          p_activity_state: "offline",
+        });
+      } catch {
+        // silent
+      }
+    }
     setSession(null);
     sessionStorage.setItem("invalidUser", "1");
     const usedAttempts = Number(sessionStorage.getItem("invalidAttempts") ?? "0");
@@ -137,14 +151,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    const currentUserId = session?.user?.id;
+    if (currentUserId) {
+      try {
+        await (supabase.rpc as any)("update_user_status", {
+          p_user_id: currentUserId,
+          p_is_online: false,
+          p_last_seen: new Date().toISOString(),
+          p_activity_state: "offline",
+        });
+      } catch (err) {
+        console.warn("Failed to set user offline before signing out:", err);
+      }
+    }
     await supabase.auth.signOut();
   };
 
   return (
     <AuthContext.Provider value={{ session, user: session?.user ?? null, loading, signIn, signOut }}>
+      <OnlineStatusTracker userId={session?.user?.id} />
       {children}
     </AuthContext.Provider>
   );
+};
+
+const OnlineStatusTracker: React.FC<{ userId: string | undefined }> = ({ userId }) => {
+  useOnlineStatus(userId);
+  return null;
 };
 
 export const useAuth = () => {

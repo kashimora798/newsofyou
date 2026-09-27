@@ -7,7 +7,6 @@ import { usePartner } from "@/hooks/usePartner";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTyping } from "@/hooks/useTyping";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSearch } from "@/hooks/useSearch";
 import { useMarkSeen } from "@/hooks/useMarkSeen";
 import { useAnimationQueue } from "@/hooks/useAnimationQueue";
@@ -112,7 +111,6 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const [chatTheme, setChatTheme] = useState("default");
   const lastTouchReactionId = useRef<string | null>(null);
 
-  useOnlineStatus(userId);
   useMarkSeen(userId, messages);
   const { current: pendingAnim, dismiss: dismissPendingAnim } = useAnimationQueue(userId);
   const [queuedKeywordEffect, setQueuedKeywordEffect] = useState<EffectType>(null);

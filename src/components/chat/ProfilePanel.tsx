@@ -82,13 +82,21 @@ const ProfilePanel: React.FC<ProfilePanelProps> = ({ partner, onClose }) => {
                   {partner?.name?.charAt(0) ?? "?"}
                 </AvatarFallback>
               </Avatar>
-              {partner?.is_online && (
-                <span className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded-full bg-online border-[3px] border-card" />
+              {partner?.is_online && partner?.activity_state !== "offline" && (
+                <span className={`absolute bottom-1.5 right-1.5 h-5 w-5 rounded-full border-[3px] border-card ${
+                  partner?.activity_state === "away" || partner?.activity_state === "idle"
+                    ? "bg-amber-400"
+                    : "bg-online"
+                }`} />
               )}
             </div>
             <h2 className="text-[22px] font-bold text-foreground mt-3 tracking-tight">{partner?.name ?? "..."}</h2>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              {partner?.is_online ? "Online now" : `Last seen ${formatLastSeen(partner?.last_seen ?? null)}`}
+              {partner?.is_online && partner?.activity_state !== "offline"
+                ? partner?.activity_state === "away" || partner?.activity_state === "idle"
+                  ? "Away"
+                  : "Online now"
+                : `Last seen ${formatLastSeen(partner?.last_seen ?? null)}`}
             </p>
             {partner?.bio && (
               <p className="text-[14px] text-muted-foreground/90 mt-3 text-center leading-relaxed max-w-xs">{partner.bio}</p>

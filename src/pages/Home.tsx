@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { usePartner } from "@/hooks/usePartner";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { usePartnerAwayMessage } from "@/hooks/usePartnerAwayMessage";
 import { checkNewYear, useWaiterAchievement } from "@/hooks/useSecretAchievements";
@@ -89,7 +88,6 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
   const { surpriseCompliment, dismissSurprise, checkSurprise } = useCompliments();
 
-  useOnlineStatus(userId);
   useWaiterAchievement(userId, partner?.is_online);
 
   useEffect(() => {
@@ -242,11 +240,15 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
                     {partner?.name?.charAt(0) ?? "?"}
                   </AvatarFallback>
                 </Avatar>
-                {partner?.is_online && (
+                {partner?.is_online && partner?.activity_state !== "offline" && (
                   <motion.span
                     animate={{ scale: [1, 1.25, 1] }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-online border-2 border-background"
+                    className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-background ${
+                      partner?.activity_state === "away" || partner?.activity_state === "idle"
+                        ? "bg-amber-400"
+                        : "bg-online"
+                    }`}
                   />
                 )}
               </div>
@@ -262,8 +264,12 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
                   {partnerAwayMessage ? (
                     <span className="text-orange-400 font-medium">{partnerAwayMessage}</span>
-                  ) : partner?.is_online ? (
-                    <span className="text-online font-medium">Online now</span>
+                  ) : partner?.is_online && partner?.activity_state !== "offline" ? (
+                    partner?.activity_state === "away" || partner?.activity_state === "idle" ? (
+                      <span className="text-amber-500 font-medium">Away</span>
+                    ) : (
+                      <span className="text-online font-medium">Online now</span>
+                    )
                   ) : (
                     `Last seen ${formatLastSeen(partner?.last_seen ?? null)}`
                   )}

@@ -96,11 +96,15 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ partner, partnerTyping, partner
             {partner?.name?.charAt(0) ?? "?"}
           </AvatarFallback>
         </Avatar>
-        {partner?.is_online && (
+        {partner?.is_online && partner?.activity_state !== "offline" && (
           <motion.span
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-online border-[2.5px] border-card"
+            className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[2.5px] border-card ${
+              partner?.activity_state === "away" || partner?.activity_state === "idle"
+                ? "bg-amber-400"
+                : "bg-online"
+            }`}
           />
         )}
       </motion.div>

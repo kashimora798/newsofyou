@@ -1,78 +1,129 @@
 import { useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+// Inactivity threshold: 60 seconds of no interaction switches status to "away"
+const IDLE_TIMEOUT_MS = 60000;
+
 export function useOnlineStatus(userId: string | undefined) {
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
-  const lastInteraction = useRef(Date.now());
-  const currentState = useRef<string>("active");
+  const lastInteraction = useRef<number>(Date.now());
+  const currentState = useRef<"active" | "away" | "offline">("active");
+  const lastTransitionTime = useRef<number>(0);
 
-  const setOnline = useCallback(async (online: boolean) => {
+  const syncStatus = useCallback(async (isOnline: boolean, state: "active" | "away" | "offline") => {
     if (!userId) return;
-    await supabase.rpc("update_user_status", {
-      p_user_id: userId,
-      p_is_online: online,
-      p_last_seen: new Date().toISOString(),
-    });
-  }, [userId]);
-
-  const updateActivityState = useCallback(async (state: string) => {
-    if (!userId || currentState.current === state) return;
     currentState.current = state;
-    await supabase.from("user_status").update({
-      activity_state: state,
-      updated_at: new Date().toISOString(),
-      is_online: state !== "offline",
-    } as any).eq("user_id", userId);
+    try {
+      await (supabase.rpc as any)("update_user_status", {
+        p_user_id: userId,
+        p_is_online: isOnline,
+        p_last_seen: new Date().toISOString(),
+        p_activity_state: state,
+      });
+    } catch (err) {
+      console.warn("Failed to sync online status:", err);
+    }
   }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
 
-    // Defer initial status write so it doesn't race with auth or Home render
-    const initTimer = setTimeout(() => {
-      setOnline(true);
-      updateActivityState("active");
-    }, 500);
+    // Reset interaction timestamp and wake up to "active" if currently "away"
+    const handleActivity = () => {
+      const now = Date.now();
+      lastInteraction.current = now;
 
-    // Track user interactions for idle detection
-    const resetInteraction = () => {
-      lastInteraction.current = Date.now();
-      if (currentState.current !== "active") {
-        updateActivityState("active");
+      // Throttle rapid wake-up calls
+      if (currentState.current === "away") {
+        if (now - lastTransitionTime.current > 1500) {
+          lastTransitionTime.current = now;
+          void syncStatus(true, "active");
+        }
       }
     };
 
-    // Use passive listeners for performance
-    window.addEventListener("click", resetInteraction, { passive: true });
-    window.addEventListener("keypress", resetInteraction, { passive: true });
-    window.addEventListener("touchstart", resetInteraction, { passive: true });
-    // Skip scroll listener — too noisy, click/touch/key covers interaction detection
+    // Initial mark online + active
+    lastInteraction.current = Date.now();
+    lastTransitionTime.current = Date.now();
+    void syncStatus(true, "active");
 
-    // Heartbeat every 30s — also checks idle
-    intervalRef.current = setInterval(() => {
-      const idleTime = Date.now() - lastInteraction.current;
-      if (document.visibilityState === "hidden") {
-        updateActivityState("away");
-      } else if (idleTime > 120000) {
-        updateActivityState("idle");
-      } else {
-        updateActivityState("active");
+    // Comprehensive user interaction listeners
+    // Throttled mouse movement
+    let lastMouseMove = 0;
+    const onMouseMove = () => {
+      const now = Date.now();
+      if (now - lastMouseMove > 2500) {
+        lastMouseMove = now;
+        handleActivity();
       }
+    };
 
-      supabase
-        .from("user_status")
-        .update({ updated_at: new Date().toISOString(), is_online: true } as any)
-        .eq("user_id", userId)
-        .then();
-    }, 30000);
+    // Throttled scroll
+    let lastScroll = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastScroll > 2500) {
+        lastScroll = now;
+        handleActivity();
+      }
+    };
 
-    // Tab close / navigate away
+    const onPointerDown = () => handleActivity();
+    const onKeyDown = () => handleActivity();
+    const onTouchStart = () => handleActivity();
+    const onFocus = () => handleActivity();
+
+    window.addEventListener("mousemove", onMouseMove, { passive: true });
+    window.addEventListener("pointerdown", onPointerDown, { passive: true });
+    window.addEventListener("mousedown", onPointerDown, { passive: true });
+    window.addEventListener("keydown", onKeyDown, { passive: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("wheel", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("focus", onFocus);
+
+    // Visibility change handler (tab minimized or switched away)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void syncStatus(true, "away");
+      } else {
+        lastInteraction.current = Date.now();
+        void syncStatus(true, "active");
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Inactivity checker every 10 seconds
+    const activityCheckInterval = setInterval(() => {
+      const isHidden = document.visibilityState === "hidden";
+      const idleTime = Date.now() - lastInteraction.current;
+
+      if (isHidden || idleTime >= IDLE_TIMEOUT_MS) {
+        if (currentState.current !== "away") {
+          lastTransitionTime.current = Date.now();
+          void syncStatus(true, "away");
+        }
+      } else if (currentState.current !== "active") {
+        lastTransitionTime.current = Date.now();
+        void syncStatus(true, "active");
+      }
+    }, 10000);
+
+    // Heartbeat every 25s to keep connection alive and update last_seen
+    const heartbeatInterval = setInterval(() => {
+      const isHidden = document.visibilityState === "hidden";
+      const idleTime = Date.now() - lastInteraction.current;
+      const effectiveState = isHidden || idleTime >= IDLE_TIMEOUT_MS ? "away" : "active";
+      void syncStatus(true, effectiveState);
+    }, 25000);
+
+    // Tab close / page navigation beacon
     const handleBeforeUnload = () => {
       const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/update_user_status`;
       const body = JSON.stringify({
         p_user_id: userId,
         p_is_online: false,
         p_last_seen: new Date().toISOString(),
+        p_activity_state: "offline",
       });
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -82,29 +133,25 @@ export function useOnlineStatus(userId: string | undefined) {
       fetch(url, { method: "POST", headers, body, keepalive: true }).catch(() => {});
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        updateActivityState("away");
-      } else {
-        lastInteraction.current = Date.now();
-        updateActivityState("active");
-        setOnline(true);
-      }
-    };
-
     window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handleBeforeUnload);
 
     return () => {
-      clearTimeout(initTimer);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
+      clearInterval(activityCheckInterval);
+      clearInterval(heartbeatInterval);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("wheel", onScroll);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("click", resetInteraction);
-      window.removeEventListener("keypress", resetInteraction);
-      window.removeEventListener("touchstart", resetInteraction);
-      setOnline(false);
-      updateActivityState("offline");
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+
+      void syncStatus(false, "offline");
     };
-  }, [userId, setOnline, updateActivityState]);
+  }, [userId, syncStatus]);
 }

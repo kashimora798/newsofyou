@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -6,7 +6,13 @@ type UserStatus = Tables<"user_status">;
 
 export function usePartner(currentUserId: string | undefined) {
   const [partner, setPartner] = useState<UserStatus | null>(null);
+  const [tick, setTick] = useState(0);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -69,5 +75,24 @@ export function usePartner(currentUserId: string | undefined) {
     };
   }, [currentUserId]);
 
-  return partner;
+  const effectivePartner = useMemo(() => {
+    if (!partner) return null;
+    if (!partner.is_online) return partner;
+
+    const lastPing = partner.updated_at || partner.last_seen;
+    if (lastPing) {
+      const diff = Date.now() - new Date(lastPing).getTime();
+      // If no heartbeat for > 75 seconds, treat as offline
+      if (diff > 75000) {
+        return {
+          ...partner,
+          is_online: false,
+          activity_state: "offline",
+        };
+      }
+    }
+    return partner;
+  }, [partner, tick]);
+
+  return effectivePartner;
 }

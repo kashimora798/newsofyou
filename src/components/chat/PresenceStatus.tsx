@@ -40,9 +40,19 @@ const PresenceStatus: React.FC<PresenceStatusProps> = ({ partner, partnerTyping,
     return <span className="text-xs text-primary font-medium">typing...</span>;
   }
 
-  const customStatus = (partner as any)?.custom_status;
-  const activityState = (partner as any)?.activity_state ?? (partner?.is_online ? "active" : "offline");
+  const isOnline = Boolean(partner?.is_online);
+  const rawState = (partner as any)?.activity_state;
+  const isOffline = !isOnline || rawState === "offline";
 
+  if (isOffline) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Last seen {formatLastSeen(partner?.last_seen ?? null)}
+      </span>
+    );
+  }
+
+  const customStatus = (partner as any)?.custom_status;
   if (customStatus && STATUS_PRESETS[customStatus]) {
     const preset = STATUS_PRESETS[customStatus];
     return (
@@ -56,19 +66,16 @@ const PresenceStatus: React.FC<PresenceStatusProps> = ({ partner, partnerTyping,
     return <span className="text-xs text-muted-foreground">{customStatus}</span>;
   }
 
+  const activityState = rawState ?? "active";
+
   switch (activityState) {
     case "active":
       return <span className="text-xs text-green-500 font-medium">🟢 Active now</span>;
-    case "idle":
-      return <span className="text-xs text-yellow-500">🌙 Idle</span>;
     case "away":
-      return <span className="text-xs text-orange-400">📱 Away</span>;
+    case "idle":
+      return <span className="text-xs text-amber-500 font-medium">🟡 Away</span>;
     default:
-      return (
-        <span className="text-xs text-muted-foreground">
-          Last seen {formatLastSeen(partner?.last_seen ?? null)}
-        </span>
-      );
+      return <span className="text-xs text-green-500 font-medium">🟢 Active now</span>;
   }
 };
 
