@@ -124,11 +124,36 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const [decoySkin, setDecoySkin] = useState<DecoySkin>("chatgpt");
   const [decoyEnabled, setDecoyEnabled] = useState(false);
   const [decoyUnlockHash, setDecoyUnlockHash] = useState<string | null>(null);
+  const [fontSize, setFontSize] = useState<string>(() => {
+    try { return localStorage.getItem("app_font_size") || "medium"; } catch { return "medium"; }
+  });
+  const [useHandwritingFont, setUseHandwritingFont] = useState<boolean>(() => {
+    try { return localStorage.getItem("app_use_handwriting_font") === "true"; } catch { return false; }
+  });
   const messageListRef = useRef<{ scrollToMessage: (id: string) => void } | null>(null);
 
   const themeConfig = getThemeById(chatTheme);
   const themeEffects = useThemeEffects(chatTheme);
   const animationsEnabled = useAnimationsEnabled();
+
+  // Keep handwriting state in sync if current user's profile is updated
+  useEffect(() => {
+    if ((currentUser as any)?.use_handwriting_font !== undefined) {
+      const val = !!(currentUser as any).use_handwriting_font;
+      setUseHandwritingFont(val);
+      try { localStorage.setItem("app_use_handwriting_font", String(val)); } catch {}
+    }
+  }, [(currentUser as any)?.use_handwriting_font]);
+
+  // Multi-tab / cross-window sync for font settings
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "app_font_size" && e.newValue) setFontSize(e.newValue);
+      if (e.key === "app_use_handwriting_font" && e.newValue !== null) setUseHandwritingFont(e.newValue === "true");
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   // Play pending animations from queue
   useEffect(() => {
@@ -165,7 +190,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
     const loadSettings = async () => {
       const { data } = await supabase
         .from("chat_user_settings")
-        .select("wallpaper_url, dynamic_wallpaper, message_effects, chat_theme, decoy_skin, decoy_enabled, decoy_unlock_hash")
+        .select("wallpaper_url, dynamic_wallpaper, message_effects, chat_theme, decoy_skin, decoy_enabled, decoy_unlock_hash, font_size, use_handwriting_font")
         .eq("user_id", userId)
         .maybeSingle();
       if (data) {
@@ -176,6 +201,15 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
         setDecoySkin(((data as any).decoy_skin as DecoySkin) ?? "chatgpt");
         setDecoyEnabled((data as any).decoy_enabled ?? false);
         setDecoyUnlockHash((data as any).decoy_unlock_hash ?? null);
+        if ((data as any).font_size) {
+          setFontSize((data as any).font_size);
+          try { localStorage.setItem("app_font_size", (data as any).font_size); } catch {}
+        }
+        if ((data as any).use_handwriting_font !== undefined) {
+          const hw = !!(data as any).use_handwriting_font;
+          setUseHandwritingFont(hw);
+          try { localStorage.setItem("app_use_handwriting_font", String(hw)); } catch {}
+        }
       }
     };
     loadSettings();
@@ -219,7 +253,10 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
     const opp = randomRpsThrow();
     const outcome = rpsOutcome(mine, opp);
     const encoded = encodeRps(mine, opp, outcome);
-    const error = await sendMessage(encoded, currentUser?.name ?? "Unknown", { message_type: "rps" } as any);
+    const error = await sendMessage(encoded, currentUser?.name ?? "Unknown", {
+      message_type: "rps",
+      use_handwriting_font: useHandwritingFont,
+    } as any);
     if (!error) {
       setSecretEvent({ type: "rps", result: encoded, isMine: true, senderName: "You" });
       if (partner && !partner.is_online) {
@@ -271,7 +308,10 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
         return null;
       }
 
-      const error = await sendMessage(cmd.result, currentUser?.name ?? "Unknown", { message_type: cmd.message_type });
+      const error = await sendMessage(cmd.result, currentUser?.name ?? "Unknown", {
+        message_type: cmd.message_type,
+        use_handwriting_font: useHandwritingFont,
+      });
       if (!error) {
         let overlay: SecretOverlayState;
         if (cmd.message_type === "surprise") {
@@ -297,7 +337,10 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
     }
 
     await setTyping(false);
-    const error = await sendMessage(content, currentUser?.name ?? "Unknown", extras);
+    const error = await sendMessage(content, currentUser?.name ?? "Unknown", {
+      use_handwriting_font: useHandwritingFont,
+      ...extras,
+    });
 
     // Rich text triggers (sorry → mending heart, i'm angry → fire, are you there
     // → heartbeat, same → mirror): sent as a normal message but also fire a
@@ -649,6 +692,9 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
               onTeachAi={handleTeachAi}
               onAskCompanion={handleAskCompanion}
               onEmptyDoubleTap={() => setSecretEvent({ type: "scratch", result: pickRandom(LOVE_QUOTES), senderName: "You" })}
+              fontSize={fontSize}
+              currentHandwritingFont={useHandwritingFont}
+              partnerHandwritingFont={!!(partner as any)?.use_handwriting_font}
             />
             <MessageInput
               onSend={handleSend}
@@ -663,6 +709,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
               placeholder={themeEffects.inputPlaceholder}
               secretPlaceholder={themeEffects.secretPlaceholder}
               sendLabel={themeEffects.sendLabel}
+              useHandwritingFont={useHandwritingFont}
             />
           </>
         )}
@@ -718,6 +765,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
         <LetterComposer
           partnerName={partner?.name ?? "Love"}
           senderName={currentUser?.name ?? "Me"}
+          defaultHandwriting={useHandwritingFont}
           onSend={async (content, meta) => {
             const error = await handleSend(content, { message_type: "letter", emoji: meta });
             if (error) {

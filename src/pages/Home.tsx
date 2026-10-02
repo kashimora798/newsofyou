@@ -11,7 +11,7 @@ import { getThemeById } from "@/lib/chatThemes";
 import { daysTogether } from "@/lib/anniversary";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatLastSeen } from "@/lib/dateUtils";
-import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2, BarChart3, Mail, Send, Sticker, Hand, Compass, Sparkles, TreePine } from "lucide-react";
+import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2, BarChart3, Mail, Send, Compass, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import BottomNav from "@/components/layout/BottomNav";
 import StreakCounter from "@/components/home/StreakCounter";
@@ -149,7 +149,6 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const themeConfig = getThemeById(chatTheme);
 
   const quickLinks = [
-    { path: "/forest", icon: TreePine, label: "Our Tree", color: "text-green-500", bg: "bg-green-500/10" },
     { path: "/games", icon: Gamepad2, label: "Games", color: "text-orange-500", bg: "bg-orange-500/10" },
     { path: "/stats", icon: BarChart3, label: "Stats", color: "text-sky-500", bg: "bg-sky-500/10" },
     { path: "/bookmarks", icon: Bookmark, label: "Bookmarks", color: "text-amber-500", bg: "bg-amber-500/10" },
@@ -160,8 +159,6 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
     { path: "/achievements", icon: Trophy, label: "Achievements", color: "text-yellow-500", bg: "bg-yellow-500/10" },
     { path: "/letter-collection", icon: Mail, label: "Letters", color: "text-rose-500", bg: "bg-rose-500/10" },
     { path: "/scheduled-messages", icon: Send, label: "Scheduled", color: "text-cyan-500", bg: "bg-cyan-500/10" },
-    { path: "/custom-stickers", icon: Sticker, label: "Stickers", color: "text-fuchsia-500", bg: "bg-fuchsia-500/10" },
-    { path: "/custom-touch-reactions", icon: Hand, label: "Touch", color: "text-teal-500", bg: "bg-teal-500/10" },
   ];
 
   return (

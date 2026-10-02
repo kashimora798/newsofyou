@@ -6,9 +6,11 @@ interface SecretMessageProps {
   content: string;
   revealed: boolean;
   isOwn: boolean;
+  fontSizeClass?: string;
+  isHandwriting?: boolean;
 }
 
-const SecretMessage: React.FC<SecretMessageProps> = ({ messageId, content, revealed: initialRevealed, isOwn }) => {
+const SecretMessage: React.FC<SecretMessageProps> = ({ messageId, content, revealed: initialRevealed, isOwn, fontSizeClass, isHandwriting }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [revealed, setRevealed] = useState(initialRevealed);
@@ -119,7 +121,7 @@ const SecretMessage: React.FC<SecretMessageProps> = ({ messageId, content, revea
   if (showContent) {
     return (
       <div className="relative">
-        <div className="text-sm whitespace-pre-wrap break-words leading-relaxed animate-fade-in">
+        <div className={`whitespace-pre-wrap break-words leading-relaxed animate-fade-in ${fontSizeClass ?? "text-sm"} ${isHandwriting ? "font-handwriting" : ""}`}>
           {content}
         </div>
         <div className="flex items-center gap-1 mt-0.5">
@@ -132,7 +134,7 @@ const SecretMessage: React.FC<SecretMessageProps> = ({ messageId, content, revea
   return (
     <div ref={containerRef} className="relative select-none" style={{ minHeight: 48, minWidth: 160 }}>
       {/* Hidden content underneath */}
-      <div className="text-sm whitespace-pre-wrap break-words leading-relaxed opacity-0 pointer-events-none">
+      <div className={`whitespace-pre-wrap break-words leading-relaxed opacity-0 pointer-events-none ${fontSizeClass ?? "text-sm"} ${isHandwriting ? "font-handwriting" : ""}`}>
         {content}
       </div>
       {/* Scratch canvas */}

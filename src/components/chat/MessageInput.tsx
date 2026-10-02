@@ -26,9 +26,10 @@ interface MessageInputProps {
   placeholder?: string;
   secretPlaceholder?: string;
   sendLabel?: string;
+  useHandwritingFont?: boolean;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecording, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecording, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel, useHandwritingFont = false }) => {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -328,7 +329,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
                     </motion.div>
                   )}
                 </AnimatePresence>
-                <textarea ref={textareaRef} value={text} onChange={(e) => { setText(e.target.value); adjustHeight(); onTyping(); }} onKeyDown={handleKeyDown} onPaste={handlePaste} placeholder={secretMode ? secretPlaceholder : placeholder} rows={1} className={`w-full resize-none rounded-[20px] border-0 px-4 py-2.5 text-[15px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/20 scrollbar-thin transition-all ${secretMode ? "bg-primary/8 ring-1 ring-primary/20" : "bg-muted/50 ring-1 ring-border/40"}`} style={{ maxHeight: 120 }} />
+                <textarea ref={textareaRef} value={text} onChange={(e) => { setText(e.target.value); adjustHeight(); onTyping(); }} onKeyDown={handleKeyDown} onPaste={handlePaste} placeholder={secretMode ? secretPlaceholder : placeholder} rows={1} className={`w-full resize-none rounded-[20px] border-0 px-4 py-2.5 text-[15px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/20 scrollbar-thin transition-all ${secretMode ? "bg-primary/8 ring-1 ring-primary/20" : "bg-muted/50 ring-1 ring-border/40"} ${useHandwritingFont ? "font-handwriting text-[17px]" : ""}`} style={{ maxHeight: 120 }} />
               </div>
 
               <motion.button whileTap={{ scale: 0.88 }} onClick={() => setSecretMode(!secretMode)} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${secretMode ? "bg-primary text-primary-foreground" : "hover:bg-muted/60 text-muted-foreground"}`} title="Secret message">

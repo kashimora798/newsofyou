@@ -15,7 +15,7 @@ const MESSAGE_COLUMNS =
   "seen, seen_at, delivered, delivered_at, read_at, status, revealed, is_memory, " +
   "reply_to_id, emoji, image_url, video, vidUrl, " +
   "file_url, file_name, file_type, file_size, gif_url, sticker_url, duration, " +
-  "link_title, link_description, link_image, link_target_url, link_preview_active";
+  "link_title, link_description, link_image, link_target_url, link_preview_active, use_handwriting_font";
 
 async function fetchAndStoreLinkPreview(messageId: string, url: string) {
   try {
@@ -99,7 +99,8 @@ export function useMessages(userId: string | undefined) {
       "file_url", "file_name", "file_type", "file_size", "duration",
       "image_url", "video", "vidUrl", "gif_url", "sticker_url",
       "revealed", "is_memory", "emoji", "link_title", "link_description",
-      "link_image", "link_target_url", "link_preview_active", "status"
+      "link_image", "link_target_url", "link_preview_active", "status",
+      "use_handwriting_font"
     ]);
 
     const rawData: any = {
@@ -229,6 +230,26 @@ export function useMessages(userId: string | undefined) {
         table: "messages",
       }, (payload) => {
         const newMsg = payload.new as Message;
+        if (newMsg.message_type === "letter" && newMsg.user_id !== userId) {
+          try {
+            const saved = JSON.parse(localStorage.getItem("saved_letters") || "[]");
+            const deleted = JSON.parse(localStorage.getItem("deleted_letter_ids") || "[]");
+            if (!deleted.includes(newMsg.id) && !saved.some((s: any) => s.messageId === newMsg.id)) {
+              const extras = (newMsg as any).emoji as any;
+              saved.unshift({
+                messageId: newMsg.id,
+                content: newMsg.content,
+                savedAt: newMsg.created_at,
+                senderName: newMsg.username || "Partner",
+                paperIdx: extras?.letter_paper ?? 0,
+                fontIdx: extras?.letter_font ?? 0,
+                inkColor: extras?.letter_ink ?? null,
+                decorations: extras?.letter_decorations ?? false,
+              });
+              localStorage.setItem("saved_letters", JSON.stringify(saved));
+            }
+          } catch {}
+        }
         setMessages(prev => {
           if (prev.some(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];

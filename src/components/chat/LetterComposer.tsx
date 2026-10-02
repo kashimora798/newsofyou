@@ -16,6 +16,7 @@ interface LetterComposerProps {
   senderName: string;
   onSend: (content: string, meta: LetterMeta) => void;
   onClose: () => void;
+  defaultHandwriting?: boolean;
 }
 
 const PAPER_STYLES = [
@@ -33,6 +34,7 @@ const FONTS = [
   { label: "Elegant", family: "Georgia, 'Times New Roman', serif" },
   { label: "Classic", family: "'Palatino Linotype', 'Book Antiqua', serif" },
   { label: "Modern", family: "system-ui, sans-serif" },
+  { label: "Anshika's Magic", family: "'MyHandwriting', 'Comic Neue', cursive, sans-serif" },
 ];
 
 const INK_COLORS = [
@@ -60,10 +62,17 @@ const SIGNOFFS = [
   { label: "Custom", template: null },
 ];
 
-const LetterComposer: React.FC<LetterComposerProps> = ({ partnerName, senderName, onSend, onClose }) => {
+const LetterComposer: React.FC<LetterComposerProps> = ({ partnerName, senderName, onSend, onClose, defaultHandwriting = false }) => {
   const [body, setBody] = useState("");
   const [paperIdx, setPaperIdx] = useState(0);
-  const [fontIdx, setFontIdx] = useState(0);
+  const [fontIdx, setFontIdx] = useState(() => {
+    if (defaultHandwriting) return 3;
+    try {
+      return localStorage.getItem("app_use_handwriting_font") === "true" ? 3 : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [inkIdx, setInkIdx] = useState(0);
   const [greetingIdx, setGreetingIdx] = useState(0);
   const [signoffIdx, setSignoffIdx] = useState(0);

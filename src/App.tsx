@@ -11,6 +11,7 @@ import OfflineBanner from "@/components/layout/OfflineBanner";
 import PartnerRoute from "@/components/layout/PartnerRoute";
 import AdminRoute from "@/components/layout/AdminRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
+import ReminderWatcher from "@/components/reminders/ReminderWatcher";
 
 // Eagerly loaded (critical path)
 import Index from "./pages/Index";
@@ -71,6 +72,7 @@ const App = () => (
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <AuthProvider>
           <TooltipProvider>
+            <ReminderWatcher />
             <Toaster />
             <Sonner />
             <OfflineBanner />

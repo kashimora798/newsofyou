@@ -31,10 +31,14 @@ interface MessageListProps {
   onTeachAi?: (message: Tables<"messages">) => void;
   onAskCompanion?: (message: Tables<"messages">) => void;
   onEmptyDoubleTap?: () => void;
+  fontSize?: string;
+  currentHandwritingFont?: boolean;
+  partnerHandwritingFont?: boolean;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
   messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
+  fontSize = "medium", currentHandwritingFont = false, partnerHandwritingFont = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -159,6 +163,14 @@ const MessageList: React.FC<MessageListProps> = ({
           // Group consecutive messages from the same sender (tighter spacing),
           // unless a date separator breaks the run.
           const grouped = !showDate && !!prev && prev.user_id === msg.user_id;
+          const isOwn = msg.user_id === currentUserId;
+          const isHandwriting =
+            (msg as any).use_handwriting_font !== null && (msg as any).use_handwriting_font !== undefined
+              ? !!(msg as any).use_handwriting_font
+              : isOwn
+                ? !!currentHandwritingFont
+                : !!partnerHandwritingFont;
+
           return (
             <React.Fragment key={msg.id}>
               {showDate && <DateSeparator date={msg.created_at ?? ""} />}
@@ -168,7 +180,9 @@ const MessageList: React.FC<MessageListProps> = ({
               >
                 <MessageBubble
                   message={msg}
-                  isOwn={msg.user_id === currentUserId}
+                  isOwn={isOwn}
+                  fontSize={fontSize}
+                  isHandwriting={isHandwriting}
                   reactions={reactions[msg.id] ?? []}
                   replyToMessage={msg.reply_to_id ? replyMap[msg.reply_to_id] ?? null : null}
                   onReply={onReply}
