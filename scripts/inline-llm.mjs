@@ -53,6 +53,18 @@ const SOURCES = [
     defaultMaxTokens: 700,
   },
   {
+    name: "embed.ts",
+    path: join(SHARED_DIR, "embed.ts"),
+    triggers: ["embedText(", "embedTexts(", "toPgVector(", "embedderAvailable("],
+    distribute: true,
+  },
+  {
+    name: "style.ts",
+    path: join(SHARED_DIR, "style.ts"),
+    triggers: ["computeStyleStats(", "buildStylePrompt(", "daypartOf("],
+    distribute: true,
+  },
+  {
     name: "llm.ts",
     path: join(SHARED_DIR, "llm.ts"),
     triggers: [

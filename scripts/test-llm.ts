@@ -25,6 +25,10 @@ import {
   trimMessages,
 } from "../supabase/functions/_shared/llm.ts";
 import {
+  buildStylePrompt,
+  computeStyleStats,
+} from "../supabase/functions/_shared/style.ts";
+import {
   buildTwinRules,
   GENTLE_FALLBACK_REPLY,
   quickGuard,
@@ -272,6 +276,38 @@ test("safetyStop flags self-harm and abuse, not sadness", () => {
   assert.equal(safetyStop("I feel a bit low today").stop, false);
   assert.equal(safetyStop("sometimes I want to kill myself").stop, true);
   assert.equal(safetyStop("he hits me when he is angry").flags.includes("abuse"), true);
+});
+
+// ── style statistics (build-plan Phase 1E) ───────────────────────────────
+
+test("computeStyleStats measures how the owner writes", () => {
+  const messages = [
+    { content: "Good morning jaan ❤️❤️", created_at: "2026-10-01T02:30:00Z" },
+    { content: "khana kha liya? take care", created_at: "2026-10-01T08:00:00Z" },
+    { content: "hahaha you are the cutest 😂", created_at: "2026-10-01T14:00:00Z" },
+    { content: "I miss you so much!!", created_at: "2026-10-01T16:00:00Z" },
+  ];
+  const stats = computeStyleStats(messages, ["jaan"]);
+  assert.equal(stats.total_messages, 4);
+  assert.ok(stats.avg_chars > 10);
+  assert.ok(stats.emojis.some((e) => e.emoji === "❤️"));
+  assert.ok(stats.laugh_styles.some((l) => l.style === "haha" || l.style === "emoji_joy"));
+  assert.ok(stats.pet_names.some((p) => p.name === "jaan"));
+  assert.ok(stats.hinglish_ratio > 0, "Hinglish markers should be detected");
+  assert.ok(stats.top_words.every((w) => !["the", "you", "hai"].includes(w.word)), "stopwords must be filtered");
+  assert.ok(stats.messages_per_daypart.length >= 2);
+});
+
+test("buildStylePrompt includes measurements + real exemplar pairs", () => {
+  const stats = computeStyleStats([{ content: "hey jaan", created_at: "2026-10-01T02:30:00Z" }]);
+  const { system, user } = buildStylePrompt(
+    stats,
+    [{ partner_text: "good night", owner_reply: "good night babu", tone: "sweet" }],
+    { ownerName: "Kratagya", partnerName: "Ishita" },
+  );
+  assert.match(system, /STYLE CARD/);
+  assert.ok(user.includes("good night babu"));
+  assert.ok(user.includes("MEASUREMENTS"));
 });
 
 // ── runner ────────────────────────────────────────────────────────────────
