@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 
 // Inactivity threshold: 60 seconds of no interaction switches status to "away"
 const IDLE_TIMEOUT_MS = 60000;
@@ -118,7 +118,9 @@ export function useOnlineStatus(userId: string | undefined) {
 
     // Tab close / page navigation beacon
     const handleBeforeUnload = () => {
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/update_user_status`;
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL;
+      const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || SUPABASE_PUBLISHABLE_KEY;
+      const url = `${baseUrl}/rest/v1/rpc/update_user_status`;
       const body = JSON.stringify({
         p_user_id: userId,
         p_is_online: false,
@@ -127,8 +129,8 @@ export function useOnlineStatus(userId: string | undefined) {
       });
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        "apikey": key,
+        "Authorization": `Bearer ${key}`,
       };
       fetch(url, { method: "POST", headers, body, keepalive: true }).catch(() => {});
     };
