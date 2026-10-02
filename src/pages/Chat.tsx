@@ -159,11 +159,26 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
     const handleSyncCustomFont = () => {
       setCustomFontSize(getSavedCustomFontSize());
     };
+    const handleSyncHandwriting = () => {
+      try {
+        setUseHandwritingFont(localStorage.getItem("app_use_handwriting_font") === "true");
+      } catch {}
+    };
+    const handleFocus = () => {
+      try {
+        setUseHandwritingFont(localStorage.getItem("app_use_handwriting_font") === "true");
+        setCustomFontSize(getSavedCustomFontSize());
+      } catch {}
+    };
     window.addEventListener("storage", handleStorage);
     window.addEventListener("custom_font_size_changed", handleSyncCustomFont);
+    window.addEventListener("use_handwriting_font_changed", handleSyncHandwriting);
+    window.addEventListener("focus", handleFocus);
     return () => {
       window.removeEventListener("storage", handleStorage);
       window.removeEventListener("custom_font_size_changed", handleSyncCustomFont);
+      window.removeEventListener("use_handwriting_font_changed", handleSyncHandwriting);
+      window.removeEventListener("focus", handleFocus);
     };
   }, []);
 

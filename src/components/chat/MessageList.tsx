@@ -165,12 +165,9 @@ const MessageList: React.FC<MessageListProps> = ({
           // unless a date separator breaks the run.
           const grouped = !showDate && !!prev && prev.user_id === msg.user_id;
           const isOwn = msg.user_id === currentUserId;
-          const isHandwriting =
-            (msg as any).use_handwriting_font !== null && (msg as any).use_handwriting_font !== undefined
-              ? !!(msg as any).use_handwriting_font
-              : isOwn
-                ? !!currentHandwritingFont
-                : !!partnerHandwritingFont;
+          // If handwriting setting is turned off, every message reverts to the default font.
+          // When turned on, messages render with Anshika's Magic.
+          const isHandwriting = Boolean(currentHandwritingFont);
 
           return (
             <React.Fragment key={msg.id}>

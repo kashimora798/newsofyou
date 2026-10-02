@@ -234,7 +234,11 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   const handleHandwritingToggle = async () => {
     const nextVal = !useHandwritingFont;
     setUseHandwritingFont(nextVal);
-    try { localStorage.setItem("app_use_handwriting_font", String(nextVal)); } catch {}
+    try {
+      localStorage.setItem("app_use_handwriting_font", String(nextVal));
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("use_handwriting_font_changed"));
+    } catch {}
     await saveSettings({ use_handwriting_font: nextVal });
     try {
       await supabase.from("user_status").update({ use_handwriting_font: nextVal } as any).eq("user_id", userId);
