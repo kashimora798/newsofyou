@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut, Bot, ShieldCheck } from "lucide-react";
 import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -11,6 +11,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import { isCalmMode, setCalmMode } from "@/hooks/useAnimationsEnabled";
 import { hashCode } from "@/hooks/useDecoy";
 import { DECOY_SKINS, type DecoySkin } from "@/lib/decoySkins";
+import { useTwinConsent } from "@/hooks/useTwinConsent";
 
 const SettingsPage: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -109,6 +110,7 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   const { signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const currentUser = useCurrentUser(userId);
+  const twin = useTwinConsent();
 
   // profile
   const [name, setName] = useState("");
@@ -131,6 +133,8 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [twinBusy, setTwinBusy] = useState(false);
+  const [twinConfirmRevoke, setTwinConfirmRevoke] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -251,6 +255,35 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
 
   const isCustom = wallpaper.startsWith("http");
 
+  const twinToggle = async () => {
+    if (twinBusy) return;
+    setTwinBusy(true);
+    try {
+      if (twin.enabled) {
+        if (twin.canGrant) setTwinConfirmRevoke(true);
+        else await twin.setEnabled(false); // owner can only switch off
+      } else if (twin.canGrant) {
+        await twin.grant(); // her explicit consent, recorded server-side
+      }
+    } catch {
+      /* error state is surfaced by the hook */
+    } finally {
+      setTwinBusy(false);
+    }
+  };
+
+  const confirmRevoke = async () => {
+    setTwinBusy(true);
+    try {
+      await twin.revoke();
+      setTwinConfirmRevoke(false);
+    } catch {
+      /* surfaced below */
+    } finally {
+      setTwinBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-dvh bg-background" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Nunito', sans-serif" }}>
       {/* Material top bar */}
@@ -362,6 +395,46 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
             <Row label="Calm Mode" sub="Pauses petals, sparkles & ambient motion" onClick={() => { const n = !calm; setCalm(n); setCalmMode(n); }} trailing={<Toggle on={calm} onChange={() => { const n = !calm; setCalm(n); setCalmMode(n); }} />} />
           </Group>
         </section>
+
+        {/* ── AI Twin (consent gate) ── */}
+        {twin.configured && !twin.loading && (
+          <section>
+            <SectionLabel>AI Twin</SectionLabel>
+            <Group>
+              <Row
+                icon={<Bot className="h-4 w-4" />}
+                label="NewsOfYou Twin"
+                sub={
+                  twin.enabled
+                    ? twin.canGrant
+                      ? "On — you can switch it off any time"
+                      : "On — she agreed; you can only switch it off"
+                    : twin.canGrant
+                      ? "Off — tap to agree and switch it on"
+                      : "Off — waiting for her to agree"
+                }
+                onClick={twinToggle}
+                trailing={twinBusy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Toggle on={twin.enabled} onChange={twinToggle} />}
+              />
+              {twin.enabled && (
+                <Row
+                  icon={<ShieldCheck className="h-4 w-4" />}
+                  label="It is always AI"
+                  sub="Every message is labelled. It never pretends to be human, and it never sees anything before you agree."
+                />
+              )}
+              {twin.isOwner && (
+                <Row
+                  label="Twin control room"
+                  sub="Greetings, voice profile, switches"
+                  onClick={() => navigate("/you/twin")}
+                  trailing={<ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                />
+              )}
+            </Group>
+            {twin.error && <p className="px-1 pt-1.5 text-[12px] text-destructive">{twin.error}</p>}
+          </section>
+        )}
 
         {/* ── Privacy / Quick Hide ── */}
         <section>
@@ -524,6 +597,37 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
       </div>
 
       <BottomNav />
+
+      {twinConfirmRevoke && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <motion.div
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="w-full max-w-sm rounded-[20px] bg-card p-5 ring-1 ring-border/40"
+          >
+            <h3 className="text-[16px] font-semibold text-foreground">Switch the twin off?</h3>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+              It stops immediately. Everything it remembered about you is deleted, and it can only come back if you agree
+              again.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setTwinConfirmRevoke(false)}
+                className="flex-1 rounded-[14px] bg-muted/60 py-2.5 text-[14px] font-medium text-foreground active:scale-[0.98]"
+              >
+                Keep it on
+              </button>
+              <button
+                onClick={confirmRevoke}
+                disabled={twinBusy}
+                className="flex-1 rounded-[14px] bg-destructive py-2.5 text-[14px] font-medium text-destructive-foreground active:scale-[0.98] disabled:opacity-60"
+              >
+                {twinBusy ? "Switching off…" : "Switch off & erase"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

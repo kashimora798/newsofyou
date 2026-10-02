@@ -65,6 +65,12 @@ const SOURCES = [
     distribute: true,
   },
   {
+    name: "greet.ts",
+    path: join(SHARED_DIR, "greet.ts"),
+    triggers: ["pickMood(", "fillTemplate(", "daypartAt(", "staticGreeting(", "liveAllowed(", "GREETING_MOODS", "unknownPlaceholders("],
+    distribute: true,
+  },
+  {
     name: "llm.ts",
     path: join(SHARED_DIR, "llm.ts"),
     triggers: [

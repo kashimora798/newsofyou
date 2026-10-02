@@ -14,10 +14,12 @@ import ErrorBoundary from "@/components/layout/ErrorBoundary";
 
 // Eagerly loaded (critical path)
 import Index from "./pages/Index";
-import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import HiddenLogin from "./pages/HiddenLogin";
+import OwnerRoute from "@/components/layout/OwnerRoute";
 
 // Lazy loaded
+const AdminTwin = lazy(() => import("./pages/AdminTwin"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Home = lazy(() => import("./pages/Home"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
@@ -80,8 +82,9 @@ const App = () => (
                   <Route path="/" element={<Index />} />
                   <Route path="/login" element={<NotFound />} />
                   <Route path="/you" element={<Navigate to="/you/login" replace />} />
-                  <Route path="/you/login" element={<AdminLogin />} />
+                  <Route path="/you/login" element={<HiddenLogin />} />
                   <Route path="/you/dashboard" element={<AdminRoute allowNonAdmin><AdminDashboard /></AdminRoute>} />
+                  <Route path="/you/twin" element={<OwnerRoute><AdminTwin /></OwnerRoute>} />
                   <Route path="/you/control" element={<AdminRoute><Chat /></AdminRoute>} />
                   <Route path="/chat" element={<Chat />} />
                   <Route path="/home" element={<P><Home /></P>} />

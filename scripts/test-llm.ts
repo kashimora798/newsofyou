@@ -29,6 +29,16 @@ import {
   computeStyleStats,
 } from "../supabase/functions/_shared/style.ts";
 import {
+  daypartAt,
+  fillTemplate,
+  liveAllowed,
+  moodWeights,
+  pickFromBank,
+  pickMood,
+  staticGreeting,
+  unknownPlaceholders,
+} from "../supabase/functions/_shared/greet.ts";
+import {
   buildTwinRules,
   GENTLE_FALLBACK_REPLY,
   quickGuard,
@@ -308,6 +318,90 @@ test("buildStylePrompt includes measurements + real exemplar pairs", () => {
   assert.match(system, /STYLE CARD/);
   assert.ok(user.includes("good night babu"));
   assert.ok(user.includes("MEASUREMENTS"));
+});
+
+// ── greeting brain (build-plan Phase 2B) ─────────────────────────────────
+
+const seq = (values: number[]) => {
+  let i = 0;
+  return () => values[i++ % values.length];
+};
+
+test("daypartAt buckets the IST day correctly", () => {
+  const at = (iso: string) => daypartAt(new Date(iso), 5.5);
+  assert.equal(at("2026-10-02T02:30:00Z"), "morning");   // 08:00 IST
+  assert.equal(at("2026-10-02T08:00:00Z"), "afternoon"); // 13:30 IST
+  assert.equal(at("2026-10-02T13:00:00Z"), "evening");   // 18:30 IST
+  assert.equal(at("2026-10-02T17:00:00Z"), "night");     // 22:30 IST
+  assert.equal(at("2026-10-02T21:00:00Z"), "night");     // 02:30 IST next day
+});
+
+test("mood weights react to her tone, time apart and dates", () => {
+  const base = moodWeights({ daypart: "afternoon" });
+  const hurt = moodWeights({ daypart: "afternoon", herToneToday: "hurtful" });
+  assert.ok(hurt.gentle_after_fight > base.gentle_after_fight * 5);
+  assert.equal(hurt.flirty, 0, "no flirting when she is upset");
+  assert.equal(hurt.playful, 0);
+
+  const apart = moodWeights({ daypart: "evening", hoursSinceLastGreeting: 96, daysSinceSeen: 5 });
+  assert.ok(apart.missing_you > base.missing_you);
+
+  const anniversary = moodWeights({ daypart: "morning", daysToAnniversary: 2 });
+  assert.ok(anniversary.celebratory > base.celebratory * 3);
+});
+
+test("pickMood never repeats the mood it just used (unless nothing else fits)", () => {
+  const ctx = { daypart: "night" as const, lastMood: "sleepy" };
+  for (const roll of [0, 0.2, 0.4, 0.6, 0.8, 0.99]) {
+    const mood = pickMood(ctx, seq([roll]));
+    assert.notEqual(mood, "sleepy", `roll ${roll} should avoid repeating`);
+  }
+});
+
+test("fillTemplate fills known placeholders and removes unknown ones", () => {
+  const out = fillTemplate(
+    "Good morning {nickname} — {days_together} days of us, and it's {weekday}. {mystery}",
+    { nickname: "Anshika", daysTogether: 470, partnerName: "Anshika", date: new Date("2026-10-02T02:30:00Z") },
+  );
+  assert.ok(out.includes("Anshika"));
+  assert.ok(out.includes("470"));
+  assert.ok(out.includes("Friday"));
+  assert.ok(!out.includes("{mystery}"));
+  assert.ok(!out.includes("{"), "no raw placeholders survive");
+  assert.ok(!out.includes("  "), "whitespace is tidied");
+});
+
+test("unknownPlaceholders catches typos while seeding", () => {
+  assert.deepEqual(unknownPlaceholders("hi {nicname}"), ["nicname"]);
+  assert.deepEqual(unknownPlaceholders("hi {nickname} on {weekday}"), []);
+});
+
+test("pickFromBank prefers never-used lines, then the oldest", () => {
+  const rows = [
+    { text: "a", uses: 3, last_used_at: "2026-09-01T00:00:00Z" },
+    { text: "b", uses: 0, last_used_at: null },
+    { text: "c", uses: 1, last_used_at: "2026-08-01T00:00:00Z" },
+  ];
+  assert.equal(pickFromBank(rows, { rand: () => 0.5 })?.text, "b");
+  assert.equal(pickFromBank(rows.slice(1), { rand: () => 0.5 })?.text, "b");   // never-used still wins
+  assert.equal(pickFromBank([], {}), null);
+  assert.equal(pickFromBank(rows, { avoidTexts: ["B"], rand: () => 0.5 })?.text, "c");
+});
+
+test("live greetings are budgeted, never repeated within 6h", () => {
+  assert.equal(liveAllowed({ liveToday: 1, hoursSinceLastGreeting: 30 }, 1), false);
+  assert.equal(liveAllowed({ liveToday: 0, hoursSinceLastGreeting: 2 }, 1), false);
+  assert.equal(liveAllowed({ liveToday: 0, hoursSinceLastGreeting: 30 }, 1), true);
+  assert.equal(liveAllowed({ liveToday: undefined, hoursSinceLastGreeting: null }, 1), true);
+  assert.equal(liveAllowed({ liveToday: 0, hoursSinceLastGreeting: 30 }, 0), false);
+});
+
+test("static greetings always exist for every daypart", () => {
+  for (const daypart of ["morning", "afternoon", "evening", "night"] as const) {
+    const line = staticGreeting(daypart, () => 0);
+    assert.ok(line.length > 10);
+    assert.deepEqual(unknownPlaceholders(line), [], "static lines may only use known placeholders");
+  }
 });
 
 // ── runner ────────────────────────────────────────────────────────────────

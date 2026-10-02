@@ -23,6 +23,7 @@ import Tamagotchi from "@/components/home/Tamagotchi";
 import ReminderWidget from "@/components/home/ReminderWidget";
 import CalendarWidget from "@/components/home/CalendarWidget";
 import ComplimentPopup from "@/components/home/ComplimentPopup";
+import TwinGreeting from "@/components/twin/TwinGreeting";
 import { useCompliments } from "@/hooks/useCompliments";
 import DailyChecklistWidget from "@/components/home/DailyChecklistWidget";
 import AnniversaryBanner from "@/components/home/AnniversaryBanner";
@@ -207,6 +208,9 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
         className="flex-1 overflow-y-auto px-4 pb-4 space-y-3 scrollbar-thin"
         style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
       >
+        {/* AI greeting — always labelled, never claims to be human */}
+        <TwinGreeting />
+
         {/* Stagger wrapper — separate from scroll container so it doesn't own the overflow */}
         <motion.div
           variants={container}
