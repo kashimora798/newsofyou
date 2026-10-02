@@ -1115,7 +1115,7 @@ Deno.serve(async (req) => {
   try {
     const { supabase } = await requireServiceCaller(req);
     const body = await req.json().catch(() => ({}));
-    const limit = Math.min(Math.max(Number(body?.limit ?? 24), 1), 64);
+    const limit = Math.min(Math.max(Number(body?.limit ?? 48), 1), 128);
     const wanted: string[] = body?.table
       ? [String(body.table)]
       : ["reply_pairs", "chat_chunks"];

@@ -28,6 +28,60 @@ It creates `vector` + `pg_trgm`, `twin_config`, `chat_sessions`, `chat_chunks`,
 functions and the `twin_inspect()` report. Derived tables have RLS on with **no
 policies** (service-role only).
 
+## 1b. What your data actually looks like (measured 2026-10-02)
+
+From the first `twin_inspect()` run:
+
+| | |
+|---|---|
+| Messages | **55,653** (2025-11-21 → 2026-10-02) |
+| Types | `text` 52,673 · `gif` 1,651 · `voice_note` 513 · `image` 354 · `touch_reaction` 200 · `sticker` 109 · `secret` 78 · `video` 44 · **`letter` 24** · `bored` 3 · `coinflip` 2 · `rps` 1 · `file` 1 |
+| Blank content | 2,954 (2,942 of them media-only) |
+| `isReact` rows | 197 |
+| Extensions | `vector` 0.8.0, `pg_trgm` 1.6, **`pg_cron` 1.6, `pg_net` 0.14** ✅ (Phase 5 can schedule natively) |
+| Distinct senders | **4 user_ids** — `8cd4f48a…` 28,541 · `99d3e44d…` 13,185 · `e40ca809…` 10,395 · `f1fc5a6b…` 3,282 |
+
+Two accounts have changed hands/names over the year, so before configuring:
+
+```sql
+-- per account: totals, active window, monthly volumes, display names, 3 recent lines
+select user_id, total, first_at, last_at, names, recent_messages
+from public.twin_user_report();
+```
+
+Read `recent_messages` — that tells you instantly which id is you and which is her.
+Then, if extra ids belong to the same two people (old accounts), pass them as the
+`*_extra_ids` arrays — the rebuild uses the union of both sides:
+
+```sql
+select public.twin_set_config(
+  p_owner   => '8cd4f48a-4401-4e3a-8d59-9c7dc2c8b913',   -- him
+  p_partner => 'e40ca809-a045-4403-b2bf-cfd570616780',   -- her
+  p_owner_name => 'Kratagya',
+  p_partner_name => 'Anshika',
+  p_partner_nicknames => array['jaan','babu','shona','princess','cutie'],
+  p_owner_nicknames   => array['baby','jaanu','sir'],
+  p_owner_extra_ids   => '{}',        -- e.g. array['99d3e44d-…']::uuid[]
+  p_partner_extra_ids => '{}'         -- e.g. array['f1fc5a6b-…']::uuid[]
+);
+```
+
+Save it, then run the rebuild:
+
+```sql
+select public.rebuild_chat_sessions(interval '3 hours', true);   -- sessions
+select public.rebuild_chat_chunks(true);                         -- chunks
+select public.rebuild_reply_pairs(true);                         -- pairs + tone
+-- or all three at once:
+select public.twin_rebuild_all(true);
+```
+
+**Filter note:** the `text` corpus keeps `letter`, `secret` and media *captions*
+(they carry words). Only mechanical rows (`touch_reaction`, `coinflip`, `rps`, `bored`,
+reactions, system) and placeholder captions like `[Voice note]` are ignored —
+`twin_is_ignored_message()` and `twin_is_placeholder_content()` are the only places
+to change that.
+
 ## 2. Inspect the real data first (read-only)
 
 The build plan's "first task of every session" — run this and paste the result:

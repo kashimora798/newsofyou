@@ -21,7 +21,7 @@
 const URL = (process.env.SUPABASE_URL ?? "").replace(/\/$/, "");
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const SECRET = process.env.EMBED_SECRET ?? "";
-const BATCH_LIMIT = Number(process.env.EMBED_BATCH ?? 32);
+const BATCH_LIMIT = Number(process.env.EMBED_BATCH ?? 48);
 const MAX_ROUNDS = Number(process.env.EMBED_MAX_ROUNDS ?? 400);
 
 if (!URL) {
