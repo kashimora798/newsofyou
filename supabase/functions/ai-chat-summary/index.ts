@@ -13,55 +13,50 @@ const corsHeaders = {
 };
 
 type ChatRole = "system" | "user" | "assistant";
+type Sensitivity = "private" | "low";
 
 interface ChatMessage {
   role: ChatRole;
   content: string;
 }
 
-type LlmTask =
-  | "classify"
-  | "json"
-  | "chat"
-  | "creative"
-  | "hint"
-  | "summary"
-  | "decoy"
-  | "twin";
-
 interface LlmCallOptions {
   messages: ChatMessage[];
+  /** "private" (default) or "low". Chooses which providers may see the text. */
+  sensitivity?: Sensitivity;
   /** Routing profile. Default: "chat". */
-  task?: LlmTask;
+  task?: string;
   temperature?: number;
   /** Hard cap on generated tokens (also clamped by the task profile). */
   maxTokens?: number;
   json?: boolean;
-  /** Force a model: "provider:model" or a bare model id. */
+  /** Force one provider:model from the route list. */
   model?: string;
-  /** Restrict to these provider ids. */
+  /** Only these providers may be used. */
   providers?: string[];
-  /** 0 / undefined = do not cache. Only opt in for non-personal prompts. */
-  cacheTtlSeconds?: number;
+  /** Cache TTL in seconds. Ignored unless sensitivity is "low". */
+  ttlSeconds?: number;
   /** Extra salt so two prompts can never collide in the cache. */
   cacheKey?: string;
-  /** Enables daily budget accounting + degradation. */
+  /** Enables daily-budget accounting + degradation. */
   userId?: string;
   /** "soft" (default) degrades, "strict" throws once the budget is blown. */
   budgetMode?: "soft" | "strict";
   timeoutMs?: number;
-  /** Free-form label that lands in ai_llm_events, e.g. "hangman-hint". */
+  /** Free-form label for logs/admin, e.g. "hangman-hint". */
   tag?: string;
   /** Override the task input budget (in approx. tokens). */
   trimTo?: number;
-  /** Personal prompts are never cached and never logged with content. */
+  /** Personal prompts are never cached. Implied by "private". */
   personal?: boolean;
+  /** Redact phone numbers / emails / links before sending. Default true. */
+  redactPii?: boolean;
 }
 
 interface LlmResult {
   text: string;
-  model: string;
   provider: string;
+  model: string;
   cached: boolean;
   degraded: boolean;
   attempts: number;
@@ -79,7 +74,17 @@ class AiError extends Error {
   }
 }
 
-// ── tiny env/util helpers (Deno-safe, also importable from plain Node) ──
+/** Thrown when every provider failed — callers MUST have a non-AI fallback. */
+class AiUnavailable extends AiError {
+  attempts: number;
+  constructor(message: string, attempts: number) {
+    super(503, message);
+    this.name = "AiUnavailable";
+    this.attempts = attempts;
+  }
+}
+
+// ── tiny env/util helpers ─────────────────────────────────────────────────
 
 function envGet(key: string): string | undefined {
   try {
@@ -150,19 +155,21 @@ function trimMessages(
       continue;
     }
     if (kept.length === 0) {
-      // The newest message alone blows the budget — keep its head.
       const room = Math.max(48, (budget - 4) * 4);
-      kept.unshift({
-        role: m.role,
-        content: m.content.slice(0, room) + "\n…[truncated]",
-      });
+      kept.unshift({ role: m.role, content: m.content.slice(0, room) + "\n…[truncated]" });
       budget = 0;
     }
     break;
   }
 
   const dropped = rest.length - kept.length;
-  const out = [...systems, ...(dropped > 0 ? [{ role: "system" as ChatRole, content: `[${dropped} earlier message(s) omitted]` }] : []), ...kept];
+  const out = [
+    ...systems,
+    ...(dropped > 0
+      ? [{ role: "system" as ChatRole, content: `[${dropped} earlier message(s) omitted]` }]
+      : []),
+    ...kept,
+  ];
   return { messages: out, tokens: out.reduce((n, m) => n + messageTokens(m), 0), trimmed: dropped > 0 };
 }
 
@@ -199,6 +206,25 @@ function parseJsonLoose<T>(text: string): T | null {
   }
 }
 
+/**
+ * Context minimisation (build-plan §2.3 #6): strip phone numbers, emails and
+ * links before any text leaves the database. Phone matching requires enough
+ * digits that ordinary numbers, times and prices survive untouched.
+ */
+function redact(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]{2,}/g, "[email]")
+    .replace(/https?:\/\/[^\s<>"')]+/gi, "[link]")
+    .replace(/(?:\+?\d[\d\s().-]{6,}\d)/g, (raw) => {
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length < 10 || digits.length > 15) return raw;
+      // Keep dates/times/amounts: 2026-10-02, 12:30, 1,200, 99.50
+      if (/^\s*\d{4}-\d{2}-\d{2}/.test(raw)) return raw;
+      return "[number]";
+    });
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -212,137 +238,216 @@ function errorResponse(e: unknown): Response {
   return jsonResponse({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
 }
 
-// ── providers (all free tier) ─────────────────────────────────────────────
+// ── provider + route config (inlined from _shared/models.ts) ───────────────
+// ── BEGIN INLINE: models.ts ──
+type ProviderId = "groq" | "cerebras" | "cloudflare" | "gemini" | "openrouter";
 
 interface ProviderDef {
-  id: string;
+  id: ProviderId;
   label: string;
-  envKeys: string[];
-  url: string;
-  fast: string[];
-  strong: string[];
-  /** Billable-free note, shown in error messages. */
+  /** Empty here = resolved specially (Cloudflare needs an account id). */
+  baseUrl: string;
+  /** First env var that is set wins. */
+  keyEnv: string[];
+  /** Extra env var required for the URL to resolve (Cloudflare account id). */
+  extraEnv?: string[];
+  /** May this provider receive `sensitivity: "private"` content? */
+  noTrain: boolean;
+  /** Human note shown in error messages / admin. */
   note: string;
 }
 
-const PROVIDERS: ProviderDef[] = [
-  {
-    id: "openrouter",
-    label: "OpenRouter",
-    envKeys: ["OPENROUTER_API_KEY"],
-    url: "https://openrouter.ai/api/v1/chat/completions",
-    fast: [
-      "google/gemma-4-26b-a4b-it:free",
-      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-      "meta-llama/llama-3.3-70b-instruct:free",
-      "google/gemini-2.0-flash-exp:free",
-      "google/gemma-2-9b-it:free",
-    ],
-    strong: [
-      "nex-agi/nex-n2-pro:free",
-      "nvidia/nemotron-3-super-120b-a12b:free",
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
-      "google/gemma-4-31b-it:free",
-    ],
-    note: "free models",
-  },
-  {
+const PROVIDERS: Record<ProviderId, ProviderDef> = {
+  groq: {
     id: "groq",
     label: "Groq",
-    envKeys: ["GROQ_API_KEY"],
-    url: "https://api.groq.com/openai/v1/chat/completions",
-    fast: ["llama-3.1-8b-instant"],
-    strong: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"],
-    note: "free tier",
+    baseUrl: "https://api.groq.com/openai/v1",
+    keyEnv: ["GROQ_API_KEY"],
+    noTrain: true, // VERIFY Groq's current data-use terms before trusting this.
+    note: "fast, generous free tier",
   },
-  {
-    id: "gemini",
-    label: "Google AI Studio",
-    envKeys: ["GEMINI_API_KEY", "GOOGLE_AI_API_KEY"],
-    url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    fast: ["gemini-2.0-flash-lite"],
-    strong: ["gemini-2.0-flash", "gemini-2.5-flash"],
-    note: "free tier",
-  },
-  {
+  cerebras: {
     id: "cerebras",
     label: "Cerebras",
-    envKeys: ["CEREBRAS_API_KEY"],
-    url: "https://api.cerebras.ai/v1/chat/completions",
-    fast: ["llama3.1-8b"],
-    strong: ["llama-3.3-70b"],
-    note: "free tier",
+    baseUrl: "https://api.cerebras.ai/v1",
+    keyEnv: ["CEREBRAS_API_KEY"],
+    noTrain: true, // VERIFY Cerebras' current data-use terms.
+    note: "large free daily token allowance",
   },
-  {
-    id: "lovable",
-    label: "Lovable gateway",
-    envKeys: ["LOVABLE_API_KEY"],
-    url: "https://ai.gateway.lovable.dev/v1/chat/completions",
-    fast: ["google/gemini-3-flash-preview"],
-    strong: ["google/gemini-3-flash-preview"],
-    note: "legacy gateway",
+  cloudflare: {
+    id: "cloudflare",
+    label: "Cloudflare Workers AI",
+    baseUrl: "cloudflare", // resolved from CF_ACCOUNT_ID at call time
+    keyEnv: ["CF_API_TOKEN", "CLOUDFLARE_API_TOKEN"],
+    extraEnv: ["CF_ACCOUNT_ID"],
+    noTrain: true, // VERIFY Cloudflare's current Workers AI data-use terms.
+    note: "10k neurons/day; also hosts bge-m3 embeddings",
   },
-];
+  gemini: {
+    id: "gemini",
+    label: "Google AI Studio",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    keyEnv: ["GEMINI_API_KEY", "GOOGLE_AI_API_KEY"],
+    noTrain: false, // Free tier may be used to improve Google products (plan §2.1).
+    note: "free tier — never used for private content",
+  },
+  openrouter: {
+    id: "openrouter",
+    label: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    keyEnv: ["OPENROUTER_API_KEY"],
+    noTrain: false, // Community `:free` models have varying data policies.
+    note: "last-resort fallback for low-sensitivity text only",
+  },
+};
 
-function providerKey(p: ProviderDef): string | undefined {
-  for (const k of p.envKeys) {
-    const v = envGet(k);
-    if (v) return v;
+interface Route {
+  provider: ProviderId;
+  model: string;
+}
+
+/** Ordered fallback chain per task. First entry is the preferred model. */
+const ROUTES: Record<string, Route[]> = {
+  // ── plan tasks ──────────────────────────────────────────────────────────
+  twin_chat: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
+  face_to_face: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
+  greeting: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  summary: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
+  extract: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  guard: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+
+  // ── existing app tasks (keep old call sites working) ────────────────────
+  chat: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  companion: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
+  classify: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  json: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  hint: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  decoy: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
+
+  // ── low-sensitivity only: providers with noTrain:false may be used ──────
+  game: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "gemini", model: "gemini-2.0-flash-lite" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "openrouter", model: "google/gemma-4-26b-a4b-it:free" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+  daily_question: [
+    { provider: "groq", model: "llama-3.1-8b-instant" },
+    { provider: "gemini", model: "gemini-2.0-flash-lite" },
+    { provider: "cerebras", model: "llama3.1-8b" },
+    { provider: "openrouter", model: "google/gemma-4-26b-a4b-it:free" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.1-8b-instruct" },
+  ],
+};
+
+/**
+ * Merge `LLM_ROUTES_JSON` (or `LLM_ROUTES_<TASK>`) over the defaults so model
+ * ids can be fixed without a redeploy of the code.
+ */
+function routesOverride(rawJson: string | undefined, task: string): Route[] | null {
+  if (!rawJson) return null;
+  try {
+    const parsed = JSON.parse(rawJson) as Record<string, Route[]>;
+    const routes = parsed[task];
+    if (!Array.isArray(routes) || routes.length === 0) return null;
+    return routes.filter((r) => r && typeof r.provider === "string" && typeof r.model === "string");
+  } catch {
+    return null;
   }
-  return undefined;
 }
 
-function disabledProviders(): string[] {
-  return (envGet("LLM_DISABLED_PROVIDERS") ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+/** Providers that may receive private content (plan §2.2). */
+function privateProviderIds(): ProviderId[] {
+  return (Object.keys(PROVIDERS) as ProviderId[]).filter((id) => PROVIDERS[id].noTrain);
 }
+// ── END INLINE: models.ts ──
 
-/** `provider:model` entries that are prepended to every candidate list. */
-function envModelPool(): { tier: "fast" | "strong"; entry: string }[] {
-  const out: { tier: "fast" | "strong"; entry: string }[] = [];
-  const parse = (raw: string | undefined, tier: "fast" | "strong") => {
-    for (const entry of (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
-      out.push({ tier, entry });
-    }
-  };
-  parse(envGet("LLM_POOL_FAST"), "fast");
-  parse(envGet("LLM_POOL_STRONG"), "strong");
-  return out;
-}
-
-// ── task profiles ─────────────────────────────────────────────────────────
+// ── task profiles (temperature / caps / budgets) ──────────────────────────
 
 interface TaskProfile {
   temperature: number;
   maxTokens: number;
-  tier: "fast" | "strong";
   json: boolean;
   maxInputTokens: number;
   cacheTtlSeconds: number;
   timeoutMs: number;
+  sensitivity: Sensitivity;
 }
 
-const TASK_PROFILES: Record<LlmTask, TaskProfile> = {
-  // Yes/no or tiny structured answers — cheapest possible model.
-  classify: { temperature: 0, maxTokens: 32, tier: "fast", json: true, maxInputTokens: 1200, cacheTtlSeconds: 86400, timeoutMs: 12000 },
-  // Structured extraction, 1-3 sentence prose answers.
-  json: { temperature: 0.4, maxTokens: 400, tier: "fast", json: true, maxInputTokens: 2500, cacheTtlSeconds: 0, timeoutMs: 20000 },
-  // Conversational replies the user is waiting on.
-  chat: { temperature: 0.7, maxTokens: 320, tier: "fast", json: false, maxInputTokens: 3000, cacheTtlSeconds: 0, timeoutMs: 25000 },
-  // Questions / starters / one-off prompts — cached per day where safe.
-  creative: { temperature: 0.9, maxTokens: 220, tier: "strong", json: false, maxInputTokens: 1200, cacheTtlSeconds: 43200, timeoutMs: 20000 },
-  // One-liner hints; tiny budget, cache friendly.
-  hint: { temperature: 0.9, maxTokens: 80, tier: "fast", json: false, maxInputTokens: 800, cacheTtlSeconds: 0, timeoutMs: 12000 },
-  summary: { temperature: 0.5, maxTokens: 340, tier: "fast", json: false, maxInputTokens: 4000, cacheTtlSeconds: 3600, timeoutMs: 25000 },
-  // Longest output: the decoy has to look like a real assistant.
-  decoy: { temperature: 0.7, maxTokens: 500, tier: "strong", json: false, maxInputTokens: 3000, cacheTtlSeconds: 0, timeoutMs: 30000 },
-  // Phase 1 "twin" replies — warm, personal, never cached.
-  twin: { temperature: 0.85, maxTokens: 260, tier: "strong", json: false, maxInputTokens: 3500, cacheTtlSeconds: 0, timeoutMs: 25000 },
+const TASK_PROFILES: Record<string, TaskProfile> = {
+  // plan tasks
+  twin_chat: { temperature: 0.85, maxTokens: 300, json: true, maxInputTokens: 3500, cacheTtlSeconds: 0, timeoutMs: 25000, sensitivity: "private" },
+  face_to_face: { temperature: 0.5, maxTokens: 500, json: true, maxInputTokens: 3500, cacheTtlSeconds: 0, timeoutMs: 30000, sensitivity: "private" },
+  greeting: { temperature: 0.9, maxTokens: 160, json: false, maxInputTokens: 1200, cacheTtlSeconds: 0, timeoutMs: 15000, sensitivity: "private" },
+  summary: { temperature: 0.5, maxTokens: 340, json: false, maxInputTokens: 4000, cacheTtlSeconds: 0, timeoutMs: 25000, sensitivity: "private" },
+  extract: { temperature: 0.3, maxTokens: 500, json: true, maxInputTokens: 3000, cacheTtlSeconds: 0, timeoutMs: 25000, sensitivity: "private" },
+  guard: { temperature: 0.3, maxTokens: 300, json: true, maxInputTokens: 1500, cacheTtlSeconds: 0, timeoutMs: 15000, sensitivity: "private" },
+  // existing app tasks
+  companion: { temperature: 0.7, maxTokens: 260, json: true, maxInputTokens: 1500, cacheTtlSeconds: 0, timeoutMs: 18000, sensitivity: "private" },
+  chat: { temperature: 0.7, maxTokens: 320, json: false, maxInputTokens: 3000, cacheTtlSeconds: 0, timeoutMs: 25000, sensitivity: "private" },
+  classify: { temperature: 0, maxTokens: 40, json: true, maxInputTokens: 1000, cacheTtlSeconds: 86400, timeoutMs: 12000, sensitivity: "private" },
+  json: { temperature: 0.4, maxTokens: 400, json: true, maxInputTokens: 2500, cacheTtlSeconds: 0, timeoutMs: 20000, sensitivity: "private" },
+  hint: { temperature: 0.9, maxTokens: 80, json: false, maxInputTokens: 800, cacheTtlSeconds: 0, timeoutMs: 12000, sensitivity: "private" },
+  decoy: { temperature: 0.7, maxTokens: 500, json: false, maxInputTokens: 3000, cacheTtlSeconds: 0, timeoutMs: 30000, sensitivity: "private" },
+  // generic / low-sensitivity
+  game: { temperature: 0.7, maxTokens: 400, json: false, maxInputTokens: 1500, cacheTtlSeconds: 0, timeoutMs: 15000, sensitivity: "low" },
+  daily_question: { temperature: 0.9, maxTokens: 60, json: false, maxInputTokens: 800, cacheTtlSeconds: 86400, timeoutMs: 15000, sensitivity: "low" },
 };
 
-// ── service client (best effort; router works with no DB at all) ──────────
+function profileFor(task: string): TaskProfile {
+  return TASK_PROFILES[task] ?? TASK_PROFILES.chat;
+}
+
+// ── service client (best effort: the router works with no DB at all) ──────
 
 let _admin: unknown = null;
 let _adminTried = false;
@@ -365,99 +470,157 @@ async function adminClient(): Promise<{
   return _admin as never;
 }
 
-function fireAndForget(p: unknown): void {
-  try {
-    Promise.resolve(p).catch(() => {});
-  } catch {
-    /* never let telemetry break a reply */
+// ── provider resolution ───────────────────────────────────────────────────
+
+interface ProviderHandle {
+  def: ProviderDef;
+  key: string;
+  url: string;
+}
+
+function providerHandle(def: ProviderDef): ProviderHandle | null {
+  let key: string | undefined;
+  for (const k of def.keyEnv) {
+    const v = envGet(k);
+    if (v) {
+      key = v;
+      break;
+    }
   }
+  if (!key) return null;
+
+  let url: string;
+  if (def.id === "cloudflare") {
+    const account = envGet("CF_ACCOUNT_ID");
+    if (!account) return null;
+    url = `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`;
+  } else {
+    url = `${def.baseUrl}/chat/completions`;
+  }
+  return { def, key, url };
 }
 
-// ── health memory (in-process + persisted across instances) ───────────────
+function configuredProviderIds(): ProviderId[] {
+  return (Object.keys(PROVIDERS) as ProviderId[]).filter((id) => providerHandle(PROVIDERS[id]) !== null);
+}
 
-interface ModelStat {
-  provider: string;
+interface Candidate {
+  handle: ProviderHandle;
   model: string;
-  ok_count: number;
-  fail_count: number;
-  avg_latency_ms: number;
-  cooldown_until: string | null;
+  routeIndex: number;
 }
 
-const cooldowns = new Map<string, number>(); // "provider:model" -> epoch ms
-const providerCooldowns = new Map<string, number>();
-let statsCache = new Map<string, ModelStat>();
-let statsLoadedAt = 0;
+/**
+ * Build the ordered candidate list for a task, honouring:
+ *  - the privacy tier (private ⇒ noTrain providers only)
+ *  - the route chain for the task (plus LLM_ROUTES_JSON overrides)
+ *  - explicit provider allow-list / forced model
+ *  - cooldowns (cooled providers move to the back, they are never dropped
+ *    outright — otherwise a single stale cooldown would kill the app)
+ */
+function buildCandidates(task: string, opts: LlmCallOptions, sensitivity: Sensitivity): Candidate[] {
+  const disabled = (envGet("LLM_DISABLED_PROVIDERS") ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const allowed = opts.providers?.map((p) => p.toLowerCase());
 
-const statKey = (provider: string, model: string) => `${provider}:${model}`;
+  const chain: Route[] = routesOverride(envGet("LLM_ROUTES_JSON"), task) ?? ROUTES[task] ?? ROUTES.chat;
 
-function coolingMs(provider: string, model: string): number {
-  const until = Math.max(
-    cooldowns.get(statKey(provider, model)) ?? 0,
-    providerCooldowns.get(provider) ?? 0,
-    Date.parse(statsCache.get(statKey(provider, model))?.cooldown_until ?? "") || 0,
-  );
-  return Math.max(0, until - Date.now());
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
+
+  const push = (providerId: ProviderId, model: string, routeIndex: number) => {
+    const def = PROVIDERS[providerId];
+    if (!def) return;
+    if (disabled.includes(providerId)) return;
+    if (allowed && !allowed.includes(providerId)) return;
+    if (sensitivity === "private" && !def.noTrain) return;
+    const handle = providerHandle(def);
+    if (!handle) return;
+    const key = `${providerId}:${model}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ handle, model, routeIndex });
+  };
+
+  if (opts.model) {
+    const idx = opts.model.indexOf(":");
+    const maybeProvider = idx > 0 ? (opts.model.slice(0, idx) as ProviderId) : undefined;
+    if (maybeProvider && PROVIDERS[maybeProvider]) {
+      push(maybeProvider, opts.model.slice(idx + 1), -1);
+    } else {
+      for (const [id, def] of Object.entries(PROVIDERS) as [ProviderId, ProviderDef][]) {
+        if (envGet(def.keyEnv[0])) push(id, opts.model, -1);
+      }
+    }
+  }
+
+  chain.forEach((route, i) => push(route.provider, route.model, i));
+
+  // Cooldown ordering (stable): healthy routes keep their order.
+  const now = Date.now();
+  const healthy = candidates.filter((c) => (cooldowns.get(c.handle.def.id) ?? 0) <= now);
+  const cooling = candidates.filter((c) => (cooldowns.get(c.handle.def.id) ?? 0) > now);
+  return [...healthy, ...cooling].slice(0, 4);
 }
 
-function setCooldown(provider: string, model: string, seconds: number): void {
-  const until = Date.now() + seconds * 1000;
-  cooldowns.set(statKey(provider, model), until);
-}
+// ── cooldowns ─────────────────────────────────────────────────────────────
 
-async function loadStats(): Promise<void> {
-  if (Date.now() - statsLoadedAt < 60_000) return;
-  statsLoadedAt = Date.now();
+const cooldowns = new Map<string, number>(); // providerId -> epoch ms
+const persistentCooldowns = new Map<string, number>();
+let cooldownsLoadedAt = 0;
+
+async function loadCooldowns(): Promise<void> {
+  if (Date.now() - cooldownsLoadedAt < 60_000) return;
+  cooldownsLoadedAt = Date.now();
   const sb = await adminClient();
   if (!sb) return;
   try {
     const { data } = await withTimeout<any>(
-      sb.from("ai_llm_stats").select("provider,model,ok_count,fail_count,avg_latency_ms,cooldown_until").limit(200),
-      2000,
-      "loadStats",
+      sb.from("llm_cooldowns").select("provider,until").limit(50),
+      1500,
+      "loadCooldowns",
     );
     if (Array.isArray(data)) {
-      const next = new Map<string, ModelStat>();
-      for (const row of data as ModelStat[]) next.set(statKey(row.provider, row.model), row);
-      statsCache = next;
+      for (const row of data as { provider: string; until: string }[]) {
+        const at = Date.parse(row.until);
+        if (Number.isFinite(at)) persistentCooldowns.set(row.provider, at);
+      }
     }
   } catch {
-    /* stats are an optimisation, never a dependency */
+    /* cooldowns are an optimisation, never a dependency */
   }
 }
 
-function recordStat(provider: string, model: string, ok: boolean, latencyMs: number, cooldownSeconds: number): void {
-  const key = statKey(provider, model);
-  const prev = statsCache.get(key) ?? {
-    provider,
-    model,
-    ok_count: 0,
-    fail_count: 0,
-    avg_latency_ms: 0,
-    cooldown_until: null,
-  };
-  const next: ModelStat = {
-    provider,
-    model,
-    ok_count: prev.ok_count + (ok ? 1 : 0),
-    fail_count: prev.fail_count + (ok ? 0 : 1),
-    avg_latency_ms: ok && latencyMs > 0
-      ? Math.round(prev.avg_latency_ms > 0 ? prev.avg_latency_ms * 0.7 + latencyMs * 0.3 : latencyMs)
-      : prev.avg_latency_ms,
-    cooldown_until: cooldownSeconds > 0 ? new Date(Date.now() + cooldownSeconds * 1000).toISOString() : prev.cooldown_until,
-  };
-  statsCache.set(key, next);
-  if (cooldownSeconds > 0) setCooldown(provider, model, cooldownSeconds);
+function cooldownRemaining(provider: string): number {
+  const until = Math.max(cooldowns.get(provider) ?? 0, persistentCooldowns.get(provider) ?? 0);
+  return Math.max(0, until - Date.now());
+}
+
+function cooldownSecondsFor(status: number, attempt: number): number {
+  if (status === 429) return Math.min(60 * attempt, 300);
+  if (status === 402) return 3600;
+  if (status === 401) return 3600;
+  if (status === 404) return 3600;
+  if (status === 504) return 60;
+  if (status >= 500) return 120;
+  return 0;
+}
+
+function setCooldown(provider: string, seconds: number, reason: string): void {
+  if (seconds <= 0) return;
+  const until = Date.now() + seconds * 1000;
+  cooldowns.set(provider, until);
+  persistentCooldowns.set(provider, until);
   void (async () => {
     const sb = await adminClient();
     if (!sb) return;
     try {
-      await sb.rpc("ai_llm_stat_record", {
+      await sb.rpc("llm_cooldown_set", {
         p_provider: provider,
-        p_model: model,
-        p_ok: ok,
-        p_latency_ms: Math.round(latencyMs),
-        p_cooldown_seconds: cooldownSeconds,
+        p_until: new Date(until).toISOString(),
+        p_reason: reason.slice(0, 120),
       });
     } catch {
       /* ignore */
@@ -465,72 +628,7 @@ function recordStat(provider: string, model: string, ok: boolean, latencyMs: num
   })();
 }
 
-// ── per-user daily budget ─────────────────────────────────────────────────
-
-const usageCache = new Map<string, { used: number; at: number }>();
-
-interface BudgetState {
-  used: number;
-  limit: number;
-  degraded: boolean;
-  blocked: boolean;
-}
-
-function dailyTokenBudget(): number {
-  const raw = Number(envGet("LLM_DAILY_TOKEN_BUDGET") ?? "20000");
-  return Number.isFinite(raw) && raw > 0 ? raw : 20000;
-}
-
-async function budgetState(userId: string | undefined, mode: "soft" | "strict"): Promise<BudgetState> {
-  const limit = dailyTokenBudget();
-  if (!userId) return { used: 0, limit, degraded: false, blocked: false };
-
-  const cached = usageCache.get(userId);
-  let used = cached && Date.now() - cached.at < 30_000 ? cached.used : -1;
-
-  if (used < 0) {
-    used = 0;
-    const sb = await adminClient();
-    if (sb) {
-      try {
-        const day = new Date().toISOString().slice(0, 10);
-        const { data } = await withTimeout<any>(
-          sb.from("ai_usage_daily").select("tokens_in,tokens_out").eq("user_id", userId).eq("day", day).maybeSingle(),
-          2000,
-          "budgetState",
-        );
-        used = Number(data?.tokens_in ?? 0) + Number(data?.tokens_out ?? 0);
-      } catch {
-        used = 0;
-      }
-    }
-    usageCache.set(userId, { used, at: Date.now() });
-  }
-
-  return {
-    used,
-    limit,
-    degraded: used >= limit,
-    blocked: mode === "strict" && used >= limit * 3,
-  };
-}
-
-function bumpUsage(userId: string | undefined, tokensIn: number, tokensOut: number): void {
-  if (!userId) return;
-  const cached = usageCache.get(userId);
-  if (cached) cached.used += tokensIn + tokensOut;
-  void (async () => {
-    const sb = await adminClient();
-    if (!sb) return;
-    try {
-      await sb.rpc("ai_usage_bump", { p_user: userId, p_in: tokensIn, p_out: tokensOut });
-    } catch {
-      /* ignore */
-    }
-  })();
-}
-
-// ── response cache + request coalescing ───────────────────────────────────
+// ── cache (low sensitivity only) ──────────────────────────────────────────
 
 const inflight = new Map<string, Promise<LlmResult>>();
 
@@ -539,7 +637,6 @@ async function sha256(text: string): Promise<string> {
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
   } catch {
-    // Extremely defensive fallback (no subtle crypto available).
     let h = 0;
     for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
     return `fnv${(h >>> 0).toString(16)}`;
@@ -551,13 +648,13 @@ async function cacheGet(key: string): Promise<LlmResult | null> {
   if (!sb) return null;
   try {
     const { data } = await withTimeout<any>(
-      sb.from("ai_llm_cache").select("response,provider,model,created_at").eq("cache_key", key).gt("expires_at", new Date().toISOString()).maybeSingle(),
-      2000,
+      sb.from("llm_cache").select("value,provider,model").eq("key", key).gt("expires_at", new Date().toISOString()).maybeSingle(),
+      1500,
       "cacheGet",
     );
-    if (!data?.response) return null;
+    if (!data?.value) return null;
     return {
-      text: data.response as string,
+      text: String(data.value),
       provider: String(data.provider ?? "cache"),
       model: String(data.model ?? "cache"),
       cached: true,
@@ -572,15 +669,14 @@ async function cacheGet(key: string): Promise<LlmResult | null> {
   }
 }
 
-function cachePut(key: string, task: string, result: LlmResult, ttlSeconds: number): void {
+function cachePut(key: string, result: LlmResult, ttlSeconds: number): void {
   void (async () => {
     const sb = await adminClient();
     if (!sb) return;
     try {
-      await sb.from("ai_llm_cache").upsert({
-        cache_key: key,
-        task,
-        response: result.text,
+      await sb.from("llm_cache").upsert({
+        key,
+        value: result.text,
         provider: result.provider,
         model: result.model,
         created_at: new Date().toISOString(),
@@ -592,125 +688,80 @@ function cachePut(key: string, task: string, result: LlmResult, ttlSeconds: numb
   })();
 }
 
-// ── event log ─────────────────────────────────────────────────────────────
+// ── usage accounting + daily budget ───────────────────────────────────────
 
-function recordEvent(row: Record<string, unknown>): void {
+function recordUsage(row: {
+  provider: string;
+  model: string;
+  task: string;
+  ok: boolean;
+  tokensIn: number;
+  tokensOut: number;
+}): void {
   void (async () => {
     const sb = await adminClient();
     if (!sb) return;
     try {
-      await sb.from("ai_llm_events").insert({ created_at: new Date().toISOString(), ...row });
+      await sb.rpc("llm_usage_bump", {
+        p_day: new Date().toISOString().slice(0, 10),
+        p_provider: row.provider,
+        p_model: row.model,
+        p_task: row.task,
+        p_ok: row.ok,
+        p_tokens_in: Math.max(0, Math.round(row.tokensIn)),
+        p_tokens_out: Math.max(0, Math.round(row.tokensOut)),
+      });
     } catch {
       /* ignore */
     }
   })();
 }
 
-// ── routing ───────────────────────────────────────────────────────────────
+let dailyBudgetCache: { at: number; tokens: number } | null = null;
 
-interface Candidate {
-  provider: ProviderDef;
-  model: string;
-  key: string;
-  score: number;
-}
-
-function scoreCandidate(provider: string, model: string, tier: "fast" | "strong", preferred: string | undefined): number {
-  const stat = statsCache.get(statKey(provider, model));
-  const ok = Number(stat?.ok_count ?? 0);
-  const fail = Number(stat?.fail_count ?? 0);
-  const success = ok / (ok + fail + 1);
-  const latency = Number(stat?.avg_latency_ms ?? 0) || 1500;
-  let score = success * 100 - latency / 40 - fail * 2;
-  if (preferred && provider === preferred) score += 25;
-  if (tier === "fast" && provider === "groq") score += 6; // very low latency on free tier
-  return score;
-}
-
-/** Which model list a provider offers for a tier, plus the other tier as backup. */
-function modelsFor(p: ProviderDef, tier: "fast" | "strong"): string[] {
-  const primary = tier === "fast" ? p.fast : p.strong;
-  const secondary = tier === "fast" ? p.strong : p.fast;
-  return [...primary, ...secondary];
-}
-
-function buildCandidates(tier: "fast" | "strong", opts: LlmCallOptions): Candidate[] {
-  const disabled = disabledProviders();
-  const allowed = opts.providers?.map((p) => p.toLowerCase());
-  const preferred = envGet("LLM_PREFER_PROVIDER")?.toLowerCase();
-  const out: Candidate[] = [];
-  const seen = new Set<string>();
-
-  const push = (p: ProviderDef, model: string) => {
-    const key = statKey(p.id, model);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ provider: p, model, key, score: scoreCandidate(p.id, model, tier, preferred) });
-  };
-
-  // Explicit pool overrides first (highest priority).
-  for (const { tier: t, entry } of envModelPool()) {
-    if (t !== tier) continue;
-    const [maybeProvider, ...rest] = entry.split(":");
-    const p = PROVIDERS.find((x) => x.id === maybeProvider);
-    if (p && rest.length > 0 && providerKey(p)) push(p, rest.join(":"));
-    else if (rest.length === 0) {
-      for (const prov of PROVIDERS) if (providerKey(prov) && prov.fast.includes(maybeProvider)) push(prov, maybeProvider);
+async function tokensUsedToday(): Promise<number> {
+  const budget = Number(envGet("LLM_DAILY_TOKEN_BUDGET") ?? "60000");
+  if (!Number.isFinite(budget) || budget <= 0) return 0;
+  if (dailyBudgetCache && Date.now() - dailyBudgetCache.at < 60_000) return dailyBudgetCache.tokens;
+  let tokens = 0;
+  const sb = await adminClient();
+  if (sb) {
+    try {
+      const { data } = await withTimeout<any>(
+        sb.from("llm_usage").select("tokens_in,tokens_out").eq("day", new Date().toISOString().slice(0, 10)).limit(200),
+        1500,
+        "tokensUsedToday",
+      );
+      if (Array.isArray(data)) {
+        tokens = (data as { tokens_in: number; tokens_out: number }[]).reduce(
+          (n, r) => n + Number(r.tokens_in ?? 0) + Number(r.tokens_out ?? 0),
+          0,
+        );
+      }
+    } catch {
+      tokens = 0;
     }
   }
-
-  for (const p of PROVIDERS) {
-    if (!providerKey(p)) continue;
-    if (disabled.includes(p.id)) continue;
-    if (allowed && !allowed.includes(p.id)) continue;
-    for (const model of modelsFor(p, tier)) push(p, model);
-  }
-
-  const healthy = out.filter((c) => coolingMs(c.provider.id, c.model) === 0);
-  const pool = (healthy.length > 0 ? healthy : out).sort((a, b) => b.score - a.score);
-  return pool;
+  dailyBudgetCache = { at: Date.now(), tokens };
+  return tokens;
 }
 
-function parseForcedModel(forced: string): { providerId?: string; model: string } {
-  const idx = forced.indexOf(":");
-  if (idx > 0 && PROVIDERS.some((p) => p.id === forced.slice(0, idx))) {
-    return { providerId: forced.slice(0, idx), model: forced.slice(idx + 1) };
-  }
-  return { model: forced };
+function bumpBudgetLocal(tokensIn: number, tokensOut: number): void {
+  if (dailyBudgetCache) dailyBudgetCache.tokens += tokensIn + tokensOut;
 }
 
-interface AttemptOutcome {
-  text: string;
-  tokensIn: number;
-  tokensOut: number;
-}
-
-function cooldownFor(status: number, attemptCount: number): number {
-  if (status === 429) return Math.min(60 * attemptCount, 300);
-  if (status === 402) return 900;
-  if (status === 404) return 3600;
-  if (status === 504) return 60;
-  if (status >= 500) return 120;
-  return 0;
-}
+// ── the call ──────────────────────────────────────────────────────────────
 
 async function callProvider(
-  c: Candidate,
+  candidate: Candidate,
   messages: ChatMessage[],
   temperature: number,
   maxTokens: number,
   json: boolean,
   timeoutMs: number,
-  apiKey: string,
-): Promise<AttemptOutcome> {
-  const started = Date.now();
-  const body: Record<string, unknown> = {
-    model: c.model,
-    messages,
-    temperature,
-    max_tokens: maxTokens,
-    stream: false,
-  };
+): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
+  const { handle, model } = candidate;
+  const body: Record<string, unknown> = { model, messages, temperature, max_tokens: maxTokens, stream: false };
   if (json) body.response_format = { type: "json_object" };
 
   const doFetch = async (withJsonMode: boolean): Promise<Response> => {
@@ -719,11 +770,11 @@ async function callProvider(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(c.provider.url, {
+      return await fetch(handle.url, {
         method: "POST",
         signal: controller.signal,
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${handle.key}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "https://newsofyou.app",
           "X-Title": "NewsOfYou",
@@ -741,40 +792,31 @@ async function callProvider(
     // Some free models reject response_format — retry once without it.
     if (res.status === 400 && json) res = await doFetch(false);
   } catch (e) {
-    recordStat(c.provider.id, c.model, false, Date.now() - started, 60);
-    throw new AiError(504, `${c.provider.label}/${c.model}: ${e instanceof Error ? e.message : "network error"}`);
+    throw new AiError(504, `${handle.def.label}: ${e instanceof Error ? e.message : "network error"}`);
   }
 
   if (!res.ok) {
-    const cooldown = cooldownFor(res.status, 1);
-    recordStat(c.provider.id, c.model, false, Date.now() - started, cooldown);
-    if (res.status === 402) {
-      providerCooldowns.set(c.provider.id, Date.now() + 900_000);
-    }
     let detail = "";
     try {
-      detail = (await res.text()).slice(0, 160);
+      detail = (await res.text()).slice(0, 140);
     } catch {
       /* ignore */
     }
-    throw new AiError(res.status === 429 ? 429 : 502, `${c.provider.label}/${c.model} ${res.status} ${detail}`.trim());
+    throw new AiError(res.status, `${handle.def.label}/${model} ${res.status} ${detail}`.trim());
   }
 
   let data: any;
   try {
     data = await res.json();
   } catch {
-    recordStat(c.provider.id, c.model, false, Date.now() - started, 30);
-    throw new AiError(502, `${c.provider.label}/${c.model}: invalid JSON`);
+    throw new AiError(502, `${handle.def.label}/${model}: invalid JSON`);
   }
 
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string" || text.trim().length === 0) {
-    recordStat(c.provider.id, c.model, false, Date.now() - started, 30);
-    throw new AiError(502, `${c.provider.label}/${c.model}: empty response`);
+    throw new AiError(502, `${handle.def.label}/${model}: empty response`);
   }
 
-  recordStat(c.provider.id, c.model, true, Date.now() - started, 0);
   return {
     text,
     tokensIn: Number(data?.usage?.prompt_tokens ?? 0),
@@ -782,90 +824,93 @@ async function callProvider(
   };
 }
 
+/**
+ * Test/maintenance helper: forget in-process cooldowns, cache state and the
+ * budget memo. The persisted copies in `llm_cooldowns` are untouched.
+ */
+function resetRouterState(): void {
+  cooldowns.clear();
+  persistentCooldowns.clear();
+  inflight.clear();
+  dailyBudgetCache = null;
+  _adminTried = false;
+  _admin = null;
+  cooldownsLoadedAt = 0;
+}
+
+/**
+ * Single entry point for every AI call in the app.
+ * Callers MUST handle `AiUnavailable` with a non-AI fallback.
+ */
 async function callLLM(opts: LlmCallOptions): Promise<LlmResult> {
   const started = Date.now();
-  const task: LlmTask = opts.task ?? "chat";
-  const profile = TASK_PROFILES[task] ?? TASK_PROFILES.chat;
+  const task = opts.task ?? "chat";
+  const profile = profileFor(task);
+  const sensitivity: Sensitivity = opts.sensitivity ?? (opts.personal ? "private" : profile.sensitivity);
   const json = opts.json ?? profile.json;
   const temperature = opts.temperature ?? profile.temperature;
-  const timeoutMs = opts.timeoutMs ?? profile.timeoutMs;
-  const maxInputTokens = opts.trimTo ?? profile.maxInputTokens;
 
-  const trimmed = trimMessages(opts.messages ?? [], maxInputTokens);
-
-  const budget = await budgetState(opts.userId, opts.budgetMode ?? "soft");
-  if (budget.blocked) {
-    recordEvent({ user_id: opts.userId ?? null, tag: opts.tag ?? null, task, ok: false, error: "budget", tokens_in: trimmed.tokens, tokens_out: 0, latency_ms: Date.now() - started, attempts: 0 });
-    throw new AiError(429, "Daily AI limit reached — try again tomorrow.");
+  // Budget: degrade (soft) or refuse (strict) once today's free quota is spent.
+  const budget = Number(envGet("LLM_DAILY_TOKEN_BUDGET") ?? "60000");
+  const usedToday = await tokensUsedToday();
+  const spent = Number.isFinite(budget) && budget > 0 && usedToday >= budget;
+  if (spent && (opts.budgetMode ?? "soft") === "strict") {
+    throw new AiError(429, "Daily AI limit reached — the app will use its saved replies.");
   }
-  const degraded = budget.degraded;
-  const tier: "fast" | "strong" = degraded ? "fast" : profile.tier;
+  const degraded = spent;
+  const timeoutMs = opts.timeoutMs ?? profile.timeoutMs;
   const maxTokens = Math.max(
     16,
-    Math.min(opts.maxTokens ?? profile.maxTokens, degraded ? Math.min(120, profile.maxTokens) : profile.maxTokens),
+    Math.min(opts.maxTokens ?? profile.maxTokens, degraded ? Math.min(80, profile.maxTokens) : profile.maxTokens),
   );
 
-  // Cache — opt in only, and never for personal prompts.
-  const cacheTtl = opts.personal ? 0 : opts.cacheTtlSeconds ?? profile.cacheTtlSeconds;
-  const cacheable = cacheTtl > 0;
+  // Cache: low sensitivity only (never cache anything personal).
+  const ttl = sensitivity === "low" ? opts.ttlSeconds ?? profile.cacheTtlSeconds : 0;
+  const cacheable = ttl > 0;
+
+  // Context minimisation before anything leaves the process.
+  const shouldRedact = opts.redactPii ?? sensitivity === "private";
+  const prepared = (opts.messages ?? []).map((m) => ({
+    role: m.role,
+    content: shouldRedact ? redact(m.content) : m.content,
+  }));
+  const trimmed = trimMessages(prepared, opts.trimTo ?? profile.maxInputTokens);
+
   const cacheKey = cacheable
     ? await sha256(
-        [
-          "v1",
-          task,
-          String(json),
-          String(temperature),
-          String(maxTokens),
-          opts.cacheKey ?? "",
-          trimmed.messages.map((m) => `${m.role}:${m.content}`).join("\n"),
-        ].join("|"),
+        ["v2", task, String(json), String(temperature), String(maxTokens), opts.cacheKey ?? "", trimmed.messages.map((m) => `${m.role}:${m.content}`).join("\n")].join("|"),
       )
     : "";
 
   if (cacheable) {
     const hit = await cacheGet(cacheKey);
-    if (hit) {
-      recordEvent({ user_id: opts.userId ?? null, tag: opts.tag ?? null, task, provider: hit.provider, model: hit.model, ok: true, cached: true, degraded, attempts: 0, tokens_in: trimmed.tokens, tokens_out: estimateTokens(hit.text), latency_ms: Date.now() - started });
-      return { ...hit, tokensIn: trimmed.tokens, tokensOut: estimateTokens(hit.text), latencyMs: Date.now() - started };
-    }
+    if (hit) return { ...hit, tokensIn: trimmed.tokens, tokensOut: estimateTokens(hit.text), latencyMs: Date.now() - started };
     const pending = inflight.get(cacheKey);
     if (pending) return pending;
   }
 
   const run = async (): Promise<LlmResult> => {
-    await loadStats();
-    const forced = opts.model ? parseForcedModel(opts.model) : null;
-    let candidates = buildCandidates(tier, opts);
-    if (forced) {
-      const pinned: Candidate[] = [];
-      for (const p of PROVIDERS) {
-        if (!providerKey(p)) continue;
-        if (forced.providerId && p.id !== forced.providerId) continue;
-        if (!forced.providerId && ![...p.fast, ...p.strong].includes(forced.model)) continue;
-        pinned.push({ provider: p, model: forced.model, key: statKey(p.id, forced.model), score: 1000 });
-      }
-      if (pinned.length > 0) {
-        const rest = candidates.filter((c) => !pinned.some((p) => p.key === c.key));
-        candidates = [...pinned, ...rest];
-      }
-    }
-    candidates = candidates.slice(0, 4);
+    await loadCooldowns();
+    const candidates = buildCandidates(task, opts, sensitivity);
     if (candidates.length === 0) {
-      throw new AiError(500, "No LLM provider configured — set OPENROUTER_API_KEY (or GROQ_API_KEY / GEMINI_API_KEY / CEREBRAS_API_KEY).");
+      const needed = sensitivity === "private" ? privateProviderIds().map((id) => PROVIDERS[id].keyEnv[0]) : Object.values(PROVIDERS).flatMap((p) => p.keyEnv);
+      throw new AiError(
+        500,
+        `No ${sensitivity} LLM provider configured. Set one of: ${needed.join(", ")}.`,
+      );
     }
 
-    let lastErr: unknown = null;
     let attempts = 0;
-    for (const c of candidates) {
-      const key = providerKey(c.provider);
-      if (!key) continue;
+    let lastError: unknown = null;
+
+    for (const candidate of candidates) {
       attempts++;
       try {
-        const out = await callProvider(c, trimmed.messages, temperature, maxTokens, json, timeoutMs, key);
+        const out = await callProvider(candidate, trimmed.messages, temperature, maxTokens, json, timeoutMs);
         const result: LlmResult = {
           text: out.text,
-          provider: c.provider.id,
-          model: c.model,
+          provider: candidate.handle.def.id,
+          model: candidate.model,
           cached: false,
           degraded,
           attempts,
@@ -873,19 +918,31 @@ async function callLLM(opts: LlmCallOptions): Promise<LlmResult> {
           tokensOut: out.tokensOut || estimateTokens(out.text),
           latencyMs: Date.now() - started,
         };
-        if (cacheable && cacheKey) cachePut(cacheKey, task, result, cacheTtl);
-        bumpUsage(opts.userId, result.tokensIn, result.tokensOut);
-        recordEvent({ user_id: opts.userId ?? null, tag: opts.tag ?? null, task, provider: result.provider, model: result.model, ok: true, cached: false, degraded, attempts, tokens_in: result.tokensIn, tokens_out: result.tokensOut, latency_ms: result.latencyMs, trimmed: trimmed.trimmed });
+        if (cacheable && cacheKey) cachePut(cacheKey, result, ttl);
+        recordUsage({
+          provider: result.provider,
+          model: result.model,
+          task,
+          ok: true,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+        });
+        bumpBudgetLocal(result.tokensIn, result.tokensOut);
         return result;
       } catch (e) {
-        lastErr = e;
-        // A 404/401 on a forced or pool model means "try the next candidate".
+        lastError = e;
+        const status = e instanceof AiError ? e.status : 500;
+        const cooldown = cooldownSecondsFor(status, attempts);
+        if (cooldown > 0) setCooldown(candidate.handle.def.id, cooldown, `${status} on ${candidate.model}`);
+        recordUsage({ provider: candidate.handle.def.id, model: candidate.model, task, ok: false, tokensIn: 0, tokensOut: 0 });
         continue;
       }
     }
 
-    recordEvent({ user_id: opts.userId ?? null, tag: opts.tag ?? null, task, ok: false, degraded, attempts, tokens_in: trimmed.tokens, tokens_out: 0, latency_ms: Date.now() - started, error: lastErr instanceof Error ? lastErr.message.slice(0, 300) : "unknown" });
-    throw lastErr instanceof AiError ? lastErr : new AiError(503, lastErr instanceof Error ? lastErr.message : "All AI models failed");
+    throw new AiUnavailable(
+      lastError instanceof Error ? lastError.message : "All AI providers failed",
+      attempts,
+    );
   };
 
   if (!cacheable) return run();
@@ -900,34 +957,14 @@ async function callLLMText(opts: LlmCallOptions): Promise<string> {
 }
 
 /**
- * Back-compat shim: the signature every existing function already uses.
- * New code should call callLLM() and use the richer result.
+ * Back-compat shim: the signature every existing function already uses
+ * (`callOpenRouter(messages, {...})`). New code should call callLLM() and use
+ * the richer result, but every option is available here too.
  */
-interface CallOptions {
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-  json?: boolean;
-  task?: LlmTask;
-  cacheTtlSeconds?: number;
-  userId?: string;
-  tag?: string;
-  personal?: boolean;
-}
+type CallOptions = Omit<LlmCallOptions, "messages">;
 
 async function callOpenRouter(messages: ChatMessage[], opts: CallOptions = {}): Promise<string> {
-  const result = await callLLM({
-    messages,
-    task: opts.task ?? (opts.json ? "json" : "chat"),
-    temperature: opts.temperature,
-    maxTokens: opts.maxTokens,
-    json: opts.json,
-    model: opts.model,
-    cacheTtlSeconds: opts.cacheTtlSeconds,
-    userId: opts.userId,
-    tag: opts.tag,
-    personal: opts.personal,
-  });
+  const result = await callLLM({ ...opts, messages });
   return result.text;
 }
 
@@ -954,7 +991,9 @@ async function optionalUser(req: Request): Promise<{ userId: string | null; supa
     const { userId, supabase } = await requireUser(req);
     return { userId, supabase };
   } catch (e) {
-    if ((envGet("AI_REQUIRE_AUTH") ?? "true").toLowerCase() === "false") return { userId: null, supabase: await adminClient() };
+    if ((envGet("AI_REQUIRE_AUTH") ?? "true").toLowerCase() === "false") {
+      return { userId: null, supabase: await adminClient() };
+    }
     throw e;
   }
 }
@@ -966,6 +1005,15 @@ async function requirePartner(req: Request): Promise<{ userId: string; supabase:
     throw new AiError(403, "Not a chat participant");
   }
   return { userId, supabase };
+}
+
+/** The single twin owner (build-plan Phase 4/7: only he edits the twin). */
+async function requireOwner(req: Request): Promise<{ userId: string; supabase: any; config: any }> {
+  const { userId, supabase } = await requirePartner(req);
+  const { data: config } = await supabase.from("twin_config").select("*").eq("id", 1).maybeSingle();
+  if (!config) throw new AiError(409, "Twin is not configured yet.");
+  if (config.owner_user_id !== userId) throw new AiError(403, "Only the twin's owner can do that.");
+  return { userId, supabase, config };
 }
 // ── END GENERATED BLOCK ──
 
@@ -1007,10 +1055,9 @@ Deno.serve(async (req) => {
 
     const summary = await callLLMText({
       task: "summary",
+      sensitivity: "private",
       tag: "ai-chat-summary",
       userId,
-      // Personal chat log: never cache, never log content.
-      personal: true,
       messages: [
         {
           role: "system",

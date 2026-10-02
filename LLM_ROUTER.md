@@ -1,65 +1,89 @@
 # LLM Router (Phase 0)
 
 Every AI call in NewsOfYou goes through **one** router: `supabase/functions/_shared/llm.ts`.
-No edge function talks to a model provider directly, and no API key ever reaches the client.
+No edge function talks to a model provider directly (hard rule #6), and no API key ever
+reaches the client (hard rule #4).
 
 ```
 client ──supabase.functions.invoke("ai-*")──► edge function
                                                  │  (inlined copy of the router)
                                                  ▼
-                                        _shared/llm.ts  ──► OpenRouter  (free models, primary)
-                                                        ──► Groq      (free tier, fast)
-                                                        ──► Gemini    (AI Studio free tier)
-                                                        ──► Cerebras  (free tier)
-                                                        ──► Lovable   (legacy gateway, optional)
+                                  _shared/llm.ts ──► provider chain for the task
+                                                     (models.ts decides the order)
 ```
+
+## Files
+
+| File | Role |
+|---|---|
+| `supabase/functions/_shared/models.ts` | **The only file to edit when a model changes.** Provider table + per-task fallback chains + privacy flags. |
+| `supabase/functions/_shared/llm.ts` | Router: routing, privacy tiers, cooldowns, caching, token trimming, usage accounting, auth helpers. |
+| `supabase/functions/_shared/safety.ts` | `TWIN_RULES` (build-plan §6) + `quickGuard` / `safetyStop`. |
+| `scripts/inline-llm.mjs` | Copies the sources into each function (they deploy standalone). |
+| `scripts/test-llm.ts` | 19 offline behaviour tests including the privacy-tier acceptance criteria. |
+
+## Privacy tiers (build-plan §2.2 — non-negotiable)
+
+| Tier | What it is | Providers allowed | Cached? |
+|---|---|---|---|
+| `private` (**default**) | real chat excerpts, memories, her messages | `noTrain: true` only — Groq, Cerebras, Cloudflare | never |
+| `low` | generic text with no personal data (game words, a daily question) | any configured provider | yes, opt-in `ttlSeconds` |
+
+`private` calls also run through `redact()` first: phone numbers, emails and links are
+replaced with `[number]` / `[email]` / `[link]` before the text leaves the database.
+
+`noTrain` is a claim we must verify. **Read each provider's current data-use terms**
+before trusting it, then flip the flag in `models.ts` — the whole app follows.
 
 ## What the router guarantees
 
 | Concern | Behaviour |
 |---|---|
-| Free only | Every provider/model in the pool has a free tier. Nothing breaks if you only set `OPENROUTER_API_KEY`. |
-| Rate limits | 429/402/404/5xx/timeout/empty → next model. Cooling is exponential (60s → 300s, 402 → 15 min per provider) and shared across edge instances via `ai_llm_stats`. |
-| Self-routing | Candidates are scored by measured success rate + latency EMA, and tasks pick a tier (fast vs strong). `LLM_PREFER_PROVIDER` biases the order. |
-| Token conservation | Per-task output caps, input trimming (oldest messages dropped, oversized newest truncated), request coalescing, opt-in response cache, per-user daily budget that **degrades** (cheap tier + shorter outputs) instead of failing. |
-| Observability | One row per call in `ai_llm_events` (model, provider, tokens, latency, error). **No prompt content is ever stored.** |
-| Privacy | Personal prompts (`personal: true`) are never cached. Chat logs are sent to the model but only counted in the DB. |
+| Free only | Every entry in the chains has a free tier. Missing keys are simply skipped. |
+| Rate limits | 429 → 60–300 s provider cooldown; 402/401/404 → 1 h; 5xx/504 → 1–2 min. Cooldowns are shared between edge instances via `llm_cooldowns`. |
+| Fallback | Failover walks the task's chain (max 4 candidates), retrying once without `response_format` when a model rejects JSON mode. |
+| Token conservation | Per-task output clamps, input trimming (oldest dropped, oversized newest truncated), response cache (low only), request coalescing, daily budget `LLM_DAILY_TOKEN_BUDGET` (default 60 000) that degrades output length, then `AiUnavailable` → callers use their non-AI fallback. |
+| Observability | One `llm_usage` row per provider/model/task/day with call counts and tokens. **No prompt content is ever stored.** |
+
+## Tasks
+
+Plan tasks: `twin_chat`, `face_to_face`, `greeting`, `summary`, `extract`, `guard`.
+App tasks (kept working): `companion`, `chat`, `classify`, `json`, `hint`, `decoy`, `game`, `daily_question`.
+Each has temperature / output cap / input budget / timeout / default sensitivity in `TASK_PROFILES`.
 
 ## Source of truth vs inlined copies
 
-Functions deploy by name and have no bundler step, so the block between
-`// ── BEGIN GENERATED BLOCK ──` and `// ── END GENERATED BLOCK ──` is copied into each
-function that needs it.
+Functions deploy by name with no bundler step, so real code is copied:
 
 ```bash
-npm run inline:llm          # regenerate every copy after editing _shared/llm.ts
-npm run inline:llm:check    # CI guard: fails if a copy is stale
-npm run inline:llm -- --list
+npm run inline:llm          # after editing llm.ts / models.ts / safety.ts
+npm run inline:llm:check    # CI guard — fails when a copy is stale
+node scripts/inline-llm.mjs --list
 ```
 
-Never hand-edit a generated block. Managed today: `ai-chat-summary`, `ai-companion`,
-`ai-compose-help`, `ai-daily-question`, `ai-decoy-bot`, `ai-game`, `ai-memory-extract`,
-`ai-message-guard`, `guess-check`, `hangman-hint`.
-(`fetch-link-preview` and `send-scheduled-messages` make no LLM calls and are skipped.)
+Good news for the plan's rule #10: the inliner is **generic**. When Phase 4's `twin-chat`
+starts using `quickGuard` / `TWIN_RULES` from `safety.ts`, running `npm run inline:llm`
+inserts the safety block into that function automatically — nothing to hand-copy.
+
+Managed today: `ai-chat-summary`, `ai-companion`, `ai-compose-help`, `ai-daily-question`,
+`ai-decoy-bot`, `ai-game`, `ai-memory-extract`, `ai-message-guard`, `guess-check`,
+`hangman-hint`. (`fetch-link-preview` and `send-scheduled-messages` make no LLM calls.)
 
 ## Secrets
 
 ```bash
-supabase secrets set OPENROUTER_API_KEY=sk-or-...     # required (free models)
-supabase secrets set GROQ_API_KEY=gsk_...             # optional fallback
-supabase secrets set GEMINI_API_KEY=...               # optional fallback
-supabase secrets set CEREBRAS_API_KEY=csk-...         # optional fallback
-supabase secrets set LOVABLE_API_KEY=...              # optional legacy fallback
+supabase secrets set GROQ_API_KEY=gsk_...        # required for private traffic
+supabase secrets set CEREBRAS_API_KEY=csk-...    # optional noTrain fallback
+supabase secrets set CF_API_TOKEN=... CF_ACCOUNT_ID=...   # optional noTrain fallback
+supabase secrets set GEMINI_API_KEY=...          # optional, low-sensitivity only
+supabase secrets set OPENROUTER_API_KEY=sk-or-... # optional, low-sensitivity fallback
 ```
-
-Optional tunables (no redeploy of code needed, just re-set the secret):
 
 | Secret | Default | Purpose |
 |---|---|---|
-| `LLM_DAILY_TOKEN_BUDGET` | `20000` | Soft per-user daily token ceiling before degradation |
-| `LLM_DISABLED_PROVIDERS` | – | e.g. `groq,cerebras` |
-| `LLM_PREFER_PROVIDER` | – | e.g. `groq` (still falls back) |
-| `LLM_POOL_FAST` / `LLM_POOL_STRONG` | – | csv of `provider:model` prepended to the pools |
+| `LLM_ROUTES_JSON` | – | Override model ids without a redeploy: `{"twin_chat":[{"provider":"groq","model":"llama-3.3-70b-versatile"}]}` |
+| `LLM_DAILY_TOKEN_BUDGET` | `60000` | Tokens/day across providers before answers degrade |
+| `LLM_DISABLED_PROVIDERS` | – | e.g. `gemini,openrouter` |
 | `AI_REQUIRE_AUTH` | `true` | `false` lets anonymous callers use game helpers |
 
 ## Deploy
@@ -75,37 +99,34 @@ supabase functions deploy ai-memory-extract
 supabase functions deploy ai-message-guard
 supabase functions deploy guess-check
 supabase functions deploy hangman-hint
-# fetch-link-preview + send-scheduled-messages: unchanged in Phase 0
 ```
 
 Never run a bare `supabase functions deploy` (it tries to deploy `_shared/` and aborts).
-Apply `supabase/migrations/20261002120000_llm_router.sql` through your normal flow
-(`supabase db push`, or paste it into the SQL editor — it is idempotent).
+Apply `supabase/migrations/20261002120000_llm_router.sql` with `supabase db push`, or paste
+it into the SQL editor — it is idempotent and creates `llm_cooldowns`, `llm_cache`,
+`llm_usage` plus the `llm_usage_bump` / `llm_cooldown_set` / `llm_prune` RPCs.
 
 ## Verify
 
 ```bash
-npm run check:llm    # inlined copies in sync + 11 router behaviour tests (no deps needed)
+npm run check:llm    # inlined copies in sync + 19 offline tests (no deps needed)
 ```
 
-Then, after deploy:
+After deploy, in SQL:
 
 ```sql
--- what the router is doing (last 24h)
-select provider, model, count(*) calls, round(avg(latency_ms)) avg_ms,
-       sum(tokens_in + tokens_out) tokens, count(*) filter (where not ok) failures
-from public.ai_llm_events
-where created_at > now() - interval '24 hours'
-group by 1, 2 order by calls desc;
+-- what the router is doing today
+select provider, model, task, sum(n) calls, sum(tokens_in + tokens_out) tokens,
+       count(*) filter (where not ok) failure_rows
+from public.llm_usage where day = (now() at time zone 'utc')::date
+group by 1,2,3 order by calls desc;
 
--- who is close to their daily budget
-select user_id, tokens_in + tokens_out as used from public.ai_usage_daily
-where day = (now() at time zone 'utc')::date order by used desc;
+-- who is cooling down
+select provider, until, reason from public.llm_cooldowns order by until desc;
 ```
 
 ## Adding a provider or model
 
-1. Add/extend the entry in `PROVIDERS` (env key, OpenAI-compatible URL, `fast`/`strong` lists)
-   inside `_shared/llm.ts`, or override at runtime with `LLM_POOL_FAST` / `LLM_POOL_STRONG`.
+1. Edit `PROVIDERS` / `ROUTES` in `_shared/models.ts` (or override at runtime with `LLM_ROUTES_JSON`).
 2. `npm run inline:llm && npm run check:llm`
-3. Redeploy the functions whose behaviour you changed (all of them, if the pool changed).
+3. Redeploy the functions whose behaviour changed (all of them, if the pool changed).
