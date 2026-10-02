@@ -14,13 +14,14 @@ import { QUICK_REACTIONS } from "@/lib/emojiData";
 import { DieFace } from "@/components/secrets/DieFace";
 import { decodeRps, RPS_EMOJI } from "@/lib/secretCommands";
 import { haptic } from "@/lib/haptics";
-import { getMessageFontSizeClass } from "@/lib/fontSettings";
+import { getMessageFontSizeClass, getMessageFontStyle } from "@/lib/fontSettings";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface MessageBubbleProps {
   message: Tables<"messages">;
   isOwn: boolean;
   fontSize?: string;
+  customFontSize?: string;
   isHandwriting?: boolean;
   reactions?: Tables<"message_reactions">[];
   replyToMessage?: Tables<"messages"> | null;
@@ -39,7 +40,7 @@ interface MessageBubbleProps {
 const SWIPE_THRESHOLD = 60;
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isOwn, fontSize = "medium", isHandwriting = false, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned,
+  message, isOwn, fontSize = "medium", customFontSize, isHandwriting = false, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -63,6 +64,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const fontSizeClass = useMemo(() => {
     return getMessageFontSizeClass(fontSize, isHandwriting);
   }, [fontSize, isHandwriting]);
+
+  const handwritingStyle = useMemo(() => {
+    return isHandwriting ? getMessageFontStyle(true, customFontSize) : undefined;
+  }, [isHandwriting, customFontSize]);
 
   const handleReact = useCallback((emoji: string) => {
     setReactionAnimation(emoji);
@@ -535,9 +540,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
               isOwn={isOwn}
               fontSizeClass={fontSizeClass}
               isHandwriting={isHandwriting}
+              customFontSize={customFontSize}
             />
           ) : message.content ? (
-            <div className={`whitespace-pre-wrap break-words leading-relaxed ${fontSizeClass} ${isHandwriting ? "font-handwriting" : ""}`}>
+            <div
+              style={handwritingStyle}
+              className={`whitespace-pre-wrap break-words leading-relaxed ${fontSizeClass} ${isHandwriting ? "font-handwriting" : ""}`}
+            >
               {formatMessageContent(message.content)}
             </div>
           ) : null}

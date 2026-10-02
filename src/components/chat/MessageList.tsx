@@ -32,13 +32,14 @@ interface MessageListProps {
   onAskCompanion?: (message: Tables<"messages">) => void;
   onEmptyDoubleTap?: () => void;
   fontSize?: string;
+  customFontSize?: string;
   currentHandwritingFont?: boolean;
   partnerHandwritingFont?: boolean;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
   messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
-  fontSize = "medium", currentHandwritingFont = false, partnerHandwritingFont = false,
+  fontSize = "medium", customFontSize, currentHandwritingFont = false, partnerHandwritingFont = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -182,6 +183,7 @@ const MessageList: React.FC<MessageListProps> = ({
                   message={msg}
                   isOwn={isOwn}
                   fontSize={fontSize}
+                  customFontSize={customFontSize}
                   isHandwriting={isHandwriting}
                   reactions={reactions[msg.id] ?? []}
                   replyToMessage={msg.reply_to_id ? replyMap[msg.reply_to_id] ?? null : null}

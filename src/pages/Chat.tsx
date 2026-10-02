@@ -48,6 +48,7 @@ import ThemeSurprises from "@/components/chat/ThemeSurprises";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { getThemeById } from "@/lib/chatThemes";
+import { getSavedCustomFontSize } from "@/lib/fontSettings";
 import type { Tables } from "@/integrations/supabase/types";
 
 const DYNAMIC_WALLPAPERS: Record<string, string> = {
@@ -130,6 +131,9 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const [useHandwritingFont, setUseHandwritingFont] = useState<boolean>(() => {
     try { return localStorage.getItem("app_use_handwriting_font") === "true"; } catch { return false; }
   });
+  const [customFontSize, setCustomFontSize] = useState<string>(() => {
+    try { return getSavedCustomFontSize(); } catch { return "20px"; }
+  });
   const messageListRef = useRef<{ scrollToMessage: (id: string) => void } | null>(null);
 
   const themeConfig = getThemeById(chatTheme);
@@ -150,9 +154,17 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
     const handleStorage = (e: StorageEvent) => {
       if (e.key === "app_font_size" && e.newValue) setFontSize(e.newValue);
       if (e.key === "app_use_handwriting_font" && e.newValue !== null) setUseHandwritingFont(e.newValue === "true");
+      if (e.key === "app_custom_font_size" && e.newValue) setCustomFontSize(e.newValue);
+    };
+    const handleSyncCustomFont = () => {
+      setCustomFontSize(getSavedCustomFontSize());
     };
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    window.addEventListener("custom_font_size_changed", handleSyncCustomFont);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("custom_font_size_changed", handleSyncCustomFont);
+    };
   }, []);
 
   // Play pending animations from queue
@@ -693,6 +705,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
               onAskCompanion={handleAskCompanion}
               onEmptyDoubleTap={() => setSecretEvent({ type: "scratch", result: pickRandom(LOVE_QUOTES), senderName: "You" })}
               fontSize={fontSize}
+              customFontSize={customFontSize}
               currentHandwritingFont={useHandwritingFont}
               partnerHandwritingFont={!!(partner as any)?.use_handwriting_font}
             />
@@ -710,6 +723,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
               secretPlaceholder={themeEffects.secretPlaceholder}
               sendLabel={themeEffects.sendLabel}
               useHandwritingFont={useHandwritingFont}
+              customFontSize={customFontSize}
             />
           </>
         )}
