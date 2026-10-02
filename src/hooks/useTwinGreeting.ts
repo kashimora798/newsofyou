@@ -55,7 +55,12 @@ export function useTwinGreeting(enabled = true) {
 
       setLoading(true);
       try {
-        const { data, error } = await supabase.functions.invoke("twin-greet", { body: {} });
+        // `preview` is only honoured for the twin's owner, and the server decides
+        // that: when it applies, the greeting costs nothing (no bank line used,
+        // no live call, no log row) so he can look at Home without disturbing her.
+        const { data, error } = await supabase.functions.invoke("twin-greet", {
+          body: { preview: true },
+        });
         if (error) throw error;
         const payload = data as TwinGreeting;
         setGreeting(payload);

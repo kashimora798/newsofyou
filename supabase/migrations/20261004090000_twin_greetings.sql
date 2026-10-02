@@ -156,11 +156,15 @@ GRANT EXECUTE ON FUNCTION public.twin_login_attempt_check(text, text, integer, i
 GRANT EXECUTE ON FUNCTION public.twin_login_attempt_record(text, text, boolean) TO service_role;
 
 -- ── 6. Greeting picker (atomic: choose, mark used, log) ──────────────────
+-- Replaced with a preview-aware signature below (idempotent re-run safety).
+DROP FUNCTION IF EXISTS public.twin_greeting_pick(uuid, text, text, text[]);
+
 CREATE OR REPLACE FUNCTION public.twin_greeting_pick(
   p_user uuid,
   p_mood text,
   p_daypart text,
-  p_avoid text[] DEFAULT '{}'
+  p_avoid text[] DEFAULT '{}',
+  p_preview boolean DEFAULT false
 )
 RETURNS TABLE (id bigint, text text, mood text, daypart text, source text)
 LANGUAGE plpgsql
@@ -202,19 +206,23 @@ BEGIN
     RETURN;   -- empty bank: caller falls back to its static line
   END IF;
 
-  UPDATE public.twin_greeting_bank
-     SET uses = uses + 1, last_used_at = now()
-   WHERE public.twin_greeting_bank.id = chosen.id;
+  -- A preview (the owner checking his own twin) must cost nothing: no uses
+  -- counter, no log row, no effect on her next greeting.
+  IF NOT p_preview THEN
+    UPDATE public.twin_greeting_bank
+       SET uses = uses + 1, last_used_at = now()
+     WHERE public.twin_greeting_bank.id = chosen.id;
 
-  INSERT INTO public.twin_greeting_log (user_id, bank_id, mood, daypart, source)
-  VALUES (p_user, chosen.id, chosen.mood, chosen.daypart, chosen.source);
+    INSERT INTO public.twin_greeting_log (user_id, bank_id, mood, daypart, source)
+    VALUES (p_user, chosen.id, chosen.mood, chosen.daypart, chosen.source);
+  END IF;
 
   RETURN QUERY SELECT chosen.id, chosen.text, chosen.mood, chosen.daypart, chosen.source;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.twin_greeting_pick(uuid, text, text, text[]) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.twin_greeting_pick(uuid, text, text, text[]) TO service_role;
+REVOKE ALL ON FUNCTION public.twin_greeting_pick(uuid, text, text, text[], boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.twin_greeting_pick(uuid, text, text, text[], boolean) TO service_role;
 
 -- Context for the picker: what was shown recently, and whether today already
 -- had a live (LLM-written) greeting.

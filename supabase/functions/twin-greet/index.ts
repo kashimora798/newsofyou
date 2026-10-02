@@ -1382,7 +1382,6 @@ Deno.serve(async (req) => {
   try {
     const { userId, supabase } = await requirePartner(req);
     const body = await req.json().catch(() => ({}));
-    const wantsPreview = body?.preview === true;
 
     const { data: cfg } = await supabase.from("twin_config").select("*").eq("id", 1).maybeSingle();
     if (!cfg) throw new AiError(409, "Twin is not configured yet.");
@@ -1390,6 +1389,8 @@ Deno.serve(async (req) => {
     const ownerName: string = cfg.owner_name ?? "your partner";
     const label = `${ownerName}'s AI`;
     const isOwnerCaller = userId === cfg.owner_user_id;
+    // Previewing is for the owner only, and it never burns a line or a live call.
+    const wantsPreview = body?.preview === true && isOwnerCaller;
     const consented = Boolean(cfg.partner_consented_at) && cfg.twin_enabled === true;
 
     if (!consented) {
@@ -1533,6 +1534,7 @@ Deno.serve(async (req) => {
       p_mood: mood,
       p_daypart: daypart,
       p_avoid: ctx.last_texts ?? [],
+      p_preview: wantsPreview,
     });
 
     const row = Array.isArray(picked) ? picked[0] : picked;
