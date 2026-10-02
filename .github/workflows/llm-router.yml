@@ -29,3 +29,8 @@ jobs:
 
       - name: Router behaviour tests
         run: node --experimental-strip-types scripts/test-llm.ts
+
+      - name: Migrations parse (Postgres grammar)
+        run: |
+          npm i --no-save pgsql-parser
+          node scripts/check-sql.mjs
