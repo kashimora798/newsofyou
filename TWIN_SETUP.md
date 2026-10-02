@@ -211,11 +211,47 @@ select public.twin_rebuild_all(false);
 Then run `node scripts/embed-backfill.mjs` (or let Phase 5's `twin-nightly` call the
 `embed-backfill` function with the service-role bearer token).
 
+## 7b. Phase 2 — the spell door and the greeting bank
+
+Apply the second migration, then seed the bank:
+
+```bash
+supabase db push                     # adds 20261003090000_ and 20261004090000_
+supabase functions deploy spell-login
+supabase functions deploy twin-greet
+supabase functions deploy seed-greetings
+
+# one owner access token (Dashboard → Authentication → your user → access token)
+export SUPABASE_URL="https://itjukxjshcobpibmbrzq.supabase.co"
+export OWNER_ACCESS_TOKEN="eyJ..."     # never committed
+node scripts/seed-greetings.mjs --dry-run
+node scripts/seed-greetings.mjs        # ~300 lines, 9 free LLM calls
+```
+
+What to expect, in order:
+
+1. `/you/login` shows two name cards (labels only, from `twin_login_cards()`).
+   `?classic=1` still reaches the old email/password form if anything goes wrong.
+2. After she taps **I'm okay with it** once (`twin_record_consent()`), Home shows a
+   handwritten greeting: live AI at most once a day and never twice within 6 hours,
+   otherwise a pre-written line from the bank — so opening the app 50× costs 0 calls.
+3. Revoking (Settings → AI Twin → off, or via the greeting sheet) sets
+   `twin_enabled = false` and deletes what it had learned about her.
+4. The owner screen at `/you/twin` edits the bank, rebuilds it, and shows the voice
+   profile. Only the owner reaches it (`twin_is_owner()`); she is redirected home.
+
+Rate limits on the door: 5 wrong spells per name+IP per 15 minutes, then the stars dim
+for a minute (`{ error: "dimmed", retry_after }`). Wrong name and wrong spell return the
+same answer, so the door never confirms who exists.
+
 ## 8. Deploy reference (by name — rule #10)
 
 ```bash
 supabase functions deploy embed-backfill
 supabase functions deploy build-style-card
+supabase functions deploy spell-login
+supabase functions deploy twin-greet
+supabase functions deploy seed-greetings
 # plus everything in LLM_ROUTER.md after a router change
 ```
 
@@ -227,4 +263,7 @@ Secrets added in Phase 1: **`EMBED_SECRET`** (optional — only needed if you pr
 - Sessions, chunks, pairs and tone classification: **0 LLM calls**.
 - Embeddings: free (`gte-small`, inside Supabase).
 - Style card: **1 private LLM call**, one time.
+- Greeting bank: **9 private LLM calls**, one time (then editable by hand).
+- Every greeting she sees: **0 LLM calls** on the normal path; the twin spends at most
+  `twin_config.greeting_live_per_day` (default 1) live calls per day, ≥6 h apart.
 - Everything personal stays on `noTrain: true` providers (Groq / Cerebras / Cloudflare).
