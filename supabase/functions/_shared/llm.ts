@@ -1,3 +1,50 @@
+/**
+ * NewsOfYou — shared LLM router (Phase 0)
+ * =======================================
+ * The ONE place every AI edge function talks to. No function may call a
+ * provider directly (hard rule #6).
+ *
+ * This file is the source of truth. Supabase Edge Functions in this project
+ * ship WITHOUT a bundler step, so the block below the "GENERATED" marker is
+ * pasted verbatim into every function that needs it by `scripts/inline-llm.mjs`.
+ *
+ *     npm run inline:llm          # regenerate every function's copy
+ *     npm run inline:llm:check    # CI guard — fails when a copy is stale
+ *
+ * Never hand-edit an inlined copy; edit this file and re-run the script.
+ *
+ * What the router does
+ * --------------------
+ *  - Free-tier only: OpenRouter (+ optional Groq / Gemini / Cerebras / Lovable
+ *    gateway fallbacks). No paid provider is required for anything to work.
+ *  - Self-routing by task: each task (classify / json / chat / creative / hint
+ *    / summary / decoy / twin) has its own temperature, output cap, input
+ *    budget and model tier (fast vs strong).
+ *  - Failover: 429 / 402 / 404 / 5xx / timeout / empty response → next model.
+ *    Broken models get an exponential cooldown that is shared between
+ *    instances through `ai_llm_stats`.
+ *  - Token conservation: history trimming, output clamps, request coalescing,
+ *    opt-in response cache (`ai_llm_cache`) and a per-user daily budget that
+ *    degrades quality instead of failing.
+ *  - Observability: one best-effort row per call in `ai_llm_events` (no
+ *    message content — only counts, model, timing and error codes).
+ *
+ * Secrets
+ * -------
+ *   supabase secrets set OPENROUTER_API_KEY=sk-or-...     # primary (free models)
+ *   supabase secrets set GROQ_API_KEY=gsk_...             # optional, fast free tier
+ *   supabase secrets set GEMINI_API_KEY=...               # optional, free tier
+ *   supabase secrets set CEREBRAS_API_KEY=csk-...         # optional, free tier
+ *   supabase secrets set LOVABLE_API_KEY=...              # optional, legacy gateway
+ *
+ * Tunables (all optional env vars)
+ * --------------------------------
+ *   LLM_DAILY_TOKEN_BUDGET   default 20000 tokens/user/day
+ *   LLM_DISABLED_PROVIDERS   csv, e.g. "groq,cerebras"
+ *   LLM_PREFER_PROVIDER      e.g. "groq" (tried first, still falls back)
+ *   AI_REQUIRE_AUTH          "false" lets anonymous callers use game helpers
+ */
+
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -962,88 +1009,23 @@ async function requirePartner(req: Request): Promise<{ userId: string; supabase:
 }
 // ── END GENERATED BLOCK ──
 
-interface ExtractedFact {
-  fact: string;
-  category: string;   // likes|dislikes|important|date|other
-  about: string;      // username the fact is about
-}
-
-// Scans recent messages and extracts durable facts about each partner,
-// upserting them as source='auto'. Input: { partnerId }. Output: { added }.
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
-  try {
-    const { userId, supabase } = await requirePartner(req);
-    const { partnerId } = await req.json();
-
-    // Map usernames -> user ids so we can attribute facts to a subject.
-    const { data: statuses } = await supabase
-      .from("user_status")
-      .select("user_id, name");
-    const nameToId = new Map<string, string>(
-      (statuses ?? [])
-        .filter((s: { name: string | null }) => s.name)
-        .map((s: { user_id: string; name: string }) => [s.name.toLowerCase(), s.user_id]),
-    );
-
-    const { data: recent } = await supabase
-      .from("messages")
-      .select("username, content")
-      .not("content", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(80);
-
-    if (!recent || recent.length === 0) return jsonResponse({ added: 0 });
-
-    const chatLog = recent
-      .reverse()
-      .map((m: { username: string; content: string }) => `${m.username}: ${m.content}`)
-      .join("\n");
-
-    const messages: ChatMessage[] = [
-      {
-        role: "system",
-        content:
-          "You extract durable personal facts about people from a chat between a couple. " +
-          "Only capture lasting facts (preferences, favorites, important people/dates, dislikes) — " +
-          "NOT one-off chatter or fleeting moods. " +
-          'Reply with ONLY a JSON object: {"facts":[{"fact":"...","category":"likes|dislikes|important|date|other","about":"<the name the fact is about>"}]}. ' +
-          "Keep each fact short (max ~12 words). Return at most 8 facts. If nothing durable, return an empty array.",
-      },
-      { role: "user", content: `Chat:\n${chatLog}` },
-    ];
-
-    const raw = await callOpenRouter(messages, {
-      temperature: 0.3, maxTokens: 500, json: true, userId, personal: true,
-    });
-    const parsed = parseJsonLoose<{ facts: ExtractedFact[] }>(raw);
-    const facts = parsed?.facts ?? [];
-
-    let added = 0;
-    for (const f of facts) {
-      if (!f.fact || !f.about) continue;
-      const subjectId = nameToId.get(f.about.toLowerCase());
-      if (!subjectId) continue;
-
-      const category = ["likes", "dislikes", "important", "date", "other"].includes(f.category)
-        ? f.category
-        : "other";
-
-      // Upsert-on-conflict against the unique (subject, lower(fact)) index.
-      const { error } = await supabase.from("ai_memories").insert({
-        owner_user_id: userId,
-        subject_user_id: subjectId,
-        fact: f.fact.slice(0, 200),
-        category,
-        source: "auto",
-        confidence: 0.7,
-      });
-      if (!error) added++;
-    }
-
-    return jsonResponse({ added });
-  } catch (e) {
-    return errorResponse(e);
-  }
-});
+export type { ChatMessage, LlmCallOptions, LlmResult, LlmTask };
+export {
+  AiError,
+  callLLM,
+  callLLMText,
+  callOpenRouter,
+  corsHeaders,
+  envGet,
+  errorResponse,
+  estimateTokens,
+  jsonResponse,
+  optionalUser,
+  parseJsonLoose,
+  requirePartner,
+  requireUser,
+  sanitizeHistory,
+  trimMessages,
+  TASK_PROFILES,
+  PROVIDERS,
+};

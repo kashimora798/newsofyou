@@ -1,0 +1,31 @@
+name: LLM router guard
+
+on:
+  push:
+    paths:
+      - "supabase/functions/**"
+      - "scripts/**"
+      - "package.json"
+      - ".github/workflows/llm-router.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/**"
+      - "scripts/**"
+      - "package.json"
+      - ".github/workflows/llm-router.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No npm install needed: the checker uses only Node built-ins.
+      - name: Inlined router copies are up to date
+        run: node scripts/inline-llm.mjs --check
+
+      - name: Router behaviour tests
+        run: node --experimental-strip-types scripts/test-llm.ts

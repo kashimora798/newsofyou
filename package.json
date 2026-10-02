@@ -10,7 +10,11 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "inline:llm": "node scripts/inline-llm.mjs",
+    "inline:llm:check": "node scripts/inline-llm.mjs --check",
+    "test:llm": "node --experimental-strip-types scripts/test-llm.ts",
+    "check:llm": "npm run inline:llm:check && npm run test:llm"
   },
   "dependencies": {
     "@dgreenheck/ez-tree": "^1.1.0",
