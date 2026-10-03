@@ -12,6 +12,7 @@ import { isCalmMode, setCalmMode } from "@/hooks/useAnimationsEnabled";
 import { hashCode } from "@/hooks/useDecoy";
 import { DECOY_SKINS, type DecoySkin } from "@/lib/decoySkins";
 import { useTwinConsent } from "@/hooks/useTwinConsent";
+import DecoyLoginSettings from "@/components/settings/DecoyLoginSettings";
 
 const SettingsPage: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -134,6 +135,7 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [twinBusy, setTwinBusy] = useState(false);
+  const [showDecoyLogin, setShowDecoyLogin] = useState(false);
   const [twinConfirmRevoke, setTwinConfirmRevoke] = useState(false);
 
   useEffect(() => {
@@ -441,6 +443,17 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
           <SectionLabel>Privacy</SectionLabel>
           <Group>
             <Row label="Quick Hide" sub="Disguise chat as an AI app; type your code to return" onClick={handleDecoyToggle} trailing={<Toggle on={decoyEnabled} onChange={handleDecoyToggle} />} />
+            <Row
+              label="Front page decoy login"
+              sub="myanshika.xyz opens a school portal — this is the fake credential and the code back"
+              trailing={<ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              onClick={() => setShowDecoyLogin((v) => !v)}
+            />
+            {showDecoyLogin && (
+              <div className="p-3">
+                <DecoyLoginSettings />
+              </div>
+            )}
           </Group>
           {decoyEnabled && (
             <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 rounded-[18px] bg-card ring-1 ring-border/40 p-4 space-y-4">

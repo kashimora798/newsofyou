@@ -244,6 +244,52 @@ Rate limits on the door: 5 wrong spells per name+IP per 15 minutes, then the sta
 for a minute (`{ error: "dimmed", retry_after }`). Wrong name and wrong spell return the
 same answer, so the door never confirms who exists.
 
+## 7c. The front page (decoy school portal)
+
+`myanshika.xyz/` now serves a **school portal sign-in** (`Eduflow Public School`,
+PT DP Mishra Memorial). Behind the decoy credential sits a fake student portal
+(`/study`): timetable, assignments, notes, results, attendance, fees, notices and
+a locally-answered "doubt solver". None of it touches the real database — the
+dataset is invented in `src/lib/studyData.ts` and the login only verifies a hash.
+
+Apply and configure:
+
+```sql
+-- after supabase db push (adds 20261005090000_decoy_login.sql)
+-- 1. one-time, straight in the SQL editor (sha256 of 'your-fake-password'):
+select public.decoy_login_set(
+  p_login_id      => '12S-27',
+  p_password_hash => encode(digest('your-fake-password', 'sha256'), 'hex'),
+  p_unlock_hash   => encode(digest('your-exam-code', 'sha256'), 'hex'),
+  p_student_name  => 'Aarav Sharma',
+  p_grade         => 'Class 12 · Science',
+  p_enabled       => true
+);
+```
+
+…or just use **Settings → Privacy → Front page decoy login** (it hashes for you).
+
+```bash
+supabase functions deploy decoy-login
+```
+
+How it behaves:
+
+- `/` → the school portal. Wrong ID or password answers exactly like an unknown
+  school ID; 8 failures per ID+IP in 15 minutes locks the form for a while.
+- Correct ID + password → `/study`, the fake student portal (session lives in
+  `sessionStorage`, expires with the tab).
+- Inside the portal, **Exam cell → Enter verification code** accepts the exam code
+  and takes you back to the real door. No site data needs clearing.
+- `/real` is the real door (the front page links it as "Faculty & alumni");
+  `/you/login` still works, `?classic=1` still reaches the old email/password form.
+- A real signed-in session on the same device shows a small "Signed in · continue"
+  chip on the front page, so you are never locked out of your own app.
+
+**Update `verify_jwt`?** No. The anon key that ships in the client is a valid
+Supabase JWT, so the default `verify_jwt = true` lets anonymous visitors through
+while still keeping the function authenticated at the platform level.
+
 ## 8. Deploy reference (by name — rule #10)
 
 ```bash
@@ -252,6 +298,7 @@ supabase functions deploy build-style-card
 supabase functions deploy spell-login
 supabase functions deploy twin-greet
 supabase functions deploy seed-greetings
+supabase functions deploy decoy-login
 # plus everything in LLM_ROUTER.md after a router change
 ```
 

@@ -13,13 +13,15 @@ import AdminRoute from "@/components/layout/AdminRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 
 // Eagerly loaded (critical path)
-import Index from "./pages/Index";
 import AdminDashboard from "./pages/AdminDashboard";
 import HiddenLogin from "./pages/HiddenLogin";
+import DecoyLogin from "./pages/DecoyLogin";
+import SecretLogin from "./pages/SecretLogin";
 import OwnerRoute from "@/components/layout/OwnerRoute";
 
 // Lazy loaded
 const AdminTwin = lazy(() => import("./pages/AdminTwin"));
+const StudyApp = lazy(() => import("./pages/StudyApp"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Home = lazy(() => import("./pages/Home"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
@@ -79,7 +81,12 @@ const App = () => (
             <BrowserRouter>
               <Suspense fallback={<PageLoader />}>
                 <Routes>
-                  <Route path="/" element={<Index />} />
+                  {/* The public face of myanshika.xyz: the school portal sign-in. */}
+                  <Route path="/" element={<DecoyLogin />} />
+                  {/* Behind the decoy credential — a local, fake study portal. */}
+                  <Route path="/study" element={<StudyApp />} />
+                  {/* The real door. Reached from the front page's "Faculty & alumni" link. */}
+                  <Route path="/real" element={<SecretLogin />} />
                   <Route path="/login" element={<NotFound />} />
                   <Route path="/you" element={<Navigate to="/you/login" replace />} />
                   <Route path="/you/login" element={<HiddenLogin />} />

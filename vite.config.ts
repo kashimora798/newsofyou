@@ -7,6 +7,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // Allow the sandbox preview host (https://<port>-<sandbox>.e2b.app) through
+    // Vite's host check. Development only — never affects a production build.
+    allowedHosts: true,
     hmr: {
       overlay: false,
     },
