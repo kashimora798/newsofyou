@@ -122,8 +122,14 @@ const HomeScene: React.FC = () => {
       {/* the moon — a soft disc with a thin halo */}
       {moonVisible && (
         <div
-          className="absolute transition-[left,top] duration-[60000ms] ease-linear"
-          style={{ left: `${moon.x * 100}%`, top: `${moon.y * 100}%`, transform: "translate(-50%, -50%)" }}
+          className="absolute"
+          style={{
+            left: `${moon.x * 100}%`,
+            top: `${moon.y * 100}%`,
+            transform: "translate(-50%, -50%)",
+            // The moon slides between renders instead of jumping.
+            transition: "left 60s linear, top 60s linear",
+          }}
         >
           <div
             className="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
