@@ -1046,3 +1046,126 @@ button, a, [role="button"] {
     animation: apple-backdrop-in 0.2s ease-out both;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   PHASE 3 — the Home scene (build-plan §3).
+
+   Home is its own night world: midnight whatever theme the rest of the app is
+   using. The tokens below are re-pointed *inside* `.night-scene` only, so every
+   existing widget on that screen (checklist, streak, reminders, calendar, twin
+   greeting…) picks up the palette without being rewritten, while `/chat`,
+   `/settings` and everything else keep their own theme untouched.
+
+   Deliberately unlayered: plain rules beat Tailwind's `@layer base` `.dark`
+   block, which is what makes the override reliable in both themes.
+   ─────────────────────────────────────────────────────────────────────────── */
+.night-scene {
+  /* the brief's named colours */
+  --night-900: 234 48% 5%;      /* the deepest sky */
+  --night-800: 238 38% 11%;     /* the horizon band */
+  --rose-glow: 342 68% 74%;     /* her colour — warm light on skin */
+  --gold-ink: 41 74% 72%;       /* small, precious moments */
+  --moon-white: 44 42% 96%;     /* text, the moon, hairlines */
+  --mist: 232 26% 62%;          /* secondary text, fog, quiet labels */
+
+  /* re-point the app tokens for everything inside the scene */
+  --background: 234 48% 5%;
+  --foreground: 44 40% 95%;
+
+  --card: 236 34% 13%;
+  --card-foreground: 44 40% 95%;
+  --popover: 236 36% 11%;
+  --popover-foreground: 44 40% 95%;
+
+  --primary: 342 68% 78%;
+  --primary-foreground: 234 48% 8%;
+
+  --secondary: 236 28% 17%;
+  --secondary-foreground: 44 30% 92%;
+
+  --muted: 236 26% 18%;
+  --muted-foreground: 232 20% 70%;
+
+  --accent: 238 30% 20%;
+  --accent-foreground: 44 30% 92%;
+
+  --destructive: 0 62% 58%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 234 26% 24%;
+  --input: 234 26% 22%;
+  --ring: 342 68% 78%;
+
+  --bubble-own: 330 30% 26%;
+  --bubble-own-foreground: 44 30% 94%;
+  --bubble-partner: 236 28% 18%;
+  --bubble-partner-foreground: 44 30% 92%;
+
+  --online: 150 52% 52%;
+  --seen: 205 90% 66%;
+
+  --chat-bg: 234 48% 6%;
+
+  color-scheme: dark;
+}
+
+/* Panes replace "boxy cards": no hard border, a hairline of moonlight, a wide
+   radius and a whisper of blur. Used for the sections that own a surface. */
+.night-scene .pane {
+  background:
+    linear-gradient(160deg, hsl(var(--card) / 0.62) 0%, hsl(var(--night-900) / 0.55) 100%);
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  border: 0.5px solid hsl(var(--moon-white) / 0.07);
+  border-radius: 26px;
+  box-shadow: 0 26px 60px -42px hsl(0 0% 0% / 0.9);
+}
+.night-scene .pane-glow {
+  position: relative;
+  overflow: hidden;
+}
+.night-scene .pane-glow::after {
+  content: "";
+  position: absolute;
+  inset: -40% -20% auto auto;
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(circle, hsl(var(--rose-glow) / 0.22), transparent 68%);
+  filter: blur(26px);
+  pointer-events: none;
+}
+
+/* A hairline that fades at both ends — used to separate sections without a card */
+.night-scene .scene-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--moon-white) / 0.13), transparent);
+}
+
+/* Small caps label for a group of things */
+.night-scene .scene-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: hsl(var(--mist) / 0.85);
+}
+
+@keyframes scene-twinkle {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  45% { opacity: 0.95; }
+  70% { opacity: 0.45; transform: translateY(-1.5px); }
+}
+
+@keyframes scene-drift {
+  from { transform: translate3d(-3%, 0, 0) scale(1); }
+  to { transform: translate3d(4%, -2%, 0) scale(1.06); }
+}
+
+/* The scene never animates for people who asked it not to. */
+@media (prefers-reduced-motion: reduce) {
+  .night-scene [style*="scene-twinkle"],
+  .night-scene [style*="scene-drift"] {
+    animation: none !important;
+  }
+}

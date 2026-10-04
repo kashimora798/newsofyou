@@ -22,6 +22,7 @@ import OwnerRoute from "@/components/layout/OwnerRoute";
 // Lazy loaded
 const AdminTwin = lazy(() => import("./pages/AdminTwin"));
 const StudyApp = lazy(() => import("./pages/StudyApp"));
+const DevScene = lazy(() => import("./pages/DevScene"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Home = lazy(() => import("./pages/Home"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
@@ -87,6 +88,8 @@ const App = () => (
                   <Route path="/study" element={<StudyApp />} />
                   {/* The real door. Reached from the front page's "Faculty & alumni" link. */}
                   <Route path="/real" element={<SecretLogin />} />
+                  {/* Design preview of the Home scene — development builds only. */}
+                  {import.meta.env.DEV && <Route path="/dev/scene" element={<DevScene />} />}
                   <Route path="/login" element={<NotFound />} />
                   <Route path="/you" element={<Navigate to="/you/login" replace />} />
                   <Route path="/you/login" element={<HiddenLogin />} />
