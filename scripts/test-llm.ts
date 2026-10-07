@@ -56,6 +56,18 @@ import {
   TWIN_RULES,
 } from "../supabase/functions/_shared/safety.ts";
 import {
+  buildMemoryPrompt,
+  dedupeFacts,
+  extractFactCandidates,
+  extractHighlights,
+  highlightScore,
+  isMechanicalMessage,
+  isPlaceholderContent,
+  kindOf,
+  selectWorthAsking,
+  summarizeDay,
+} from "../supabase/functions/_shared/memory.ts";
+import {
   buildTwinChatPrompt,
   buildTwinChatUser,
   decideAutoReply,
@@ -656,6 +668,139 @@ test("the tone hint reads Hinglish and defaults to nothing", () => {
   assert.equal(toneHintFor("haha mazak kar raha tha 😂"), "playful");
   assert.equal(toneHintFor("neend aa rahi hai, dawai li?"), "caring");
   assert.equal(toneHintFor("kal kya karna hai"), null);
+});
+
+// ── Phase 5: memory 2.0 ──────────────────────────────────────────────────
+
+const OWNER = "11111111-1111-1111-1111-111111111111";
+const PARTNER = "22222222-2222-2222-2222-222222222222";
+
+const dayLines = (texts: { who: string; text: string; at?: string }[]) =>
+  texts.map((t, i) => ({
+    id: `0000000${i}-0000-0000-0000-00000000000${i}`,
+    user_id: t.who === "owner" ? OWNER : PARTNER,
+    username: t.who === "owner" ? "Kratagya" : "Anshika",
+    content: t.text,
+    created_at: t.at ?? `2026-10-08T1${i}:00:00+05:30`,
+  }));
+
+test("the twin notices the lines worth keeping, and ignores the chatter", () => {
+  const lines = dayLines([
+    { who: "partner", text: "haan" },
+    { who: "partner", text: "kal milte hai na? movie dekhne chalein?" },
+    { who: "owner", text: "pakka, main 6 baje aa jaunga 🫶" },
+    { who: "owner", text: "ok" },
+    { who: "partner", text: "mera birthday 12 March hai, yaad rakhna" },
+  ]);
+
+  const kept = extractHighlights(lines, { day: "2026-10-08", maxPerDay: 4 });
+  const texts = kept.map((h) => h.text);
+  assert.ok(texts.some((t) => t.includes("pakka")), "a promise is kept");
+  assert.ok(texts.some((t) => t.includes("birthday")), "a date is kept");
+  assert.ok(!texts.includes("ok"), "one-word lines are not memories");
+  assert.ok(!texts.includes("haan"));
+  const kinds = kept.map((h) => h.kind);
+  assert.ok(kinds.includes("promise"));
+  assert.ok(kinds.includes("date"));
+});
+
+test("kindOf reads Hinglish, not just English", () => {
+  assert.equal(kindOf("pehli baar humne ek saath baarish dekhi")?.kind, "first");
+  assert.equal(kindOf("shaadi ke baad hum goa jayenge")?.kind, "milestone");
+  assert.equal(kindOf("pakka kal aa jaunga")?.kind, "promise");
+  assert.equal(kindOf("tumhari yaad aa rahi hai")?.kind, "feeling");
+  assert.equal(kindOf("meri tabiyat theek nahi"), null, "plain talk is not a memory");
+});
+
+test("a link, a question or a stub never outranks a real memory", () => {
+  assert.ok(highlightScore("https://youtu.be/abc", "plan") < 0.3);
+  assert.ok(highlightScore("kya kar rahe ho?", null) < highlightScore("I promise I will be there 🫶", "promise"));
+  assert.ok(highlightScore("it was the first time we cooked together", "first") > 0.65);
+});
+
+test("durable facts come straight out of their own sentences", () => {
+  const lines = dayLines([
+    { who: "owner", text: "I love filter coffee, that is it." },
+    { who: "partner", text: "mujhe noise pasand nahi" },
+    { who: "partner", text: "my birthday is 12 March" },
+    { who: "owner", text: "I'm allergic to peanuts" },
+    { who: "partner", text: "remember I have a viva on Monday" },
+    { who: "owner", text: "had a long day today" },
+  ]);
+
+  const facts = extractFactCandidates(lines, { ownerId: OWNER, day: "2026-10-08" });
+  const byFact = Object.fromEntries(facts.map((f) => [f.fact, f]));
+
+  assert.ok(byFact["loves filter coffee"], "likes");
+  assert.equal(byFact["loves filter coffee"].about, "owner");
+  assert.ok(byFact["dislikes noise"], "Hinglish dislikes");
+  assert.equal(byFact["dislikes noise"].about, "partner");
+  assert.ok(byFact["birthday: 12 March"], "a date");
+  assert.equal(byFact["birthday: 12 March"].category, "date");
+  assert.ok(byFact["allergic to peanuts"], "a safety fact");
+  assert.ok(byFact["remember: I have a viva on Monday"], "an explicit ask");
+  assert.ok(!facts.some((f) => f.fact.includes("long day")), "a mood is not a fact");
+});
+
+test("the same fact twice in different words is stored once", () => {
+  const deduped = dedupeFacts([
+    { fact: "loves filter coffee" },
+    { fact: "Loves filter coffee." },
+    { fact: "dislikes loud music" },
+  ]);
+  assert.equal(deduped.length, 2);
+});
+
+test("only the top slice is worth a model call (never more than the cap)", () => {
+  const candidates = [
+    { fact: "a", importance: 0.9 },
+    { fact: "b", importance: 0.8 },
+    { fact: "c", importance: 0.7 },
+    { fact: "d", importance: 0.65 },
+    { fact: "e", importance: 0.3 },
+  ];
+  // 5% of five candidates is one line — the point is to ask about very little.
+  const worth = selectWorthAsking(candidates, { percent: 5, cap: 2, minImportance: 0.6 });
+  assert.equal(worth.length, 1);
+  assert.deepEqual(worth.map((w) => w.fact), ["a"]);
+
+  // With many lines the cap is what bites, never the percentage.
+  const many = Array.from({ length: 200 }, (_, i) => ({ fact: `f${i}`, importance: 0.9 - i * 0.001 }));
+  assert.equal(selectWorthAsking(many, { percent: 5, cap: 2 }).length, 2);
+
+  assert.equal(selectWorthAsking([{ fact: "weak", importance: 0.4 }], { minImportance: 0.6 }).length, 0);
+  assert.equal(selectWorthAsking([], {}).length, 0);
+});
+
+test("the one paid prompt names the people and forbids moods", () => {
+  const prompt = buildMemoryPrompt(
+    [{ who: "Anshika", text: "my birthday is 12 March" }],
+    { ownerName: "Kratagya", partnerName: "Anshika" },
+  );
+  assert.ok(prompt.system.includes("Kratagya") && prompt.system.includes("Anshika"));
+  assert.ok(prompt.user.includes("12 March"), "the real line travels");
+  assert.match(prompt.system, /NOT moods/);
+  assert.match(prompt.system, /JSON/);
+});
+
+test("day summaries do both jobs in one pass", () => {
+  const lines = dayLines([
+    { who: "owner", text: "I promise I will come by 6 🫶" },
+    { who: "partner", text: "I love old Hindi songs" },
+  ]);
+  const { highlights, facts } = summarizeDay(lines, { day: "2026-10-08", ownerId: OWNER });
+  assert.ok(highlights.length >= 1);
+  assert.ok(facts.some((f) => f.fact === "loves old Hindi songs"));
+});
+
+test("mechanical rows and placeholders are not words anyone said", () => {
+  assert.equal(isMechanicalMessage("touch_reaction"), true);
+  assert.equal(isMechanicalMessage("text"), false);
+  assert.equal(isMechanicalMessage(null), false);
+  assert.equal(isPlaceholderContent("[voice note]"), true);
+  assert.equal(isPlaceholderContent("❤️❤️"), true);
+  assert.equal(isPlaceholderContent("  "), true);
+  assert.equal(isPlaceholderContent("I love you"), false);
 });
 
 // ── runner ────────────────────────────────────────────────────────────────

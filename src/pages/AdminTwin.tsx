@@ -9,6 +9,10 @@ import {
   Save,
   Power,
   Download,
+  Brain,
+  Pin,
+  PinOff,
+  Quote,
   MessageCircle,
   MessageSquareDashed,
   Wand2,
@@ -19,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useAiMemory } from "@/hooks/useAiMemory";
 
 /**
  * AdminTwin — /you/twin, owner only.
@@ -64,6 +69,7 @@ const MOODS = [
 
 const AdminTwin: React.FC = () => {
   const { toast } = useToast();
+  const memory = useAiMemory();
   const [rows, setRows] = useState<BankRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
@@ -414,6 +420,119 @@ const AdminTwin: React.FC = () => {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* What the twin remembers (Phase 5) */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2">
+                <Brain className="h-4 w-4 text-primary" /> What the twin remembers
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy === "nightly"}
+                onClick={async () => {
+                  setBusy("nightly");
+                  try {
+                    const { result, error } = await memory.runNightly(7, true);
+                    if (error) throw error;
+                    if (result?.skipped) {
+                      toast({ title: "Not yet", description: `Last sweep was ${result.minutes_since ?? "?"} min ago.` });
+                    } else {
+                      toast({
+                        title: "Memory fed",
+                        description: `${result?.highlights ?? 0} lines kept, ${result?.facts_heuristic ?? 0} facts free, ${
+                          result?.facts_llm ?? 0
+                        } from ${result?.llm_calls ?? 0} call(s).`,
+                      });
+                    }
+                  } catch (e) {
+                    toast({ title: "Could not run", description: e instanceof Error ? e.message : "", variant: "destructive" });
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                {busy === "nightly" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                <span className="ml-1.5 hidden sm:inline">Feed it now</span>
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{memory.stats?.total ?? memory.memories.length} memories</Badge>
+              {memory.stats?.pinned !== undefined && <Badge variant="outline">{memory.stats.pinned} pinned</Badge>}
+              {memory.stats?.highlights !== undefined && (
+                <Badge variant="outline">{memory.stats.highlights} lines kept</Badge>
+              )}
+              {memory.stats?.last_run?.ran_at && (
+                <Badge variant="secondary">
+                  last fed {new Date(memory.stats.last_run.ran_at).toLocaleString()}
+                  {memory.stats.last_run.llm_calls ? ` · ${memory.stats.last_run.llm_calls} call(s)` : " · free"}
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Free heuristics pick the lines worth keeping and the facts inside them; a model is asked only about the top ~5% of a
+              day. Pinned facts are never lost, and either of you can forget one.
+            </p>
+
+            <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
+              {memory.loading && <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />}
+              {!memory.loading && memory.memories.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nothing yet — tap “Feed it now”, or use “Remember this” in the chat.</p>
+              )}
+              {memory.memories.slice(0, 60).map((m) => (
+                <div key={m.id} className="flex items-start gap-2 rounded-lg border border-border/60 p-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] leading-relaxed">{m.fact}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span>{m.category}</span>
+                      <span>·</span>
+                      <span>{m.source}</span>
+                      {m.seen_count > 1 && (
+                        <>
+                          <span>·</span>
+                          <span>seen {m.seen_count}×</span>
+                        </>
+                      )}
+                      {m.day && (
+                        <>
+                          <span>·</span>
+                          <span>{m.day}</span>
+                        </>
+                      )}
+                      {m.pinned && <Badge className="h-4 px-1 text-[9px]">pinned</Badge>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-0.5">
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void memory.pin(m.id, !m.pinned)}>
+                      {m.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => void memory.forget(m.id)}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {memory.highlights.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <div className="scene-label flex items-center gap-1.5">
+                  <Quote className="h-3 w-3" /> Lines the twin kept
+                </div>
+                {memory.highlights.slice(0, 8).map((h) => (
+                  <p key={h.id} className="text-[12.5px] leading-snug text-muted-foreground">
+                    <span className="mr-1 text-[10px] uppercase tracking-wide">{h.kind}</span>
+                    “{h.text}”
+                  </p>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

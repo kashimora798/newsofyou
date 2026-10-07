@@ -385,6 +385,59 @@ Routes: `/twin` (her chat). The control room at `/you/twin` gained the switches,
 the wait / max / gap numbers, "answer her now", and the list of recent
 away-replies.
 
+## 7f. Phase 5 — memory 2.0
+
+The twin used to "remember" through one greedy model call that read 80 messages
+every time you tapped the button. Phase 5 splits that in two:
+
+1. **Free heuristics** (`_shared/memory.ts`) read a day of real lines and pick
+   the ones worth keeping — promises, plans, dates, firsts, feelings, gifts,
+   places, milestones — in English *and* Hinglish. The same pass pulls durable
+   facts straight out of their own sentences ("loves filter coffee", "birthday:
+   12 March", "allergic to peanuts"), which are stored with no AI at all.
+2. **One model call, only for the top ~5%.** The strongest lines of the window
+   are handed to one `extract` call (private tier, ≤5 facts). If it fails, the
+   free pass stands — nothing is lost.
+
+```bash
+supabase db push                          # adds 20261008090000_twin_memory.sql
+supabase functions deploy twin-nightly
+supabase functions deploy ai-memory-extract   # same function, heuristics-first now
+```
+
+What the database gives you:
+
+- `ai_memories` grew up: `pinned`, `importance`, `seen_count` / `last_seen_at`
+  (a fact that keeps coming back rises), `archived`, `day`, `message_id`, `kind`.
+- `message_highlights` — the lines the twin kept, readable by both partners and
+  written only by the service role.
+- `twin_memory_upsert(...)` — the single writer: dedupes on lowercase fact,
+  never lets an auto fact overwrite a manual one, never loses a pin.
+- `twin_memory_pin()` / `twin_memory_forget()` — either of you, any time.
+- `twin_memory_search(query, subject, k)` — trigram search with pinned first;
+  the twin's prompt now asks "what relates to what she just said" instead of
+  taking the eight newest facts.
+- `twin_day_messages(day)` — one day of real lines, filtered (service role only).
+- `twin_nightly_state()` / `twin_nightly_log()` / `twin_nightly_runs` — the sweep
+  is refused less than 3 h after the last one (the owner may force a second).
+
+Running the sweep:
+
+```bash
+SUPABASE_URL=https://xxxx.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+npm run twin:nightly -- --days 7          # add --force to repeat
+```
+
+Or schedule it in the database (pg_cron + pg_net), see the header of
+`scripts/twin-nightly.mjs` for the exact `cron.schedule(...)` statement.
+
+Cost: a sweep over 7 days is **0 calls** unless a line scores high enough to be
+worth asking about, and then it is **one** call. Browsing memories, pinning,
+forgetting and highlighting cost nothing. The control room (`/you/twin`) now has
+a "What the twin remembers" card with the pin / forget controls, the stats and a
+"Feed it now" button.
+
 ## 8. Deploy reference (by name — rule #10)
 
 ```bash
@@ -396,6 +449,8 @@ supabase functions deploy seed-greetings
 supabase functions deploy decoy-login
 supabase functions deploy book-page
 supabase functions deploy twin-reply
+supabase functions deploy twin-nightly
+supabase functions deploy ai-memory-extract
 # plus everything in LLM_ROUTER.md after a router change
 ```
 
@@ -412,4 +467,6 @@ Secrets added in Phase 1: **`EMBED_SECRET`** (optional — only needed if you pr
   `twin_config.greeting_live_per_day` (default 1) live calls per day, ≥6 h apart.
 - One away-reply: **1 private call**, ≤3/day by default, ≥45 min apart.
 - One twin-chat turn: **1 private call** (a second only when the guard trips).
+- A memory sweep: **0 calls** normally, **1** at most, and it stores what it can
+  even when the call fails.
 - Everything personal stays on `noTrain: true` providers (Groq / Cerebras / Cloudflare).

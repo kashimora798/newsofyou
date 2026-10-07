@@ -14,6 +14,7 @@
     "inline:llm": "node scripts/inline-llm.mjs",
     "inline:llm:check": "node scripts/inline-llm.mjs --check",
     "test:llm": "node --experimental-strip-types scripts/test-llm.ts",
+    "twin:nightly": "node scripts/twin-nightly.mjs",
     "check:llm": "npm run inline:llm:check && npm run test:llm",
     "check:sql": "node scripts/check-sql.mjs"
   },

@@ -98,6 +98,23 @@ const SOURCES = [
     distribute: true,
   },
   {
+    name: "memory.ts",
+    path: join(SHARED_DIR, "memory.ts"),
+    triggers: [
+      "extractHighlights(",
+      "extractFactCandidates(",
+      "summarizeDay(",
+      "buildMemoryPrompt(",
+      "selectWorthAsking(",
+      "dedupeFacts(",
+      "importanceOf(",
+      "highlightScore(",
+      "isMechanicalMessage(",
+      "isPlaceholderContent(",
+    ],
+    distribute: true,
+  },
+  {
     name: "llm.ts",
     path: join(SHARED_DIR, "llm.ts"),
     triggers: [

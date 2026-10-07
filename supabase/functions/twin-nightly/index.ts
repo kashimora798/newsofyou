@@ -1,208 +1,492 @@
-// twin-reply — the twin's chat and the "he's away" auto-reply (Phase 4).
+// twin-nightly — memory 2.0's sweep (build-plan Phase 5).
 //
-//   POST { conversation_id?, text }        → she talks to the twin
-//   POST { auto: true }                    → the twin answers an unanswered
-//                                            message in the shared chat
+//   POST { days?: 7, force?: boolean }
+//     → { ok, days, highlights, facts_heuristic, facts_llm, llm_calls, tokens }
 //
-// Both paths use the same brain: retrieval (his real replies + a memory or two)
-// → one free-model call → quickGuard → stored. The reply is always labelled as
-// AI in the UI, and the auto-reply is never written into the couple's real
-// `messages` history: it lives in `twin_auto_replies` and the chat shows it as
-// a clearly-marked AI note.
+// The free part does the work: for each day in the window, `_shared/memory.ts`
+// picks the lines worth keeping (promises, plans, dates, firsts, feelings) and
+// pulls durable facts straight out of their own sentences. Those are stored with
+// no AI at all.
+//
+// The paid part is one call per sweep, and only for the top ~5% of the day's
+// candidates — the lines most likely to hold something durable that the
+// patterns missed. Everything stays on the private (noTrain) providers.
+//
+// Gating lives in SQL: `twin_nightly_state()` refuses a sweep less than 3 hours
+// after the last one (the owner may force a second one from the control room).
+// Nothing here touches the couple's `messages` (hard rule #1 — read only).
 
-// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/safety.ts) ──
-// ── BEGIN INLINE: safety.ts ──
-/** Character contract for the twin. Placeholders are filled at call time. */
-const TWIN_RULES = `You are {owner_name}'s AI stand-in, talking with {partner_name} while {owner_name} is away.
-- You are an AI. If asked, say so warmly. Never claim to be human, to be physically present, or to have done things in the real world.
-- Speak like {owner_name} in tone and warmth (style card below), but stay your own gentle self: kind, respectful, positive.
-- Never insult, mock, threaten, guilt-trip, play jealousy games, or say anything cruel, even jokingly. No explicit sexual content. No slurs, no profanity.
-- Never promise things on {owner_name}'s behalf (meeting, money, forgiveness, decisions). Offer instead to schedule a message to him or set a reminder.
-- Use memories only when they naturally fit. Don't dump facts or quote old chats verbatim. Never reveal anything about other private conversations.
-- If she seems upset: validate first, no lecturing; offer "Face to Face" if the issue involves {owner_name}.
-- If she mentions self-harm, abuse, or feeling unsafe: respond with care, encourage reaching a trusted person or local emergency/helpline, and tell her {owner_name} would want her safe.
-- Match her language (English / Hindi / Hinglish). Keep replies short (1-4 lines) unless asked for more.
-- Output JSON only: {"reply": "...", "mood": "...", "actions": []}`;
+// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/memory.ts) ──
+// ── BEGIN INLINE: memory.ts ──
+/**
+ * memory.ts — the free half of memory 2.0 (build-plan Phase 5).
+ *
+ * The rule this file exists to enforce: **the twin notices with heuristics and
+ * only thinks with the model when it is worth it.** Everything here is pure —
+ * no Deno, no clock of its own, no network — so it runs in the nightly sweep,
+ * in the "remember what matters" button, and in the tests, identically.
+ *
+ * Three jobs:
+ *   1. `extractHighlights()` — the lines worth keeping from a day: promises,
+ *      plans, dates, firsts, feelings, gifts, places, milestones. English and
+ *      Hinglish, because that is how they actually talk.
+ *   2. `extractFactCandidates()` — durable facts ("loves filter coffee",
+ *      "birthday is 12 March") straight out of their own sentences. These are
+ *      inserted with no AI call at all.
+ *   3. `selectWorthAsking()` — the top ~5%, the only lines worth one model call.
+ *
+ * Nothing here writes to the database; the edge functions own that.
+ */
 
-/** Fill the placeholders in TWIN_RULES without touching the braces inside. */
-function buildTwinRules(vars: { ownerName: string; partnerName: string }): string {
-  return TWIN_RULES.split("{owner_name}").join(vars.ownerName).split("{partner_name}").join(vars.partnerName);
+export type MemoryCategory = "likes" | "dislikes" | "important" | "date" | "other";
+
+export interface DayLine {
+  id: string;
+  user_id: string;
+  username?: string | null;
+  content: string;
+  created_at: string;
 }
 
-/** Shown when the twin cannot answer (all providers down, guard tripped twice). */
-const GENTLE_FALLBACK_REPLY = "I'm resting for a bit — try me again in a little while. 💤";
-
-/** Used when the guard trips on generated text. */
-const GUARD_TRIPPED_REPLY = "Let me say that differently — I only want to be kind to you. 🫶";
-
-type GuardFlag = "explicit" | "slur" | "cruel" | "human_claim" | "promise" | "self_harm" | "abuse";
-
-interface GuardResult {
-  ok: boolean;
-  flags: GuardFlag[];
-  reason?: string;
+export interface HighlightCandidate {
+  message_id: string;
+  user_id: string;
+  day: string;
+  kind: string;
+  text: string;
+  score: number;
 }
 
-// Tight, deliberate lists: we would rather miss a subtle case than block a
-// loving message. Add Hinglish/Hindi spellings as you see them in real data.
-const LEXICON: Record<Exclude<GuardFlag, "human_claim" | "promise" | "self_harm" | "abuse">, RegExp[]> = {
-  explicit: [
-    /\b(nude|nudes|sext|sexting|blow ?job|hand ?job|orgasm|horny|aroused|boner)\b/i,
-    /\bsex\b(?!\s*(?:education|ed|ism))/i,
-  ],
-  slur: [
-    /\b(retard(?:ed)?|faggot|nigg(?:er|a)|chink|spastic)\b/i,
-  ],
-  cruel: [
-    /\b(i|we) (?:hate|despise) you\b/i,
-    /\byou(?:'re| are) (?:worthless|useless|pathetic|a joke|stupid|ugly|fat)\b/i,
-    /\bshut up\b/i,
-    /\bnobody (?:loves|cares about) you\b/i,
-  ],
-};
-
-const HUMAN_CLAIM_PATTERNS = [
-  /\bi am (?:really |actually )?(?:human|a real person|not an ai)\b/i,
-  /\bi'?m (?:really |actually )?(?:human|a real person|not an ai)\b/i,
-  /\bthis is really \w+, not an ai\b/i,
-  /\bi am \w+ (?:in person|right here)\b/i,
-];
-
-const PROMISE_PATTERNS = [
-  /\bi(?:'ll| will) (?:definitely |surely |promise to )?(?:meet|come|marry|pay|send money|take you|fix it|forgive)\b/i,
-  /\byou have my word\b/i,
-];
-
-const SELF_HARM_PATTERNS = [
-  /\b(?:kill|hurt|cut|harm) myself\b/i,
-  /\bsuicide|suicidal|kill myself|end (?:it all|my life)\b/i,
-  /\bno (?:reason|point) (?:to|in) liv(?:e|ing)\b/i,
-  /\bjaan dena|aatmhatya|khudkhushi\b/i,
-];
-
-const ABUSE_PATTERNS = [
-  /\b(?:he|she|they|partner|husband|wife|boyfriend|girlfriend) (?:hits?|beat|beats|hit|slapped|choked|threatened|raped) me\b/i,
-  /\bi(?:'m| am) (?:scared|afraid) (?:of|for) (?:him|her|my life|my safety)\b/i,
-  /\b(?:mar|maar) ?(?:deta|deti|diya|di)\b/i,
-];
-
-function matches(patterns: RegExp[], text: string): boolean {
-  return patterns.some((p) => p.test(text));
+export interface FactCandidate {
+  fact: string;
+  category: MemoryCategory;
+  /** Which side of the couple the fact is about, by id — never by name. */
+  about: "owner" | "partner";
+  kind: string | null;
+  message_id: string;
+  day: string;
+  importance: number;
+  quote: string;
 }
 
 /**
- * Cheap pre-flight / post-flight screen. `quickGuard` is intentionally
- * permissive: it catches obvious cruelty, explicit content and impersonation
- * claims — everything subtle is handled by the model's own instructions.
+ * Kind patterns, most specific first. Each entry is a list of spellings —
+ * English, Hindi and Hinglish — because a lexicon that only reads English
+ * misses most of what these two write.
  */
-function quickGuard(text: string): GuardResult {
-  const t = (text ?? "").trim();
-  if (!t) return { ok: true, flags: [] };
+const KIND_PATTERNS: { kind: string; weight: number; patterns: RegExp[] }[] = [
+  {
+    kind: "milestone",
+    weight: 0.32,
+    patterns: [
+      /\b(engagement|engaged|proposal|propose|roka|sagai|shaadi|shadi|marriage|married|moved in|move in)\b/i,
+      /\b(first anniversary|saalgirah)\b/i,
+    ],
+  },
+  {
+    kind: "promise",
+    weight: 0.28,
+    patterns: [
+      /\b(i promise|promise you|pinky promise|i swear|you have my word)\b/i,
+      /\b(pakka|vada|wada|kasam|vaada)\b/i,
+      /\b(i(?:'ll| will) (?:definitely |surely )?(?:come|meet|be there|call|do it))\b/i,
+    ],
+  },
+  {
+    kind: "first",
+    weight: 0.26,
+    patterns: [/\b(first time|for the first time|pehli baar|pehla|pehli)\b/i],
+  },
+  {
+    kind: "date",
+    weight: 0.24,
+    patterns: [
+      /\b(birthday|janamdin|janmdin|happy bday|hbd|anniversary|saalgirah|dob|date of birth)\b/i,
+      /\b(\d{1,2}(?:st|nd|rd|th)?\s?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i,
+      /\b(\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)var)\b/i,
+    ],
+  },
+  {
+    kind: "gift",
+    weight: 0.2,
+    patterns: [
+      /\b(gift|surprise|present)\b/i,
+      /\b(laaya|layi|laye|diya|diye|bought you|got you)\b/i,
+    ],
+  },
+  {
+    kind: "place",
+    weight: 0.16,
+    patterns: [
+      /\b(ghar|home|office|station|airport|cafe|restaurant|mandir|temple|hospital|market|chowk)\b/i,
+      /\b(goa|manali|jaipur|delhi|mumbai|bangalore|pune|shimla|rishikesh|udaipur)\b/i,
+    ],
+  },
+  {
+    kind: "feeling",
+    weight: 0.18,
+    patterns: [
+      /\b(i miss you|miss you|miss u|yaad aa rahi|yaad aata|tumhari yaad)\b/i,
+      /\b(i love you|love you|love u|pyar|pyaar|jaan|baby)\b/i,
+      /\b(sorry|maaf|gussa|hurt|loney|akela|thank you|grateful)\b/i,
+    ],
+  },
+  {
+    kind: "plan",
+    weight: 0.14,
+    patterns: [
+      /\b(kal|tomorrow|next week|agle hafte|this weekend|tonight|aaj raat|milte hai|milna|meet up|dinner|movie|trip)\b/i,
+      /\b(plan|decide kar|final kar)\b/i,
+    ],
+  },
+];
 
-  const flags: GuardFlag[] = [];
-  for (const [flag, patterns] of Object.entries(LEXICON) as [GuardFlag, RegExp[]][]) {
-    if (matches(patterns, t)) flags.push(flag);
-  }
-  if (matches(HUMAN_CLAIM_PATTERNS, t)) flags.push("human_claim");
-  if (matches(PROMISE_PATTERNS, t)) flags.push("promise");
-  if (matches(SELF_HARM_PATTERNS, t)) flags.push("self_harm");
-  if (matches(ABUSE_PATTERNS, t)) flags.push("abuse");
+const HEART_OR_SPARK = /[❤️💛💚💙💜🧡💕💖💗💓💞💘😍🥰😘😻🫶✨]/u;
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 
-  return { ok: flags.length === 0, flags, reason: flags[0] };
+/**
+ * The same two filters the SQL side uses (`twin_is_ignored_message` /
+ * `twin_is_placeholder_content`, from the Phase 1 tuning migration). Kept here
+ * so a function that pulls its own `messages` rows still reads only real words.
+ */
+const MECHANICAL_TYPES = new Set(["touch_reaction", "reaction", "react", "coinflip", "rps", "bored", "system"]);
+const PLACEHOLDER = /^\[(voice note|voice|sticker|gif|image|photo|video|file|document|media|deleted)\]$/i;
+const ONLY_EMOJI = /^[\s\p{So}\p{Sk}\u200D\uFE0E\uFE0F]+$/u;
+
+/** A tap, a game outcome, a system row — not something anyone said. */
+function isMechanicalMessage(messageType: string | null | undefined): boolean {
+  return MECHANICAL_TYPES.has(String(messageType ?? "text").toLowerCase());
 }
 
-/** Hard stop signal for Face to Face (Phase 8) and for the twin. */
-function safetyStop(text: string): { stop: boolean; flags: GuardFlag[] } {
-  const flags: GuardFlag[] = [];
-  if (matches(SELF_HARM_PATTERNS, text ?? "")) flags.push("self_harm");
-  if (matches(ABUSE_PATTERNS, text ?? "")) flags.push("abuse");
-  return { stop: flags.length > 0, flags };
-}
-// ── END INLINE: safety.ts ──
-// ── END GENERATED BLOCK ──
-
-// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/embed.ts) ──
-// ── BEGIN INLINE: embed.ts ──
-const EMBED_DIM = 384;
-
-/** The gte-small session is created once per isolate and reused. */
-const _embedState: { session: unknown; tried: boolean } = { session: null, tried: false };
-
-function embedderAvailable(): boolean {
-  const g = globalThis as { Supabase?: { ai?: { Session?: unknown } } };
-  return Boolean(g.Supabase?.ai?.Session);
+/** A caption with no words in it. */
+function isPlaceholderContent(content: string | null | undefined): boolean {
+  const t = String(content ?? "").trim();
+  return t === "" || PLACEHOLDER.test(t) || ONLY_EMOJI.test(t);
 }
 
-function embedSession(): { run(input: unknown, opts?: unknown): Promise<unknown> } | null {
-  if (_embedState.tried) return _embedState.session as never;
-  _embedState.tried = true;
-  try {
-    const g = globalThis as { Supabase?: { ai?: { Session?: new (model: string) => { run(input: unknown, opts?: unknown): Promise<unknown> } } } };
-    const Session = g.Supabase?.ai?.Session;
-    if (!Session) return null;
-    _embedState.session = new Session("gte-small");
-  } catch {
-    _embedState.session = null;
-  }
-  return _embedState.session as never;
+/** Strip a line down to text we can compare and store. */
+function normalize(text: string): string {
+  return String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function asNumberArray(value: unknown): number[] | null {
-  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "number") {
-    return (value as number[]).map((n) => Number(n));
-  }
-  // Some runtimes return Float32Array
-  if (value && typeof (value as { length?: number }).length === "number" && !Array.isArray(value)) {
-    try {
-      return Array.from(value as ArrayLike<number>, (n) => Number(n));
-    } catch {
-      return null;
-    }
+function clean(text: string, max = 180): string {
+  return normalize(text).slice(0, max);
+}
+
+/** The first (most specific) kind that fits, or null. */
+function kindOf(text: string): { kind: string; weight: number } | null {
+  const t = String(text ?? "");
+  for (const entry of KIND_PATTERNS) {
+    if (entry.patterns.some((p) => p.test(t))) return { kind: entry.kind, weight: entry.weight };
   }
   return null;
 }
 
 /**
- * Embed one or more strings with gte-small.
- * Throws when the runtime has no `Supabase.ai` (e.g. local Node): callers must
- * treat embeddings as best-effort and keep their non-vector path working.
+ * How much a line deserves to be kept. Deliberately boring: length in the
+ * "says something" band, a kind, warmth, a concrete detail (a digit or a name).
  */
-async function embedTexts(texts: string[]): Promise<number[][]> {
-  const clean = (texts ?? []).map((t) => String(t ?? "").slice(0, 2000));
-  if (clean.length === 0) return [];
+function highlightScore(text: string, kind: string | null): number {
+  const t = normalize(text);
+  if (t.length < 8) return 0;
 
-  const session = embedSession();
-  if (!session) {
-    throw new Error("Embeddings unavailable: Supabase.ai is not present in this runtime.");
+  let score = 0.3;
+  if (t.length >= 24 && t.length <= 220) score += 0.12;
+  if (t.length >= 60) score += 0.05;
+  if (t.length < 14) score -= 0.12;
+
+  const entry = KIND_PATTERNS.find((e) => e.kind === kind);
+  if (entry) score += entry.weight;
+
+  if (HEART_OR_SPARK.test(t)) score += 0.12;
+  else if (EMOJI.test(t)) score += 0.05;
+  if (/[!]/.test(t)) score += 0.05;
+  if (/\d/.test(t)) score += 0.06;
+  if (/\b(sirf|always|never|sabse|favourite|favorite|best)\b/i.test(t)) score += 0.06;
+  if (t.endsWith("?")) score -= 0.08;
+  // A wall of forwarded text is not a memory.
+  if (/^https?:\/\//.test(t)) score -= 0.3;
+
+  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
+}
+
+/**
+ * Keep the lines worth remembering from one day. At most `maxPerDay`, never the
+ * same sentence twice, strongest first. `minScore` is the bar for a line with
+ * no recognized kind to still qualify (as "other").
+ */
+function extractHighlights(
+  lines: DayLine[],
+  opts: { day: string; maxPerDay?: number; minScore?: number } = { day: "" },
+): HighlightCandidate[] {
+  const maxPerDay = Math.max(1, opts.maxPerDay ?? 4);
+  const minScore = opts.minScore ?? 0.45;
+  const seen = new Set<string>();
+  const out: HighlightCandidate[] = [];
+
+  for (const line of lines ?? []) {
+    const text = clean(line.content);
+    if (text.length < 8) continue;
+
+    const found = kindOf(text);
+    const kind = found?.kind ?? "other";
+    const score = highlightScore(text, found?.kind ?? null);
+    if (!found && score < Math.max(minScore, 0.6)) continue;
+    if (score < 0.35) continue;
+
+    const key = `${kind}:${text.toLowerCase().replace(/[^a-z0-9\u0900-\u097F ]+/gi, "").trim()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    out.push({
+      message_id: line.id,
+      user_id: line.user_id,
+      day: opts.day || (line.created_at ?? "").slice(0, 10),
+      kind,
+      text,
+      score,
+    });
   }
 
-  const out: number[][] = [];
-  for (const text of clean) {
-    const raw = await session.run(text, { mean_pool: true, normalize: true });
-    // `run` may return number[] or { data: number[] } depending on runtime.
-    const vec = asNumberArray(raw) ?? asNumberArray((raw as { data?: unknown })?.data);
-    if (!vec) throw new Error("Embedding model returned an unexpected shape.");
-    out.push(vec.slice(0, EMBED_DIM));
+  return out.sort((a, b) => b.score - a.score).slice(0, maxPerDay);
+}
+
+/** Sentence-ish splitter used by the fact patterns. */
+function sentences(text: string): string[] {
+  return normalize(text)
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Tidy a captured phrase into something a person would recognize: no leading
+ * "mujhe / hai / that", no trailing "hai / is", no dangling punctuation.
+ * Hinglish word order puts the verb at the end, so both ends need work.
+ */
+function phrase(text: string, max = 45, cutClause = false): string {
+  const base = cutClause ? clean(text, max).split(/[;,]/)[0] : clean(text, max);
+  return base
+    .replace(/^(?:mujhe|mujhko|mein|main|mai|i|to|that|ki|ka|ke|hai|h|is)\s+/i, "")
+    .replace(/\s+(?:hai|h|is|tha|thi|the|raha|rahi|rahe|kar|karna|hoti|hota)$/i, "")
+    .replace(/[.!,;:\s]+$/, "")
+    .trim();
+}
+
+const FACT_PATTERNS: { category: MemoryCategory; build: (m: RegExpMatchArray) => string | null; pattern: RegExp }[] = [
+  // "my favourite food is rajma chawal" / "mera favourite colour blue hai"
+  {
+    category: "likes",
+    pattern: /\b(?:my|mera|meri|apna)\s+(?:favourite|favorite|fav)\s+(.{2,30}?)\s+(?:is|hai|h)\s+(.{2,40})/i,
+    build: (m) => {
+      const what = phrase(m[1], 30, true);
+      const value = phrase(m[2], 40, true);
+      return what && value ? `favourite ${what}: ${value}` : null;
+    },
+  },
+  // "I love filter coffee" / "mujhe barish bahut pasand hai"
+  {
+    category: "likes",
+    pattern: /\b(?:i|main|mai|mein|mujhe|hum)\s+(?:really\s+|bahut\s+|bohot\s+|too\s+)?(?:love|like|pasand)\s+(?:to\s+)?(.{3,45})/i,
+    build: (m) => {
+      const v = phrase(m[1], 45, true);
+      return v.length >= 3 ? `loves ${v}` : null;
+    },
+  },
+  // "I hate crowds" / "mujhe noise pasand nahi"
+  {
+    category: "dislikes",
+    pattern: /\b(?:i|main|mai|mujhe)\s+(?:really\s+|bahut\s+|bohot\s+)?(?:hate|dislike|can't stand|cant stand)\s+(.{3,45})/i,
+    build: (m) => {
+      const v = phrase(m[1], 45, true);
+      return v.length >= 3 ? `dislikes ${v}` : null;
+    },
+  },
+  {
+    category: "dislikes",
+    pattern: /\b(.{3,40}?)\s+pasand nahi\b/i,
+    build: (m) => {
+      const v = phrase(m[1], 40, true);
+      return v.length >= 3 ? `dislikes ${v}` : null;
+    },
+  },
+  // "allergic to peanuts"
+  {
+    category: "important",
+    pattern: /\ballergic to\s+(.{2,40})/i,
+    build: (m) => `allergic to ${clean(m[1], 40)}`,
+  },
+  // "remember I have an exam on the 12th"
+  {
+    category: "important",
+    pattern: /\b(?:remember|yaad rakhna|note kar|don't forget|dont forget|bhoolna nahi)\b[:,]?\s*(.{4,90})/i,
+    build: (m) => {
+      const v = clean(m[1], 90).replace(/[.!,;:\s]+$/, "");
+      return v.length >= 4 ? `remember: ${v}` : null;
+    },
+  },
+  // "my birthday is 12 March" / "mera birthday 12 march hai"
+  {
+    category: "date",
+    pattern:
+      /\b(?:my|mera|meri|tumhara|your)?\s*(birthday|janamdin|janmdin|anniversary|saalgirah)\b[^0-9]{0,14}(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|\d{1,2}(?:st|nd|rd|th)?)/i,
+    build: (m) => {
+      const what = clean(m[1], 20).toLowerCase();
+      const when = phrase(m[2], 20);
+      return when ? `${what}: ${when}` : null;
+    },
+  },
+];
+
+/**
+ * Durable facts from their own sentences — no AI, no guessing. Precision beats
+ * recall on purpose: a wrong memory is worse than a missing one.
+ */
+function extractFactCandidates(
+  lines: DayLine[],
+  opts: { ownerId: string; max?: number; day?: string },
+): FactCandidate[] {
+  const max = Math.max(1, opts.max ?? 8);
+  const out: FactCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const line of lines ?? []) {
+    const text = normalize(line.content);
+    if (text.length < 8) continue;
+
+    const day = opts.day || (line.created_at ?? "").slice(0, 10);
+    const found = kindOf(text);
+    const about: "owner" | "partner" = line.user_id === opts.ownerId ? "owner" : "partner";
+
+    for (const { category, pattern, build } of FACT_PATTERNS) {
+      const match = text.match(pattern);
+      if (!match) continue;
+      const fact = build(match);
+      if (!fact) continue;
+
+      const key = fact.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      out.push({
+        fact,
+        category,
+        about,
+        kind: found?.kind ?? null,
+        message_id: line.id,
+        day,
+        importance: Number(
+          Math.min(1, 0.4 + (category === "important" ? 0.25 : category === "date" ? 0.3 : 0.15)).toFixed(3),
+        ),
+        quote: clean(text, 120),
+      });
+      break; // one fact per sentence is plenty
+    }
+  }
+
+  return out.slice(0, max);
+}
+
+/** Higher = more worth remembering. Recency is the only clock used. */
+function importanceOf(candidate: { kind?: string | null; importance?: number; day?: string | null }, today?: string): number {
+  let base = candidate.importance ?? 0.5;
+  const entry = KIND_PATTERNS.find((e) => e.kind === candidate.kind);
+  if (entry) base = Math.max(base, 0.45 + entry.weight);
+  if (candidate.day && today) {
+    const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${candidate.day}T00:00:00Z`)) / 86_400_000);
+    if (Number.isFinite(days)) base += days <= 2 ? 0.1 : days <= 7 ? 0.05 : 0;
+  }
+  return Math.max(0, Math.min(1, Number(base.toFixed(3))));
+}
+
+/**
+ * The top slice — the only lines worth a model call (plan §Phase 5: heuristics
+ * for everything, LLM for the top 5%). Always capped, never zero when there is
+ * something good to ask about.
+ */
+function selectWorthAsking<T extends { importance?: number; score?: number }>(
+  candidates: T[],
+  opts: { percent?: number; cap?: number; minImportance?: number } = {},
+): T[] {
+  const percent = Math.max(1, Math.min(100, opts.percent ?? 5));
+  const cap = Math.max(0, opts.cap ?? 2);
+  const minImportance = opts.minImportance ?? 0.6;
+
+  const ranked = [...(candidates ?? [])].sort(
+    (a, b) => (b.importance ?? b.score ?? 0) - (a.importance ?? a.score ?? 0),
+  );
+  if (ranked.length === 0 || cap === 0) return [];
+
+  const take = Math.max(1, Math.min(cap, Math.ceil((ranked.length * percent) / 100)));
+  return ranked.filter((c) => (c.importance ?? c.score ?? 0) >= minImportance).slice(0, take);
+}
+
+/** Facts that say the same thing, however they were phrased. */
+function dedupeFacts<T extends { fact: string }>(facts: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const f of facts ?? []) {
+    const key = normalize(f.fact)
+      .toLowerCase()
+      .replace(/^(loves|dislikes|likes|remember:)\s*/, "")
+      .replace(/[^a-z0-9\u0900-\u097F ]+/gi, "")
+      .trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
   }
   return out;
 }
 
-/** Single-string convenience wrapper; returns null instead of throwing. */
-async function embedText(text: string): Promise<number[] | null> {
-  try {
-    const [vec] = await embedTexts([text]);
-    return vec ?? null;
-  } catch (e) {
-    console.error("embedText failed:", e instanceof Error ? e.message : e);
-    return null;
-  }
+/** The one prompt the sweep may spend a call on (build-plan §5 / Phase 5). */
+function buildMemoryPrompt(
+  lines: { who: string; text: string }[],
+  names: { ownerName: string; partnerName: string },
+): { system: string; user: string } {
+  const system =
+    `You read a few lines a couple wrote to each other and extract only facts that will still be true in a month. ` +
+    `People: ${names.ownerName} (him), ${names.partnerName} (her). ` +
+    `Capture preferences, favourites, dates, allergies, people, places, promises that matter — NOT moods, plans for tomorrow, or chatter. ` +
+    `Write each fact as a short third-person phrase (max 12 words), in English, e.g. "loves filter coffee", "birthday is 12 March". ` +
+    `Reply with ONLY JSON: {"facts":[{"fact":"...","category":"likes|dislikes|important|date|other","about":"${names.ownerName}|${names.partnerName}"}]}. ` +
+    `At most 5 facts. If nothing is durable, return {"facts":[]}.`;
+
+  const user = lines.map((l) => `${l.who}: ${l.text}`).join("\n");
+  return { system, user: `Lines:\n${user}` };
 }
 
-/** pgvector literal for RPC calls: "[0.1,0.2,…]". */
-function toPgVector(vec: number[]): string {
-  return `[${vec.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0)).join(",")}]`;
+/** Pull the good stuff out of one day, in one call. */
+function summarizeDay(
+  lines: DayLine[],
+  opts: { day: string; ownerId: string; maxHighlights?: number; maxFacts?: number },
+): { highlights: HighlightCandidate[]; facts: FactCandidate[] } {
+  return {
+    highlights: extractHighlights(lines, { day: opts.day, maxPerDay: opts.maxHighlights ?? 4 }),
+    facts: extractFactCandidates(lines, { ownerId: opts.ownerId, day: opts.day, max: opts.maxFacts ?? 6 }),
+  };
 }
-// ── END INLINE: embed.ts ──
+
+export type { DayLine as MemoryDayLine };
+export {
+  buildMemoryPrompt,
+  clean,
+  dedupeFacts,
+  extractFactCandidates,
+  extractHighlights,
+  highlightScore,
+  importanceOf,
+  isMechanicalMessage,
+  isPlaceholderContent,
+  phrase,
+  KIND_PATTERNS,
+  kindOf,
+  normalize,
+  selectWorthAsking,
+  summarizeDay,
+};
+// ── END INLINE: memory.ts ──
 // ── END GENERATED BLOCK ──
 
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
@@ -1223,619 +1507,213 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
-// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/twinChat.ts) ──
-// ── BEGIN INLINE: twinChat.ts ──
-/**
- * twinChat.ts — the twin's brain for Phase 4, kept pure so it can be tested.
- *
- * Three jobs:
- *   1. `buildTwinChatPrompt()` — the system prompt: who the twin is, the rules
- *      it may never break, his real voice (style card), a handful of his real
- *      replies as few-shot examples, and the facts it is allowed to know.
- *   2. `parseTwinAnswer()` — turn whatever the model returned into the JSON
- *      contract `{reply, mood, actions}` with clamped sizes, and drop any
- *      action the twin is not allowed to propose.
- *   3. `guardTwinReply()` / `decideAutoReply()` — safety and the offline
- *      auto-reply rules, expressed as functions rather than buried in SQL or
- *      in the edge function.
- *
- * No Deno, no network, no clock of its own: the caller passes everything in.
- */
-
-interface TwinExample {
-  partner_text?: string;
-  owner_reply?: string;
-  tone?: string | null;
-  sim?: number | null;
-}
-
-interface TwinMemory {
-  fact?: string;
-  category?: string | null;
-}
-
-interface TwinChatInput {
-  ownerName: string;
-  partnerName: string;
-  nickname?: string | null;
-  /** "chat" = she is talking to the twin; "autoreply" = the twin answers in his place. */
-  mode?: "chat" | "autoreply";
-  /**
-   * The canonical character contract — always `buildTwinRules({ownerName, partnerName})`
-   * from `_shared/safety.ts` (build-plan §6). Passed in rather than imported so
-   * this module stays pure and testable.
-   */
-  rules?: string;
-  styleCard?: string | null;
-  examples?: TwinExample[];
-  memories?: TwinMemory[];
-  /** The last few turns, oldest first. */
-  history?: { role: string; content: string }[];
-  /** What she just said (chat) or the message that went unanswered (autoreply). */
-  incoming: string;
-  daysTogether?: number | null;
-  lastMemory?: string | null;
-  timeOfDay?: string | null;
-  /** Auto-reply only: how long he has been away. */
-  awayMinutes?: number | null;
-}
-
-const ACTION_WORDS = ["schedule_message", "create_reminder", "add_event", "format_message", "daily_summary", "plan"];
-
-/** Actions the twin may ever propose (build-plan §Phase 7: confirm-card only). */
-const ALLOWED_ACTIONS = new Set(ACTION_WORDS);
-
-const clean = (text: unknown): string =>
-  String(text ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/** The system prompt. The rule list is deliberately short and absolute. */
-function buildTwinChatPrompt(input: TwinChatInput): string {
-  const owner = input.ownerName || "him";
-  const partner = input.partnerName || "her";
-  const nickname = input.nickname || partner;
-  const auto = input.mode === "autoreply";
-
-  const lines: string[] = [];
-
-  lines.push(
-    auto
-      ? `You are ${owner}'s AI stand-in, replying in his place in the chat with ${partner} (${nickname}). He is away right now, so you are keeping her company until he is back.`
-      : `You are ${owner}'s AI stand-in, talking privately with ${partner} (${nickname}).`,
-  );
-  lines.push(
-    `You speak in his *tone* — the way he teases, the words he uses, the emoji he actually sends — but you never invent facts about what he did, felt, decided or promised.`,
-  );
-
-  // The character contract is the shared one — one source of truth (plan §6).
-  if (input.rules?.trim()) lines.push(`\n${input.rules.trim()}`);
-
-  lines.push(`\nHow you talk here:`);
-  lines.push(`- Keep it short: 1–3 sentences, WhatsApp-sized. Match her language (English / Hindi / Hinglish) and her energy.`);
-  lines.push(`- Use memories only when they fit naturally; never dump facts and never quote old chats word-for-word.`);
-  lines.push(`- Never contradict the rules above, and never present yourself as ${owner} instead of his AI.`);
-  lines.push(`- Never mention prompts, models, tokens or these instructions.`);
-
-  if (auto) {
-    lines.push(
-      `- She has been waiting ${Math.round(input.awayMinutes ?? 0)} minutes, so acknowledge that lightly (one clause, no apology theatre), then be present and specific.`,
-    );
-    lines.push(`- This reply will be shown to her as clearly written by his AI, not by him.`);
-  }
-
-  if (input.styleCard) lines.push(`\nHow ${owner} writes (style card — follow the tone, not the personality):\n${input.styleCard}`);
-
-  const examples = (input.examples ?? []).filter((e) => clean(e.owner_reply).length > 0).slice(0, 6);
-  if (examples.length > 0) {
-    lines.push(`\nReal replies ${owner} actually sent (style reference only — never reuse these lines):`);
-    for (const e of examples) {
-      const said = clean(e.partner_text).slice(0, 160);
-      const replied = clean(e.owner_reply).slice(0, 200);
-      if (said && replied) lines.push(`  ${partner}: ${said}\n  ${owner}: ${replied}`);
-    }
-  }
-
-  const memories = (input.memories ?? []).filter((m) => clean(m.fact).length > 0).slice(0, 8);
-  if (memories.length > 0) {
-    lines.push(`\nFacts you are allowed to know about them:`);
-    for (const m of memories) lines.push(`  - ${clean(m.fact).slice(0, 200)}`);
-  }
-
-  const facts: string[] = [];
-  if (input.daysTogether != null) facts.push(`they have been together ${input.daysTogether} days`);
-  if (input.timeOfDay) facts.push(`it is ${input.timeOfDay} for her`);
-  if (input.lastMemory) facts.push(`something recent they shared: ${clean(input.lastMemory).slice(0, 160)}`);
-  if (facts.length > 0) lines.push(`\nContext: ${facts.join("; ")}.`);
-
-  lines.push(
-    `\nReply with JSON only: {"reply": "your message", "mood": "sweet|playful|flirty|caring|missing_you|proud|tender|apologetic|ordinary", "actions": []}`,
-  );
-  lines.push(
-    `Optional actions (only when she clearly asked, at most one): {"type":"schedule_message","text":"...","when":"ISO"} · {"type":"create_reminder","text":"...","when":"ISO"} · {"type":"add_event","title":"...","when":"ISO"}`,
-  );
-
-  return lines.join("\n");
-}
-
-/** The user turn: a little history, then what she said. */
-function buildTwinChatUser(input: TwinChatInput): string {
-  const history = (input.history ?? []).slice(-8).map((h) => h.content).filter(Boolean);
-  const parts: string[] = [];
-  if (history.length > 0) parts.push(`Earlier in this chat:\n${history.join("\n")}`);
-  parts.push(input.mode === "autoreply" ? `Her message that went unanswered: ${input.incoming}` : `She says: ${input.incoming}`);
-  return parts.join("\n\n");
-}
-
-/** Sometimes models wrap JSON in prose — find the object. */
-function extractJson(raw: string): unknown | null {
-  const text = String(raw ?? "").trim();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    /* fall through */
-  }
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  try {
-    return JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
-
-const MOODS = new Set([
-  "sweet",
-  "playful",
-  "flirty",
-  "caring",
-  "missing_you",
-  "proud",
-  "tender",
-  "apologetic",
-  "ordinary",
-]);
-
-interface ParsedTwinAnswer {
-  reply: string;
-  mood: string;
-  actions: { type: string; [k: string]: unknown }[];
-  parsed: boolean;
-}
-
-/** Turn the model's answer into the contract, dropping anything unusable. */
-function parseTwinAnswer(raw: string, fallback: string): ParsedTwinAnswer {
-  const obj = extractJson(raw) as { reply?: unknown; mood?: unknown; actions?: unknown } | null;
-
-  const reply = clean(obj?.reply).replace(/^["'`]+|["'`]+$/g, "");
-  const mood = MOODS.has(clean(obj?.mood)) ? clean(obj?.mood) : "sweet";
-
-  const actions: { type: string; [k: string]: unknown }[] = [];
-  if (Array.isArray(obj?.actions)) {
-    for (const a of obj.actions.slice(0, 2)) {
-      const type = clean((a as { type?: unknown })?.type);
-      if (!ALLOWED_ACTIONS.has(type)) continue;
-      const payload = { ...(a as Record<string, unknown>), type };
-      // never let the model stuff a novel into an action
-      for (const key of ["text", "title", "body", "summary"]) {
-        if (typeof payload[key] === "string") payload[key] = (payload[key] as string).slice(0, 400);
-      }
-      actions.push(payload);
-    }
-  }
-
-  const safeReply = reply.length >= 1 && reply.length <= 900 ? reply : fallback;
-  return { reply: safeReply, mood, actions, parsed: obj !== null };
-}
-
-/**
- * Decide whether the twin may answer in his place. Pure: the SQL function
- * `twin_autoreply_state()` is the authority (it knows the clock and the rows);
- * this mirrors the same rules for tests and for the edge function's sanity check.
- */
-function decideAutoReply(
-  state: {
-    eligible?: boolean;
-    reason?: string;
-    minutes_since_her_message?: number | null;
-    sent_today?: number | null;
-  },
-  config: { afterMinutes: number; maxPerDay: number },
-): { should: boolean; reason: string } {
-  if (state?.eligible === false) return { should: false, reason: state.reason ?? "ineligible" };
-
-  const waited = Number(state?.minutes_since_her_message ?? 0);
-  if (waited < Math.max(1, config.afterMinutes)) return { should: false, reason: "too_soon" };
-
-  const sent = Number(state?.sent_today ?? 0);
-  if (sent >= Math.max(0, config.maxPerDay)) return { should: false, reason: "daily_limit" };
-
-  return { should: true, reason: "ok" };
-}
-
-/**
- * Safety net for a generated twin reply. `guarded` means: replace it with the
- * gentle line and mark the stored message so nobody ever thinks a human said it.
- */
-function guardTwinReply(
-  reply: string,
-  guard: (text: string) => { ok: boolean; flags?: string[]; reason?: string },
-  fallback: string,
-): { text: string; guarded: boolean; flags: string[] } {
-  const found = guard(reply);
-  if (found?.ok) return { text: reply, guarded: false, flags: [] };
-  return { text: fallback, guarded: true, flags: found?.flags ?? [] };
-}
-
-/** Which tone to bias retrieval towards, from her message (free, no LLM). */
-function toneHintFor(text: string): string | null {
-  const t = String(text ?? "").toLowerCase();
-  if (/(sorry|maaf|galti|my bad|apolog)/.test(t)) return "sorry";
-  if (/(kiss|miss you|miss u|jaan|baby|love you|pyar|pyaar|❤️|🥰|😘)/.test(t)) return "sweet";
-  if (/(haha|lol|hehe|😂|🤣|mazak|mazaak|tease)/.test(t)) return "playful";
-  if (/(khana|khaana|soyi|sona|neend|dawai|take care|aram|thak)/.test(t)) return "caring";
-  return null;
-}
-
-export type { ParsedTwinAnswer, TwinChatInput, TwinExample, TwinMemory };
-export {
-  ACTION_WORDS,
-  ALLOWED_ACTIONS,
-  buildTwinChatPrompt,
-  buildTwinChatUser,
-  decideAutoReply,
-  extractJson,
-  guardTwinReply,
-  parseTwinAnswer,
-  toneHintFor,
-};
-// ── END INLINE: twinChat.ts ──
-// ── END GENERATED BLOCK ──
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { userId, supabase } = await requirePartner(req);
     const body = await req.json().catch(() => ({}));
-    const auto = body?.auto === true;
+    const days = Math.max(1, Math.min(31, Number(body?.days ?? 7) || 7));
+    const force = body?.force === true;
 
-    // `requirePartner` hands us the service-role client (needed for the twin's
-    // own writes and for the gated auto-reply RPCs). Her thread is hers, though,
-    // so the conversation calls run as *her*: a second client carrying the same
-    // bearer token, so `auth.uid()` is real in the guarded RPCs.
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const asHer = async () => {
-      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-      return createClient(envGet("SUPABASE_URL")!, envGet("SUPABASE_ANON_KEY")!, {
-        global: { headers: { Authorization: authHeader } },
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
-    };
-    const her = await asHer();
+    const { data: state } = await supabase.rpc("twin_nightly_state", { p_force: force });
+    if (state && state.allowed === false) {
+      return jsonResponse({ skipped: true, reason: state.reason ?? "too_soon", minutes_since: state.minutes_since, state });
+    }
 
     const { data: cfg } = await supabase.from("twin_config").select("*").eq("id", 1).maybeSingle();
     if (!cfg) throw new AiError(409, "Twin is not configured yet.");
-    if (cfg.partner_consented_at === null || cfg.twin_enabled !== true) {
-      throw new AiError(403, "The twin is switched off.");
-    }
 
-    const isOwner = userId === cfg.owner_user_id;
-    if (!isOwner && cfg.twin_chat_enabled !== true) {
-      throw new AiError(403, "Twin chat is switched off.");
-    }
-
-    const ownerName: string = cfg.owner_name ?? "your partner";
+    const ownerName: string = cfg.owner_name ?? "him";
     const partnerName: string = cfg.partner_name ?? "her";
-    // The canonical twin character contract (plan §6) — same text for both paths.
-    const rules = buildTwinRules({ ownerName, partnerName });
 
-    // Shared context for both modes: his voice and her yes/no.
-    const { data: styleCard } = await supabase.from("twin_style_card").select("card").eq("id", 1).maybeSingle();
+    // Names → ids, so a fact is attributed to a person and not a string.
+    const { data: statuses } = await supabase.from("user_status").select("user_id, name");
+    const nameToId = new Map<string, string>(
+      (statuses ?? [])
+        .filter((s: { name: string | null }) => s.name)
+        .map((s: { user_id: string; name: string }) => [s.name.toLowerCase(), s.user_id]),
+    );
+    nameToId.set(ownerName.toLowerCase(), cfg.owner_user_id);
+    nameToId.set(partnerName.toLowerCase(), cfg.partner_user_id);
 
-    /**
-     * Memory 2.0 (Phase 5): retrieve the few facts that actually relate to what
-     * she just said (`twin_memory_search` — trigram, pinned first), not simply
-     * the newest eight. Falls back to the plain list when the search is empty.
-     */
-    const memoriesFor = async (text: string) => {
-      try {
-        const { data } = await supabase.rpc("twin_memory_search", {
-          p_query: String(text ?? "").slice(0, 300),
-          p_subject: cfg.partner_user_id,
-          p_limit: 8,
+    // The window: the last `days` days, today included (a re-run is harmless —
+    // highlights dedupe on their text, facts on their lowercase fact).
+    const istToday = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+    const dayList: string[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      dayList.push(new Date(Date.parse(`${istToday}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10));
+    }
+
+    let highlights = 0;
+    let factsHeuristic = 0;
+    const askAbout: { who: string; text: string; messageId: string; day: string; about: "owner" | "partner" }[] = [];
+    const seenFacts = new Set<string>();
+
+    for (const day of dayList) {
+      const { data: rows } = await supabase.rpc("twin_day_messages", { p_day: day });
+      const lines = ((rows ?? []) as DayLineRow[]).map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        username: r.username,
+        content: r.content ?? "",
+        created_at: r.created_at,
+      }));
+      if (lines.length === 0) continue;
+
+      const { highlights: dayHighlights, facts } = summarizeDay(lines, {
+        day,
+        ownerId: cfg.owner_user_id,
+        maxHighlights: 4,
+        maxFacts: 6,
+      });
+
+      // ── highlights (free, and never duplicated) ──────────────────────────
+      if (dayHighlights.length > 0) {
+        const { data: existing } = await supabase.from("message_highlights").select("text").eq("day", day);
+        const known = new Set((existing ?? []).map((r: { text: string }) => r.text.toLowerCase()));
+        const fresh = dayHighlights.filter((h) => !known.has(h.text.toLowerCase()));
+        if (fresh.length > 0) {
+          const { error } = await supabase.from("message_highlights").insert(
+            fresh.map((h) => ({
+              message_id: h.message_id,
+              user_id: h.user_id,
+              day: h.day,
+              kind: h.kind,
+              text: h.text,
+              score: h.score,
+              source: "heuristic",
+            })),
+          );
+          if (!error) highlights += fresh.length;
+        }
+      }
+
+      // ── facts the patterns caught (free) ─────────────────────────────────
+      for (const fact of facts) {
+        const key = fact.fact.toLowerCase();
+        if (seenFacts.has(key)) continue;
+        seenFacts.add(key);
+
+        const subject = fact.about === "owner" ? cfg.owner_user_id : cfg.partner_user_id;
+        const { data: saved } = await supabase.rpc("twin_memory_upsert", {
+          p_subject: subject,
+          p_fact: fact.fact,
+          p_category: fact.category,
+          p_source: "auto",
+          p_confidence: 0.55,
+          p_importance: importanceOf(fact, istToday),
+          p_day: fact.day,
+          p_message_id: fact.message_id,
+          p_kind: fact.kind,
+          p_owner: userId,
         });
-        const rows = (data ?? []) as { fact: string; category: string | null }[];
-        if (rows.length > 0) return rows;
-      } catch {
-        /* fall through to the flat list */
+        if (saved?.ok) factsHeuristic += 1;
       }
-      const { data } = await supabase
-        .from("ai_memories")
-        .select("fact, category")
-        .eq("subject_user_id", cfg.partner_user_id)
-        .order("pinned", { ascending: false })
-        .order("importance", { ascending: false })
-        .limit(8);
-      return (data ?? []) as { fact: string; category: string | null }[];
-    };
 
-    // Embeddings are best-effort: without the Supabase.ai session the twin keeps
-    // working with no examples rather than failing.
-    const canEmbed = (() => {
+      // ── what might need the model: the strongest lines of the day ────────
+      const worth = selectWorthAsking(dayHighlights, { percent: 5, cap: 3, minImportance: 0.55 });
+      for (const h of worth) {
+        askAbout.push({
+          who: h.user_id === cfg.owner_user_id ? ownerName : partnerName,
+          text: h.text,
+          messageId: h.message_id,
+          day: h.day,
+          about: h.user_id === cfg.owner_user_id ? "owner" : "partner",
+        });
+      }
+    }
+
+    // ── the one paid step ───────────────────────────────────────────────────
+    let factsLlm = 0;
+    let llmCalls = 0;
+    let tokens = 0;
+
+    const askLines = askAbout.slice(0, 24);
+    if (askLines.length > 0) {
       try {
-        return embedderAvailable();
-      } catch {
-        return false;
-      }
-    })();
-
-    /** Retrieve how he actually replies to messages like this one. */
-    const examplesFor = async (text: string) => {
-      if (!canEmbed) return [];
-      const hint = toneHintFor(text);
-      try {
-        const vector = await embedText(text);
-        if (!vector || vector.length === 0) return [];
-        const q = toPgVector(vector);
-        const { data } = await supabase.rpc("match_reply_pairs", { q, k: 6, want_tone: hint });
-        const rows = (data ?? []) as { partner_text: string; owner_reply: string }[];
-        if (rows.length > 0) return rows;
-        // No tone match — search again without the filter.
-        const { data: wide } = await supabase.rpc("match_reply_pairs", { q, k: 6 });
-        return (wide ?? []) as { partner_text: string; owner_reply: string }[];
-      } catch {
-        return [];
-      }
-    };
-
-    const timeOfDay = (() => {
-      const h = new Date(new Date().toLocaleString("en-US", { timeZone: cfg.timezone ?? "Asia/Kolkata" })).getHours();
-      if (h < 12) return "morning";
-      if (h < 17) return "afternoon";
-      if (h < 21) return "evening";
-      return "night";
-    })();
-
-    const daysTogether = cfg.anniversary_date
-      ? Math.floor((Date.now() - Date.parse(`${cfg.anniversary_date}T00:00:00Z`)) / 86_400_000)
-      : null;
-
-    // ── Mode A: the twin answers a message he never got to ────────────────
-    if (auto) {
-      const { data: state } = await supabase.rpc("twin_autoreply_state", {
-        p_for_user: cfg.partner_user_id,
-      });
-
-      const decision = decideAutoReply(state ?? {}, {
-        afterMinutes: Number(cfg.auto_reply_after_minutes ?? 25),
-        maxPerDay: Number(cfg.auto_reply_max_per_day ?? 3),
-      });
-      if (!decision.should) {
-        return jsonResponse({ skipped: true, reason: decision.reason, state });
-      }
-
-      // The SQL function already picked the exact line that is waiting for an
-      // answer (it skips mechanical rows and placeholders) — use that one.
-      const { data: lastMessage } = state?.reply_to_message_id
-        ? await supabase.from("messages").select("content").eq("id", state.reply_to_message_id).maybeSingle()
-        : await supabase
-            .from("messages")
-            .select("content")
-            .eq("user_id", cfg.partner_user_id)
-            .not("content", "is", null)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-      const incoming = String(lastMessage?.content ?? "").slice(0, 500);
-      if (!incoming.trim()) return jsonResponse({ skipped: true, reason: "empty_message" });
-
-      const examples = await examplesFor(incoming);
-      const system = buildTwinChatPrompt({
-        ownerName,
-        partnerName,
-        nickname: null,
-        mode: "autoreply",
-        rules,
-        styleCard: styleCard?.card ?? null,
-        examples,
-        memories: await memoriesFor(incoming),
-        incoming,
-        daysTogether,
-        timeOfDay,
-        awayMinutes: Number(state?.minutes_since_his_seen ?? state?.minutes_since_her_message ?? 0),
-      });
-
-      try {
+        const prompt = buildMemoryPrompt(
+          askLines.map((l) => ({ who: l.who, text: l.text })),
+          { ownerName, partnerName },
+        );
         const result = await callLLM({
-          task: "twin_autoreply",
+          task: "extract",
           sensitivity: "private",
-          tag: "autoreply",
+          tag: "nightly-memory",
           userId,
           json: true,
           messages: [
-            { role: "system", content: system },
-            { role: "user", content: buildTwinChatUser({ ownerName, partnerName, incoming, mode: "autoreply" }) },
+            { role: "system", content: prompt.system },
+            { role: "user", content: prompt.user },
           ],
         });
+        llmCalls += 1;
+        tokens += (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
 
-        const answer = parseTwinAnswer(result.text, GENTLE_FALLBACK_REPLY);
-        const guarded = guardTwinReply(answer.reply, quickGuard, GENTLE_FALLBACK_REPLY);
+        const parsed = parseJsonLoose<{ facts?: { fact?: string; category?: string; about?: string; quote?: string }[] }>(
+          result.text,
+        );
+        const returned = dedupeFacts(
+          (parsed?.facts ?? [])
+            .filter((f) => f.fact && f.fact.trim().length >= 4)
+            .map((f) => ({ fact: String(f.fact).trim(), category: f.category ?? "other", about: f.about ?? "" })),
+        ).slice(0, 5);
 
-        const { data: logged, error: logErr } = await supabase.rpc("twin_autoreply_log", {
-          p_for_user: cfg.partner_user_id,
-          p_text: guarded.text,
-          p_mood: answer.mood,
-          p_model: `${result.provider}/${result.model}`,
-          p_reply_to: state?.reply_to_message_id ?? null,
-          p_source: "auto",
-        });
-        if (logErr) throw new AiError(500, `Could not save the auto-reply: ${logErr.message}`);
+        for (const f of returned) {
+          const subject = nameToId.get(String(f.about).toLowerCase()) ?? null;
+          if (!subject || subject === undefined) continue;
+          if (subject !== cfg.owner_user_id && subject !== cfg.partner_user_id) continue;
 
-        return jsonResponse({
-          ok: true,
-          reply: guarded.text,
-          mood: answer.mood,
-          guarded: guarded.guarded,
-          model: `${result.provider}/${result.model}`,
-          log: logged,
-        });
-      } catch (e) {
-        // Quota, outage, guard: staying silent is better than a bad reply.
-        console.error("auto-reply failed:", e instanceof Error ? e.message : e);
-        return jsonResponse({ skipped: true, reason: "ai_unavailable" });
-      }
-    }
-
-    // ── Mode B: she is talking to the twin ────────────────────────────────
-    const text = String(body?.text ?? "").trim();
-    if (!text) throw new AiError(400, "text is required");
-    if (text.length > 2000) throw new AiError(400, "that message is too long");
-
-    let conversationId = Number(body?.conversation_id ?? 0) || null;
-
-    if (!conversationId) {
-      const { data: created, error: createErr } = await her.rpc("twin_conversation_create", {
-        p_title: text.slice(0, 48),
-      });
-      if (createErr) throw new AiError(500, createErr.message);
-      conversationId = Number((created as { id?: number })?.id ?? 0) || null;
-    }
-    if (!conversationId) throw new AiError(500, "Could not open a chat");
-
-    // Her turn is stored before we think — so a failure never eats her message.
-    const { error: appendErr } = await her.rpc("twin_message_append", {
-      p_conversation: conversationId,
-      p_role: "partner",
-      p_content: text,
-    });
-    if (appendErr) throw new AiError(500, appendErr.message);
-
-    const { data: historyRows } = await her.rpc("twin_conversation_messages", {
-      p_conversation: conversationId,
-      p_limit: 12,
-    });
-
-    const history = ((historyRows ?? []) as { role: string; content: string }[])
-      .slice(0, -1) // drop the message we just stored; it is `incoming`
-      .map((m) => ({ role: m.role, content: `${m.role === "twin" ? ownerName + "'s AI" : partnerName}: ${m.content}` }));
-
-    const examples = await examplesFor(text);
-
-    const system = buildTwinChatPrompt({
-      ownerName,
-      partnerName,
-      nickname: null,
-      mode: "chat",
-      rules,
-      styleCard: styleCard?.card ?? null,
-      examples,
-      memories: await memoriesFor(text),
-      incoming: text,
-      daysTogether,
-      timeOfDay,
-    });
-
-    let reply = GENTLE_FALLBACK_REPLY;
-    let mood = "sweet";
-    let actions: { type: string }[] = [];
-    let guarded = false;
-    let model: string | null = null;
-    let tokens: number | null = null;
-
-    try {
-      const result = await callLLM({
-        task: "twin_chat",
-        sensitivity: "private",
-        tag: "twin-reply",
-        userId,
-        json: true,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: buildTwinChatUser({ ownerName, partnerName, incoming: text, mode: "chat", history }) },
-        ],
-      });
-
-      const answer = parseTwinAnswer(result.text, GENTLE_FALLBACK_REPLY);
-      const checked = guardTwinReply(answer.reply, quickGuard, GUARD_TRIPPED_REPLY);
-
-      // A guarded reply gets one more chance before we show the safe line.
-      if (checked.guarded && answer.parsed) {
-        try {
-          const retry = await callLLM({
-            task: "twin_chat",
-            sensitivity: "private",
-            tag: "twin-reply-retry",
-            userId,
-            json: true,
-            messages: [
-              { role: "system", content: `${system}\n\nYour previous draft broke a rule. Rewrite it shorter, kinder, and without promising anything.` },
-              { role: "user", content: buildTwinChatUser({ ownerName, partnerName, incoming: text, mode: "chat", history }) },
-            ],
+          const { data: saved } = await supabase.rpc("twin_memory_upsert", {
+            p_subject: subject,
+            p_fact: f.fact,
+            p_category: f.category,
+            p_source: "auto",
+            p_confidence: 0.8,
+            p_importance: 0.7,
+            p_day: askLines[0]?.day ?? null,
+            p_kind: null,
+            p_owner: userId,
           });
-          const second = parseTwinAnswer(retry.text, GENTLE_FALLBACK_REPLY);
-          const secondChecked = guardTwinReply(second.reply, quickGuard, GUARD_TRIPPED_REPLY);
-          if (!secondChecked.guarded) {
-            reply = secondChecked.text;
-            mood = second.mood;
-            actions = second.actions;
-            model = `${retry.provider}/${retry.model}`;
-            tokens = (retry.tokensIn ?? 0) + (retry.tokensOut ?? 0);
-          } else {
-            reply = checked.text;
-            guarded = true;
-            model = `${result.provider}/${result.model}`;
-            tokens = (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
-          }
-        } catch {
-          reply = checked.text;
-          guarded = true;
+          if (saved?.ok) factsLlm += 1;
         }
-      } else {
-        reply = checked.text;
-        mood = answer.mood;
-        actions = answer.actions;
-        guarded = checked.guarded;
-        model = `${result.provider}/${result.model}`;
-        tokens = (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
+      } catch (e) {
+        // The night is not lost: the free pass already stored what it found.
+        console.error("nightly memory LLM step failed:", e instanceof Error ? e.message : e);
       }
-    } catch (e) {
-      console.error("twin chat failed:", e instanceof Error ? e.message : e);
-      reply = GENTLE_FALLBACK_REPLY;
     }
 
-    const { data: stored, error: storeErr } = await supabase.rpc("twin_message_append", {
-      p_conversation: conversationId,
-      p_role: "twin",
-      p_content: reply,
-      p_mood: mood,
-      p_actions: actions,
-      p_model: model,
+    const { data: log } = await supabase.rpc("twin_nightly_log", {
+      p_days: days,
+      p_highlights: highlights,
+      p_facts_heuristic: factsHeuristic,
+      p_facts_llm: factsLlm,
+      p_llm_calls: llmCalls,
       p_tokens: tokens,
-      p_guarded: guarded,
+      p_note: askLines.length > 0 ? `asked about ${askLines.length} line(s)` : "heuristics only",
     });
-    if (storeErr) throw new AiError(500, storeErr.message);
-
-    const { data: conversation } = await her
-      .from("twin_conversations")
-      .select("id, title, visibility, msg_count")
-      .eq("id", conversationId)
-      .maybeSingle();
 
     return jsonResponse({
-      conversation_id: conversationId,
-      conversation,
-      reply: stored ?? { role: "twin", content: reply, mood, actions },
-      mood,
-      actions,
-      guarded,
-      model,
-      label: `${ownerName}'s AI`,
+      ok: true,
+      days,
+      window: { from: dayList[0], to: dayList[dayList.length - 1] },
+      highlights,
+      facts_heuristic: factsHeuristic,
+      facts_llm: factsLlm,
+      llm_calls: llmCalls,
+      tokens,
+      asked_about: askLines.length,
+      log,
     });
   } catch (e) {
     return errorResponse(e);
   }
 });
+
+interface DayLineRow {
+  id: string;
+  user_id: string;
+  username: string | null;
+  content: string | null;
+  created_at: string;
+}
