@@ -1,6 +1,8 @@
 # Love Twin — setup & operations
 
-Phases delivered so far: **0 (LLM router)** and **1 (memory index)**.
+Phases delivered so far: **0 (LLM router) · 1 (memory index) · 2 (spell door +
+greetings) · 3 (Home scene) · 6 (the Book) · 4 (twin chat + away-reply) ·
+5 (memory 2.0)**. Phase 7 (assistant actions) is next.
 Router details live in [`LLM_ROUTER.md`](./LLM_ROUTER.md); this file covers the twin
 pipeline: what to apply, what to run, and how to verify.
 
