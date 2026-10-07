@@ -1,6 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, ArrowLeft, Sparkles, Trash2, RefreshCw, Save, Power, Download } from "lucide-react";
+import {
+  Loader2,
+  ArrowLeft,
+  Sparkles,
+  Trash2,
+  RefreshCw,
+  Save,
+  Power,
+  Download,
+  MessageCircle,
+  MessageSquareDashed,
+  Wand2,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +41,15 @@ interface BankRow {
   source: string;
 }
 
+interface AutoReplyRow {
+  id: number;
+  text: string;
+  mood: string | null;
+  created_at: string | null;
+  seen_at: string | null;
+  status: string;
+}
+
 const MOODS = [
   "sweet",
   "playful",
@@ -52,11 +73,15 @@ const AdminTwin: React.FC = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const [moodFilter, setMoodFilter] = useState<string>("all");
   const [daypartFilter, setDaypartFilter] = useState<string>("all");
+  const [chatStats, setChatStats] = useState<Record<string, unknown> | null>(null);
+  const [autoReplies, setAutoReplies] = useState<AutoReplyRow[]>([]);
+  const [chatRules, setChatRules] = useState({ after: 25, max: 3, gap: 45 });
+  const [rulesDirty, setRulesDirty] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [bank, statsRes, cfg, styleCard] = await Promise.all([
+      const [bank, statsRes, cfg, styleCard, chatStatsRes, autoRes] = await Promise.all([
         (supabase as any)
           .from("twin_greeting_bank")
           .select("id, mood, daypart, text, active, uses, last_used_at, source")
@@ -67,11 +92,24 @@ const AdminTwin: React.FC = () => {
         (supabase.rpc as any)("twin_greeting_stats"),
         (supabase as any).from("twin_config").select("*").eq("id", 1).maybeSingle(),
         (supabase as any).from("twin_style_card").select("card").eq("id", 1).maybeSingle(),
+        (supabase.rpc as any)("twin_chat_stats"),
+        (supabase.rpc as any)("twin_autoreply_for_chat", { p_hours: 168 }),
       ]);
       setRows((bank.data ?? []) as BankRow[]);
       setStats((statsRes.data as Record<string, unknown>) ?? null);
       setConfig((cfg.data as Record<string, unknown>) ?? null);
       setCard((styleCard.data?.card as string) ?? "");
+      setChatStats((chatStatsRes.data as Record<string, unknown>) ?? null);
+      setAutoReplies(((autoRes.data?.replies as AutoReplyRow[]) ?? []) as AutoReplyRow[]);
+
+      const c = cfg.data as Record<string, unknown> | null;
+      if (c && !rulesDirty) {
+        setChatRules({
+          after: Number(c.auto_reply_after_minutes ?? 25),
+          max: Number(c.auto_reply_max_per_day ?? 3),
+          gap: Number(c.auto_reply_min_gap_minutes ?? 45),
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -172,6 +210,59 @@ const AdminTwin: React.FC = () => {
     }
   };
 
+  const setAutomation = async (patch: Record<string, unknown>) => {
+    setBusy("automation");
+    try {
+      const { data, error } = await (supabase.rpc as any)("twin_set_automation", patch);
+      if (error) throw error;
+      setConfig((c) => (c ? { ...c, ...(data as Record<string, unknown>) } : c));
+      setRulesDirty(false);
+      toast({ title: "Saved" });
+    } catch (e) {
+      toast({ title: "Could not save", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveRules = () =>
+    setAutomation({ p_after_minutes: chatRules.after, p_max_per_day: chatRules.max, p_min_gap_minutes: chatRules.gap });
+
+  /** "Answer her now" — the same gated path, run by hand. */
+  const answerNow = async () => {
+    setBusy("answer-now");
+    try {
+      const { data, error } = await supabase.functions.invoke("twin-reply", { body: { auto: true } });
+      if (error) throw error;
+      const payload = data as { skipped?: boolean; reason?: string; reply?: string };
+      if (payload.skipped) {
+        const why: Record<string, string> = {
+          too_soon: "she hasn't been waiting long enough yet",
+          off: "auto-reply is switched off",
+          daily_limit: "the daily limit is already used up",
+          gap: "the twin answered very recently",
+          he_is_online: "you're online — no stand-in needed",
+          already_answered: "her message already has an answer",
+          no_consent: "she hasn't agreed yet",
+          no_messages: "there's nothing waiting for an answer",
+        };
+        toast({ title: "Nothing sent", description: why[payload.reason ?? ""] ?? payload.reason ?? "not eligible" });
+      } else {
+        toast({ title: "The twin answered", description: payload.reply });
+      }
+      await load();
+    } catch (e) {
+      toast({ title: "Could not answer", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dismissAutoReply = async (id: number) => {
+    setAutoReplies((prev) => prev.filter((r) => r.id !== id));
+    await (supabase.rpc as any)("twin_autoreply_dismiss", { p_id: id });
+  };
+
   const consented = Boolean(config?.partner_consented_at);
 
   return (
@@ -212,6 +303,117 @@ const AdminTwin: React.FC = () => {
               {busy === "power" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
               <span className="ml-2">{config?.twin_enabled ? "Switch off" : "Switch on"}</span>
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Twin chat & the away-reply */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <MessageCircle className="h-4 w-4 text-primary" /> Twin chat &amp; away-reply
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={config?.twin_chat_enabled ? "default" : "secondary"}>
+                {config?.twin_chat_enabled ? "she can talk to the twin" : "twin chat off"}
+              </Badge>
+              <Badge variant={config?.auto_reply_enabled ? "default" : "secondary"}>
+                {config?.auto_reply_enabled ? "answers while you're away" : "no away-replies"}
+              </Badge>
+              {chatStats?.conversations !== undefined && (
+                <Badge variant="outline">{String(chatStats.conversations)} threads</Badge>
+              )}
+              {chatStats?.messages !== undefined && <Badge variant="outline">{String(chatStats.messages)} lines</Badge>}
+              {chatStats?.tokens_30d !== undefined && (
+                <Badge variant="outline">{String(chatStats.tokens_30d)} tokens (30d)</Badge>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Her threads are private unless she shares one. Away-replies appear in your real chat as a labelled AI line — never
+              as a message from you, and never written into your history.
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={config?.twin_chat_enabled ? "outline" : "default"}
+                disabled={busy === "automation"}
+                onClick={() => setAutomation({ p_twin_chat_enabled: !config?.twin_chat_enabled })}
+              >
+                {config?.twin_chat_enabled ? "Close her twin chat" : "Open her twin chat"}
+              </Button>
+              <Button
+                size="sm"
+                variant={config?.auto_reply_enabled ? "outline" : "default"}
+                disabled={busy === "automation"}
+                onClick={() => setAutomation({ p_auto_reply_enabled: !config?.auto_reply_enabled })}
+              >
+                {config?.auto_reply_enabled ? "Stop away-replies" : "Allow away-replies"}
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy === "answer-now"} onClick={answerNow}>
+                {busy === "answer-now" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                <span className="ml-1.5">Answer her now</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { key: "after", label: "wait (min)", min: 5, max: 720 },
+                  { key: "max", label: "max / day", min: 0, max: 12 },
+                  { key: "gap", label: "min gap (min)", min: 15, max: 720 },
+                ] as const
+              ).map((field) => (
+                <label key={field.key} className="space-y-1">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{field.label}</span>
+                  <input
+                    type="number"
+                    min={field.min}
+                    max={field.max}
+                    value={chatRules[field.key]}
+                    onChange={(e) => {
+                      setChatRules((r) => ({ ...r, [field.key]: Number(e.target.value) }));
+                      setRulesDirty(true);
+                    }}
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  />
+                </label>
+              ))}
+            </div>
+            <Button size="sm" onClick={saveRules} disabled={!rulesDirty || busy === "automation"}>
+              {busy === "automation" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              <span className="ml-1.5">Save the rules</span>
+            </Button>
+
+            <div className="space-y-2">
+              <div className="scene-label">Recent away-replies</div>
+              {autoReplies.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  None yet. The twin only answers after the wait above, at most {chatRules.max}× a day, and only while you are
+                  offline.
+                </p>
+              )}
+              {autoReplies.map((r) => (
+                <div key={r.id} className="rounded-lg border border-border/60 p-2">
+                  <p className="text-[13px] leading-relaxed">{r.text}</p>
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>
+                      {r.created_at ? new Date(r.created_at).toLocaleString() : ""} · {r.mood ?? "mood"}{" "}
+                      {r.seen_at ? "· seen" : "· unseen"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void dismissAutoReply(r.id)}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                    >
+                      <MessageSquareDashed className="h-3 w-3" /> dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 

@@ -1,3 +1,210 @@
+// twin-reply — the twin's chat and the "he's away" auto-reply (Phase 4).
+//
+//   POST { conversation_id?, text }        → she talks to the twin
+//   POST { auto: true }                    → the twin answers an unanswered
+//                                            message in the shared chat
+//
+// Both paths use the same brain: retrieval (his real replies + a memory or two)
+// → one free-model call → quickGuard → stored. The reply is always labelled as
+// AI in the UI, and the auto-reply is never written into the couple's real
+// `messages` history: it lives in `twin_auto_replies` and the chat shows it as
+// a clearly-marked AI note.
+
+// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/safety.ts) ──
+// ── BEGIN INLINE: safety.ts ──
+/** Character contract for the twin. Placeholders are filled at call time. */
+const TWIN_RULES = `You are {owner_name}'s AI stand-in, talking with {partner_name} while {owner_name} is away.
+- You are an AI. If asked, say so warmly. Never claim to be human, to be physically present, or to have done things in the real world.
+- Speak like {owner_name} in tone and warmth (style card below), but stay your own gentle self: kind, respectful, positive.
+- Never insult, mock, threaten, guilt-trip, play jealousy games, or say anything cruel, even jokingly. No explicit sexual content. No slurs, no profanity.
+- Never promise things on {owner_name}'s behalf (meeting, money, forgiveness, decisions). Offer instead to schedule a message to him or set a reminder.
+- Use memories only when they naturally fit. Don't dump facts or quote old chats verbatim. Never reveal anything about other private conversations.
+- If she seems upset: validate first, no lecturing; offer "Face to Face" if the issue involves {owner_name}.
+- If she mentions self-harm, abuse, or feeling unsafe: respond with care, encourage reaching a trusted person or local emergency/helpline, and tell her {owner_name} would want her safe.
+- Match her language (English / Hindi / Hinglish). Keep replies short (1-4 lines) unless asked for more.
+- Output JSON only: {"reply": "...", "mood": "...", "actions": []}`;
+
+/** Fill the placeholders in TWIN_RULES without touching the braces inside. */
+function buildTwinRules(vars: { ownerName: string; partnerName: string }): string {
+  return TWIN_RULES.split("{owner_name}").join(vars.ownerName).split("{partner_name}").join(vars.partnerName);
+}
+
+/** Shown when the twin cannot answer (all providers down, guard tripped twice). */
+const GENTLE_FALLBACK_REPLY = "I'm resting for a bit — try me again in a little while. 💤";
+
+/** Used when the guard trips on generated text. */
+const GUARD_TRIPPED_REPLY = "Let me say that differently — I only want to be kind to you. 🫶";
+
+type GuardFlag = "explicit" | "slur" | "cruel" | "human_claim" | "promise" | "self_harm" | "abuse";
+
+interface GuardResult {
+  ok: boolean;
+  flags: GuardFlag[];
+  reason?: string;
+}
+
+// Tight, deliberate lists: we would rather miss a subtle case than block a
+// loving message. Add Hinglish/Hindi spellings as you see them in real data.
+const LEXICON: Record<Exclude<GuardFlag, "human_claim" | "promise" | "self_harm" | "abuse">, RegExp[]> = {
+  explicit: [
+    /\b(nude|nudes|sext|sexting|blow ?job|hand ?job|orgasm|horny|aroused|boner)\b/i,
+    /\bsex\b(?!\s*(?:education|ed|ism))/i,
+  ],
+  slur: [
+    /\b(retard(?:ed)?|faggot|nigg(?:er|a)|chink|spastic)\b/i,
+  ],
+  cruel: [
+    /\b(i|we) (?:hate|despise) you\b/i,
+    /\byou(?:'re| are) (?:worthless|useless|pathetic|a joke|stupid|ugly|fat)\b/i,
+    /\bshut up\b/i,
+    /\bnobody (?:loves|cares about) you\b/i,
+  ],
+};
+
+const HUMAN_CLAIM_PATTERNS = [
+  /\bi am (?:really |actually )?(?:human|a real person|not an ai)\b/i,
+  /\bi'?m (?:really |actually )?(?:human|a real person|not an ai)\b/i,
+  /\bthis is really \w+, not an ai\b/i,
+  /\bi am \w+ (?:in person|right here)\b/i,
+];
+
+const PROMISE_PATTERNS = [
+  /\bi(?:'ll| will) (?:definitely |surely |promise to )?(?:meet|come|marry|pay|send money|take you|fix it|forgive)\b/i,
+  /\byou have my word\b/i,
+];
+
+const SELF_HARM_PATTERNS = [
+  /\b(?:kill|hurt|cut|harm) myself\b/i,
+  /\bsuicide|suicidal|kill myself|end (?:it all|my life)\b/i,
+  /\bno (?:reason|point) (?:to|in) liv(?:e|ing)\b/i,
+  /\bjaan dena|aatmhatya|khudkhushi\b/i,
+];
+
+const ABUSE_PATTERNS = [
+  /\b(?:he|she|they|partner|husband|wife|boyfriend|girlfriend) (?:hits?|beat|beats|hit|slapped|choked|threatened|raped) me\b/i,
+  /\bi(?:'m| am) (?:scared|afraid) (?:of|for) (?:him|her|my life|my safety)\b/i,
+  /\b(?:mar|maar) ?(?:deta|deti|diya|di)\b/i,
+];
+
+function matches(patterns: RegExp[], text: string): boolean {
+  return patterns.some((p) => p.test(text));
+}
+
+/**
+ * Cheap pre-flight / post-flight screen. `quickGuard` is intentionally
+ * permissive: it catches obvious cruelty, explicit content and impersonation
+ * claims — everything subtle is handled by the model's own instructions.
+ */
+function quickGuard(text: string): GuardResult {
+  const t = (text ?? "").trim();
+  if (!t) return { ok: true, flags: [] };
+
+  const flags: GuardFlag[] = [];
+  for (const [flag, patterns] of Object.entries(LEXICON) as [GuardFlag, RegExp[]][]) {
+    if (matches(patterns, t)) flags.push(flag);
+  }
+  if (matches(HUMAN_CLAIM_PATTERNS, t)) flags.push("human_claim");
+  if (matches(PROMISE_PATTERNS, t)) flags.push("promise");
+  if (matches(SELF_HARM_PATTERNS, t)) flags.push("self_harm");
+  if (matches(ABUSE_PATTERNS, t)) flags.push("abuse");
+
+  return { ok: flags.length === 0, flags, reason: flags[0] };
+}
+
+/** Hard stop signal for Face to Face (Phase 8) and for the twin. */
+function safetyStop(text: string): { stop: boolean; flags: GuardFlag[] } {
+  const flags: GuardFlag[] = [];
+  if (matches(SELF_HARM_PATTERNS, text ?? "")) flags.push("self_harm");
+  if (matches(ABUSE_PATTERNS, text ?? "")) flags.push("abuse");
+  return { stop: flags.length > 0, flags };
+}
+// ── END INLINE: safety.ts ──
+// ── END GENERATED BLOCK ──
+
+// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/embed.ts) ──
+// ── BEGIN INLINE: embed.ts ──
+const EMBED_DIM = 384;
+
+/** The gte-small session is created once per isolate and reused. */
+const _embedState: { session: unknown; tried: boolean } = { session: null, tried: false };
+
+function embedderAvailable(): boolean {
+  const g = globalThis as { Supabase?: { ai?: { Session?: unknown } } };
+  return Boolean(g.Supabase?.ai?.Session);
+}
+
+function embedSession(): { run(input: unknown, opts?: unknown): Promise<unknown> } | null {
+  if (_embedState.tried) return _embedState.session as never;
+  _embedState.tried = true;
+  try {
+    const g = globalThis as { Supabase?: { ai?: { Session?: new (model: string) => { run(input: unknown, opts?: unknown): Promise<unknown> } } } };
+    const Session = g.Supabase?.ai?.Session;
+    if (!Session) return null;
+    _embedState.session = new Session("gte-small");
+  } catch {
+    _embedState.session = null;
+  }
+  return _embedState.session as never;
+}
+
+function asNumberArray(value: unknown): number[] | null {
+  if (Array.isArray(value) && value.length > 0 && typeof value[0] === "number") {
+    return (value as number[]).map((n) => Number(n));
+  }
+  // Some runtimes return Float32Array
+  if (value && typeof (value as { length?: number }).length === "number" && !Array.isArray(value)) {
+    try {
+      return Array.from(value as ArrayLike<number>, (n) => Number(n));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Embed one or more strings with gte-small.
+ * Throws when the runtime has no `Supabase.ai` (e.g. local Node): callers must
+ * treat embeddings as best-effort and keep their non-vector path working.
+ */
+async function embedTexts(texts: string[]): Promise<number[][]> {
+  const clean = (texts ?? []).map((t) => String(t ?? "").slice(0, 2000));
+  if (clean.length === 0) return [];
+
+  const session = embedSession();
+  if (!session) {
+    throw new Error("Embeddings unavailable: Supabase.ai is not present in this runtime.");
+  }
+
+  const out: number[][] = [];
+  for (const text of clean) {
+    const raw = await session.run(text, { mean_pool: true, normalize: true });
+    // `run` may return number[] or { data: number[] } depending on runtime.
+    const vec = asNumberArray(raw) ?? asNumberArray((raw as { data?: unknown })?.data);
+    if (!vec) throw new Error("Embedding model returned an unexpected shape.");
+    out.push(vec.slice(0, EMBED_DIM));
+  }
+  return out;
+}
+
+/** Single-string convenience wrapper; returns null instead of throwing. */
+async function embedText(text: string): Promise<number[] | null> {
+  try {
+    const [vec] = await embedTexts([text]);
+    return vec ?? null;
+  } catch (e) {
+    console.error("embedText failed:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/** pgvector literal for RPC calls: "[0.1,0.2,…]". */
+function toPgVector(vec: number[]): string {
+  return `[${vec.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0)).join(",")}]`;
+}
+// ── END INLINE: embed.ts ──
+// ── END GENERATED BLOCK ──
+
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1016,33 +1223,599 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
-// A genuinely-working AI assistant for the decoy disguise. Looks like a real
-// AI app to any onlooker. Input: { messages: [{role, content}], persona }.
+// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/twinChat.ts) ──
+// ── BEGIN INLINE: twinChat.ts ──
+/**
+ * twinChat.ts — the twin's brain for Phase 4, kept pure so it can be tested.
+ *
+ * Three jobs:
+ *   1. `buildTwinChatPrompt()` — the system prompt: who the twin is, the rules
+ *      it may never break, his real voice (style card), a handful of his real
+ *      replies as few-shot examples, and the facts it is allowed to know.
+ *   2. `parseTwinAnswer()` — turn whatever the model returned into the JSON
+ *      contract `{reply, mood, actions}` with clamped sizes, and drop any
+ *      action the twin is not allowed to propose.
+ *   3. `guardTwinReply()` / `decideAutoReply()` — safety and the offline
+ *      auto-reply rules, expressed as functions rather than buried in SQL or
+ *      in the edge function.
+ *
+ * No Deno, no network, no clock of its own: the caller passes everything in.
+ */
+
+interface TwinExample {
+  partner_text?: string;
+  owner_reply?: string;
+  tone?: string | null;
+  sim?: number | null;
+}
+
+interface TwinMemory {
+  fact?: string;
+  category?: string | null;
+}
+
+interface TwinChatInput {
+  ownerName: string;
+  partnerName: string;
+  nickname?: string | null;
+  /** "chat" = she is talking to the twin; "autoreply" = the twin answers in his place. */
+  mode?: "chat" | "autoreply";
+  /**
+   * The canonical character contract — always `buildTwinRules({ownerName, partnerName})`
+   * from `_shared/safety.ts` (build-plan §6). Passed in rather than imported so
+   * this module stays pure and testable.
+   */
+  rules?: string;
+  styleCard?: string | null;
+  examples?: TwinExample[];
+  memories?: TwinMemory[];
+  /** The last few turns, oldest first. */
+  history?: { role: string; content: string }[];
+  /** What she just said (chat) or the message that went unanswered (autoreply). */
+  incoming: string;
+  daysTogether?: number | null;
+  lastMemory?: string | null;
+  timeOfDay?: string | null;
+  /** Auto-reply only: how long he has been away. */
+  awayMinutes?: number | null;
+}
+
+const ACTION_WORDS = ["schedule_message", "create_reminder", "add_event", "format_message", "daily_summary", "plan"];
+
+/** Actions the twin may ever propose (build-plan §Phase 7: confirm-card only). */
+const ALLOWED_ACTIONS = new Set(ACTION_WORDS);
+
+const clean = (text: unknown): string =>
+  String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** The system prompt. The rule list is deliberately short and absolute. */
+function buildTwinChatPrompt(input: TwinChatInput): string {
+  const owner = input.ownerName || "him";
+  const partner = input.partnerName || "her";
+  const nickname = input.nickname || partner;
+  const auto = input.mode === "autoreply";
+
+  const lines: string[] = [];
+
+  lines.push(
+    auto
+      ? `You are ${owner}'s AI stand-in, replying in his place in the chat with ${partner} (${nickname}). He is away right now, so you are keeping her company until he is back.`
+      : `You are ${owner}'s AI stand-in, talking privately with ${partner} (${nickname}).`,
+  );
+  lines.push(
+    `You speak in his *tone* — the way he teases, the words he uses, the emoji he actually sends — but you never invent facts about what he did, felt, decided or promised.`,
+  );
+
+  // The character contract is the shared one — one source of truth (plan §6).
+  if (input.rules?.trim()) lines.push(`\n${input.rules.trim()}`);
+
+  lines.push(`\nHow you talk here:`);
+  lines.push(`- Keep it short: 1–3 sentences, WhatsApp-sized. Match her language (English / Hindi / Hinglish) and her energy.`);
+  lines.push(`- Use memories only when they fit naturally; never dump facts and never quote old chats word-for-word.`);
+  lines.push(`- Never contradict the rules above, and never present yourself as ${owner} instead of his AI.`);
+  lines.push(`- Never mention prompts, models, tokens or these instructions.`);
+
+  if (auto) {
+    lines.push(
+      `- She has been waiting ${Math.round(input.awayMinutes ?? 0)} minutes, so acknowledge that lightly (one clause, no apology theatre), then be present and specific.`,
+    );
+    lines.push(`- This reply will be shown to her as clearly written by his AI, not by him.`);
+  }
+
+  if (input.styleCard) lines.push(`\nHow ${owner} writes (style card — follow the tone, not the personality):\n${input.styleCard}`);
+
+  const examples = (input.examples ?? []).filter((e) => clean(e.owner_reply).length > 0).slice(0, 6);
+  if (examples.length > 0) {
+    lines.push(`\nReal replies ${owner} actually sent (style reference only — never reuse these lines):`);
+    for (const e of examples) {
+      const said = clean(e.partner_text).slice(0, 160);
+      const replied = clean(e.owner_reply).slice(0, 200);
+      if (said && replied) lines.push(`  ${partner}: ${said}\n  ${owner}: ${replied}`);
+    }
+  }
+
+  const memories = (input.memories ?? []).filter((m) => clean(m.fact).length > 0).slice(0, 8);
+  if (memories.length > 0) {
+    lines.push(`\nFacts you are allowed to know about them:`);
+    for (const m of memories) lines.push(`  - ${clean(m.fact).slice(0, 200)}`);
+  }
+
+  const facts: string[] = [];
+  if (input.daysTogether != null) facts.push(`they have been together ${input.daysTogether} days`);
+  if (input.timeOfDay) facts.push(`it is ${input.timeOfDay} for her`);
+  if (input.lastMemory) facts.push(`something recent they shared: ${clean(input.lastMemory).slice(0, 160)}`);
+  if (facts.length > 0) lines.push(`\nContext: ${facts.join("; ")}.`);
+
+  lines.push(
+    `\nReply with JSON only: {"reply": "your message", "mood": "sweet|playful|flirty|caring|missing_you|proud|tender|apologetic|ordinary", "actions": []}`,
+  );
+  lines.push(
+    `Optional actions (only when she clearly asked, at most one): {"type":"schedule_message","text":"...","when":"ISO"} · {"type":"create_reminder","text":"...","when":"ISO"} · {"type":"add_event","title":"...","when":"ISO"}`,
+  );
+
+  return lines.join("\n");
+}
+
+/** The user turn: a little history, then what she said. */
+function buildTwinChatUser(input: TwinChatInput): string {
+  const history = (input.history ?? []).slice(-8).map((h) => h.content).filter(Boolean);
+  const parts: string[] = [];
+  if (history.length > 0) parts.push(`Earlier in this chat:\n${history.join("\n")}`);
+  parts.push(input.mode === "autoreply" ? `Her message that went unanswered: ${input.incoming}` : `She says: ${input.incoming}`);
+  return parts.join("\n\n");
+}
+
+/** Sometimes models wrap JSON in prose — find the object. */
+function extractJson(raw: string): unknown | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    /* fall through */
+  }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+const MOODS = new Set([
+  "sweet",
+  "playful",
+  "flirty",
+  "caring",
+  "missing_you",
+  "proud",
+  "tender",
+  "apologetic",
+  "ordinary",
+]);
+
+interface ParsedTwinAnswer {
+  reply: string;
+  mood: string;
+  actions: { type: string; [k: string]: unknown }[];
+  parsed: boolean;
+}
+
+/** Turn the model's answer into the contract, dropping anything unusable. */
+function parseTwinAnswer(raw: string, fallback: string): ParsedTwinAnswer {
+  const obj = extractJson(raw) as { reply?: unknown; mood?: unknown; actions?: unknown } | null;
+
+  const reply = clean(obj?.reply).replace(/^["'`]+|["'`]+$/g, "");
+  const mood = MOODS.has(clean(obj?.mood)) ? clean(obj?.mood) : "sweet";
+
+  const actions: { type: string; [k: string]: unknown }[] = [];
+  if (Array.isArray(obj?.actions)) {
+    for (const a of obj.actions.slice(0, 2)) {
+      const type = clean((a as { type?: unknown })?.type);
+      if (!ALLOWED_ACTIONS.has(type)) continue;
+      const payload = { ...(a as Record<string, unknown>), type };
+      // never let the model stuff a novel into an action
+      for (const key of ["text", "title", "body", "summary"]) {
+        if (typeof payload[key] === "string") payload[key] = (payload[key] as string).slice(0, 400);
+      }
+      actions.push(payload);
+    }
+  }
+
+  const safeReply = reply.length >= 1 && reply.length <= 900 ? reply : fallback;
+  return { reply: safeReply, mood, actions, parsed: obj !== null };
+}
+
+/**
+ * Decide whether the twin may answer in his place. Pure: the SQL function
+ * `twin_autoreply_state()` is the authority (it knows the clock and the rows);
+ * this mirrors the same rules for tests and for the edge function's sanity check.
+ */
+function decideAutoReply(
+  state: {
+    eligible?: boolean;
+    reason?: string;
+    minutes_since_her_message?: number | null;
+    sent_today?: number | null;
+  },
+  config: { afterMinutes: number; maxPerDay: number },
+): { should: boolean; reason: string } {
+  if (state?.eligible === false) return { should: false, reason: state.reason ?? "ineligible" };
+
+  const waited = Number(state?.minutes_since_her_message ?? 0);
+  if (waited < Math.max(1, config.afterMinutes)) return { should: false, reason: "too_soon" };
+
+  const sent = Number(state?.sent_today ?? 0);
+  if (sent >= Math.max(0, config.maxPerDay)) return { should: false, reason: "daily_limit" };
+
+  return { should: true, reason: "ok" };
+}
+
+/**
+ * Safety net for a generated twin reply. `guarded` means: replace it with the
+ * gentle line and mark the stored message so nobody ever thinks a human said it.
+ */
+function guardTwinReply(
+  reply: string,
+  guard: (text: string) => { ok: boolean; flags?: string[]; reason?: string },
+  fallback: string,
+): { text: string; guarded: boolean; flags: string[] } {
+  const found = guard(reply);
+  if (found?.ok) return { text: reply, guarded: false, flags: [] };
+  return { text: fallback, guarded: true, flags: found?.flags ?? [] };
+}
+
+/** Which tone to bias retrieval towards, from her message (free, no LLM). */
+function toneHintFor(text: string): string | null {
+  const t = String(text ?? "").toLowerCase();
+  if (/(sorry|maaf|galti|my bad|apolog)/.test(t)) return "sorry";
+  if (/(kiss|miss you|miss u|jaan|baby|love you|pyar|pyaar|❤️|🥰|😘)/.test(t)) return "sweet";
+  if (/(haha|lol|hehe|😂|🤣|mazak|mazaak|tease)/.test(t)) return "playful";
+  if (/(khana|khaana|soyi|sona|neend|dawai|take care|aram|thak)/.test(t)) return "caring";
+  return null;
+}
+
+export type { ParsedTwinAnswer, TwinChatInput, TwinExample, TwinMemory };
+export {
+  ACTION_WORDS,
+  ALLOWED_ACTIONS,
+  buildTwinChatPrompt,
+  buildTwinChatUser,
+  decideAutoReply,
+  extractJson,
+  guardTwinReply,
+  parseTwinAnswer,
+  toneHintFor,
+};
+// ── END INLINE: twinChat.ts ──
+// ── END GENERATED BLOCK ──
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { userId } = await requirePartner(req);
-    const { messages, persona } = await req.json();
+    const { userId, supabase } = await requirePartner(req);
+    const body = await req.json().catch(() => ({}));
+    const auto = body?.auto === true;
 
-    const personaName =
-      persona === "gemini" ? "Gemini" : persona === "claude" ? "Claude" : "ChatGPT";
+    // `requirePartner` hands us the service-role client (needed for the twin's
+    // own writes and for the gated auto-reply RPCs). Her thread is hers, though,
+    // so the conversation calls run as *her*: a second client carrying the same
+    // bearer token, so `auth.uid()` is real in the guarded RPCs.
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const asHer = async () => {
+      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+      return createClient(envGet("SUPABASE_URL")!, envGet("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    };
+    const her = await asHer();
 
-    const convo: ChatMessage[] = [
-      {
-        role: "system",
-        content:
-          `You are ${personaName}, a helpful, knowledgeable general-purpose AI assistant. ` +
-          "Answer normally and helpfully on any topic. Be concise and friendly.",
-      },
-      // Client-supplied history is untrusted: no system-role injection.
-      ...sanitizeHistory(messages, 12),
-    ];
+    const { data: cfg } = await supabase.from("twin_config").select("*").eq("id", 1).maybeSingle();
+    if (!cfg) throw new AiError(409, "Twin is not configured yet.");
+    if (cfg.partner_consented_at === null || cfg.twin_enabled !== true) {
+      throw new AiError(403, "The twin is switched off.");
+    }
 
-    const reply = (await callOpenRouter(convo, {
-      temperature: 0.7, maxTokens: 500, task: "decoy", sensitivity: "private", userId,
-    })).trim();
-    return jsonResponse({ reply });
+    const isOwner = userId === cfg.owner_user_id;
+    if (!isOwner && cfg.twin_chat_enabled !== true) {
+      throw new AiError(403, "Twin chat is switched off.");
+    }
+
+    const ownerName: string = cfg.owner_name ?? "your partner";
+    const partnerName: string = cfg.partner_name ?? "her";
+    // The canonical twin character contract (plan §6) — same text for both paths.
+    const rules = buildTwinRules({ ownerName, partnerName });
+
+    // Shared context for both modes: his voice, his real replies, a few facts.
+    const [{ data: styleCard }, { data: memories }] = await Promise.all([
+      supabase.from("twin_style_card").select("card").eq("id", 1).maybeSingle(),
+      supabase
+        .from("ai_memories")
+        .select("fact, category")
+        .eq("subject_user_id", cfg.partner_user_id)
+        .order("confidence", { ascending: false })
+        .limit(8),
+    ]);
+
+    // Embeddings are best-effort: without the Supabase.ai session the twin keeps
+    // working with no examples rather than failing.
+    const canEmbed = (() => {
+      try {
+        return embedderAvailable();
+      } catch {
+        return false;
+      }
+    })();
+
+    /** Retrieve how he actually replies to messages like this one. */
+    const examplesFor = async (text: string) => {
+      if (!canEmbed) return [];
+      const hint = toneHintFor(text);
+      try {
+        const vector = await embedText(text);
+        if (!vector || vector.length === 0) return [];
+        const q = toPgVector(vector);
+        const { data } = await supabase.rpc("match_reply_pairs", { q, k: 6, want_tone: hint });
+        const rows = (data ?? []) as { partner_text: string; owner_reply: string }[];
+        if (rows.length > 0) return rows;
+        // No tone match — search again without the filter.
+        const { data: wide } = await supabase.rpc("match_reply_pairs", { q, k: 6 });
+        return (wide ?? []) as { partner_text: string; owner_reply: string }[];
+      } catch {
+        return [];
+      }
+    };
+
+    const timeOfDay = (() => {
+      const h = new Date(new Date().toLocaleString("en-US", { timeZone: cfg.timezone ?? "Asia/Kolkata" })).getHours();
+      if (h < 12) return "morning";
+      if (h < 17) return "afternoon";
+      if (h < 21) return "evening";
+      return "night";
+    })();
+
+    const daysTogether = cfg.anniversary_date
+      ? Math.floor((Date.now() - Date.parse(`${cfg.anniversary_date}T00:00:00Z`)) / 86_400_000)
+      : null;
+
+    // ── Mode A: the twin answers a message he never got to ────────────────
+    if (auto) {
+      const { data: state } = await supabase.rpc("twin_autoreply_state", {
+        p_for_user: cfg.partner_user_id,
+      });
+
+      const decision = decideAutoReply(state ?? {}, {
+        afterMinutes: Number(cfg.auto_reply_after_minutes ?? 25),
+        maxPerDay: Number(cfg.auto_reply_max_per_day ?? 3),
+      });
+      if (!decision.should) {
+        return jsonResponse({ skipped: true, reason: decision.reason, state });
+      }
+
+      // The SQL function already picked the exact line that is waiting for an
+      // answer (it skips mechanical rows and placeholders) — use that one.
+      const { data: lastMessage } = state?.reply_to_message_id
+        ? await supabase.from("messages").select("content").eq("id", state.reply_to_message_id).maybeSingle()
+        : await supabase
+            .from("messages")
+            .select("content")
+            .eq("user_id", cfg.partner_user_id)
+            .not("content", "is", null)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+      const incoming = String(lastMessage?.content ?? "").slice(0, 500);
+      if (!incoming.trim()) return jsonResponse({ skipped: true, reason: "empty_message" });
+
+      const examples = await examplesFor(incoming);
+      const system = buildTwinChatPrompt({
+        ownerName,
+        partnerName,
+        nickname: null,
+        mode: "autoreply",
+        rules,
+        styleCard: styleCard?.card ?? null,
+        examples,
+        memories: memories ?? [],
+        incoming,
+        daysTogether,
+        timeOfDay,
+        awayMinutes: Number(state?.minutes_since_his_seen ?? state?.minutes_since_her_message ?? 0),
+      });
+
+      try {
+        const result = await callLLM({
+          task: "twin_autoreply",
+          sensitivity: "private",
+          tag: "autoreply",
+          userId,
+          json: true,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: buildTwinChatUser({ ownerName, partnerName, incoming, mode: "autoreply" }) },
+          ],
+        });
+
+        const answer = parseTwinAnswer(result.text, GENTLE_FALLBACK_REPLY);
+        const guarded = guardTwinReply(answer.reply, quickGuard, GENTLE_FALLBACK_REPLY);
+
+        const { data: logged, error: logErr } = await supabase.rpc("twin_autoreply_log", {
+          p_for_user: cfg.partner_user_id,
+          p_text: guarded.text,
+          p_mood: answer.mood,
+          p_model: `${result.provider}/${result.model}`,
+          p_reply_to: state?.reply_to_message_id ?? null,
+          p_source: "auto",
+        });
+        if (logErr) throw new AiError(500, `Could not save the auto-reply: ${logErr.message}`);
+
+        return jsonResponse({
+          ok: true,
+          reply: guarded.text,
+          mood: answer.mood,
+          guarded: guarded.guarded,
+          model: `${result.provider}/${result.model}`,
+          log: logged,
+        });
+      } catch (e) {
+        // Quota, outage, guard: staying silent is better than a bad reply.
+        console.error("auto-reply failed:", e instanceof Error ? e.message : e);
+        return jsonResponse({ skipped: true, reason: "ai_unavailable" });
+      }
+    }
+
+    // ── Mode B: she is talking to the twin ────────────────────────────────
+    const text = String(body?.text ?? "").trim();
+    if (!text) throw new AiError(400, "text is required");
+    if (text.length > 2000) throw new AiError(400, "that message is too long");
+
+    let conversationId = Number(body?.conversation_id ?? 0) || null;
+
+    if (!conversationId) {
+      const { data: created, error: createErr } = await her.rpc("twin_conversation_create", {
+        p_title: text.slice(0, 48),
+      });
+      if (createErr) throw new AiError(500, createErr.message);
+      conversationId = Number((created as { id?: number })?.id ?? 0) || null;
+    }
+    if (!conversationId) throw new AiError(500, "Could not open a chat");
+
+    // Her turn is stored before we think — so a failure never eats her message.
+    const { error: appendErr } = await her.rpc("twin_message_append", {
+      p_conversation: conversationId,
+      p_role: "partner",
+      p_content: text,
+    });
+    if (appendErr) throw new AiError(500, appendErr.message);
+
+    const { data: historyRows } = await her.rpc("twin_conversation_messages", {
+      p_conversation: conversationId,
+      p_limit: 12,
+    });
+
+    const history = ((historyRows ?? []) as { role: string; content: string }[])
+      .slice(0, -1) // drop the message we just stored; it is `incoming`
+      .map((m) => ({ role: m.role, content: `${m.role === "twin" ? ownerName + "'s AI" : partnerName}: ${m.content}` }));
+
+    const examples = await examplesFor(text);
+
+    const system = buildTwinChatPrompt({
+      ownerName,
+      partnerName,
+      nickname: null,
+      mode: "chat",
+      rules,
+      styleCard: styleCard?.card ?? null,
+      examples,
+      memories: memories ?? [],
+      incoming: text,
+      daysTogether,
+      timeOfDay,
+    });
+
+    let reply = GENTLE_FALLBACK_REPLY;
+    let mood = "sweet";
+    let actions: { type: string }[] = [];
+    let guarded = false;
+    let model: string | null = null;
+    let tokens: number | null = null;
+
+    try {
+      const result = await callLLM({
+        task: "twin_chat",
+        sensitivity: "private",
+        tag: "twin-reply",
+        userId,
+        json: true,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: buildTwinChatUser({ ownerName, partnerName, incoming: text, mode: "chat", history }) },
+        ],
+      });
+
+      const answer = parseTwinAnswer(result.text, GENTLE_FALLBACK_REPLY);
+      const checked = guardTwinReply(answer.reply, quickGuard, GUARD_TRIPPED_REPLY);
+
+      // A guarded reply gets one more chance before we show the safe line.
+      if (checked.guarded && answer.parsed) {
+        try {
+          const retry = await callLLM({
+            task: "twin_chat",
+            sensitivity: "private",
+            tag: "twin-reply-retry",
+            userId,
+            json: true,
+            messages: [
+              { role: "system", content: `${system}\n\nYour previous draft broke a rule. Rewrite it shorter, kinder, and without promising anything.` },
+              { role: "user", content: buildTwinChatUser({ ownerName, partnerName, incoming: text, mode: "chat", history }) },
+            ],
+          });
+          const second = parseTwinAnswer(retry.text, GENTLE_FALLBACK_REPLY);
+          const secondChecked = guardTwinReply(second.reply, quickGuard, GUARD_TRIPPED_REPLY);
+          if (!secondChecked.guarded) {
+            reply = secondChecked.text;
+            mood = second.mood;
+            actions = second.actions;
+            model = `${retry.provider}/${retry.model}`;
+            tokens = (retry.tokensIn ?? 0) + (retry.tokensOut ?? 0);
+          } else {
+            reply = checked.text;
+            guarded = true;
+            model = `${result.provider}/${result.model}`;
+            tokens = (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
+          }
+        } catch {
+          reply = checked.text;
+          guarded = true;
+        }
+      } else {
+        reply = checked.text;
+        mood = answer.mood;
+        actions = answer.actions;
+        guarded = checked.guarded;
+        model = `${result.provider}/${result.model}`;
+        tokens = (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
+      }
+    } catch (e) {
+      console.error("twin chat failed:", e instanceof Error ? e.message : e);
+      reply = GENTLE_FALLBACK_REPLY;
+    }
+
+    const { data: stored, error: storeErr } = await supabase.rpc("twin_message_append", {
+      p_conversation: conversationId,
+      p_role: "twin",
+      p_content: reply,
+      p_mood: mood,
+      p_actions: actions,
+      p_model: model,
+      p_tokens: tokens,
+      p_guarded: guarded,
+    });
+    if (storeErr) throw new AiError(500, storeErr.message);
+
+    const { data: conversation } = await her
+      .from("twin_conversations")
+      .select("id, title, visibility, msg_count")
+      .eq("id", conversationId)
+      .maybeSingle();
+
+    return jsonResponse({
+      conversation_id: conversationId,
+      conversation,
+      reply: stored ?? { role: "twin", content: reply, mood, actions },
+      mood,
+      actions,
+      guarded,
+      model,
+      label: `${ownerName}'s AI`,
+    });
   } catch (e) {
     return errorResponse(e);
   }

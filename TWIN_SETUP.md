@@ -322,6 +322,69 @@ What the database gives you:
 Routes: `/book` (cover + contents) and `/book/:date` (a spread). The cover
 refuses to claim credit for AI work: an LLM-written page says so, quietly.
 
+## 7e. Phase 4 — the twin's chat, and the away-reply
+
+Two surfaces, one brain (`twin-reply`):
+
+1. **`/twin` — her private chat with the twin.** She opens a thread (private to
+   her at birth), writes whatever she wants, and the twin answers in his voice —
+   labelled as an AI on every bubble. Retrieval feeds it his real replies
+   (`match_reply_pairs`, tone-biased) plus a handful of consented memories, so it
+   sounds like him without inventing things. Nothing is written to the couple's
+   real `messages` table: her thread lives in `twin_conversations` /
+   `twin_messages`. Sharing one thread with him is a per-thread toggle; the
+   default is private.
+2. **The away-reply in `/chat`.** When he has been offline past
+   `auto_reply_after_minutes`, her last message has no answer, and the daily /
+   gap budgets allow it, the twin writes ONE short note and it appears in the
+   chat as an AI-labelled line (`twin_auto_replies`), with "written by his AI,
+   not by him" underneath. He sees it, can dismiss it, and can run the same path
+   by hand from `/you/twin`.
+
+```bash
+supabase db push                          # adds 20261007090000_twin_chat.sql
+supabase functions deploy twin-reply      # both paths live in this one function
+```
+
+What the database gives you:
+
+- `twin_conversations` / `twin_messages` — her threads and the twin's replies
+  (mood, proposed `actions`, model, tokens, `guarded`). RLS: her rows only; a
+  `shared` thread is readable by both partners.
+- `twin_auto_replies` — the notes written in his place: `standing` until he
+  follows up (then `superseded`) or dismisses it (`dismissed`). Deliberately
+  **outside** `messages` (hard rule #1).
+- `twin_autoreply_state(...)` — the single auditable place the away-reply is
+  decided: consent, switch, he-must-really-be-offline, the wait, unanswered,
+  `auto_reply_max_per_day`, `auto_reply_min_gap_minutes`. The edge function only
+  *asks*; this function *decides*.
+- `twin_message_append(...)` — the only writer for both sides; a signed-in
+  account can only write her own words, the service role writes the twin's.
+- `twin_set_automation(...)` — owner-only switches and numbers
+  (`auto_reply_enabled`, `twin_chat_enabled`, wait / max / gap).
+- `twin_chat_stats()` / `twin_autoreply_for_chat()` / `twin_autoreply_ack()` /
+  `twin_autoreply_dismiss()` — what the two UIs read and write.
+
+Consent first: nothing answers until she has agreed (`partner_consented_at`) and
+`twin_enabled` is on; her chat also needs `twin_chat_enabled` (or she is the
+owner, testing). If all providers are rate-limited, the twin stays quiet rather
+than sending something off-voice — the fallback line is only used when the model
+answered and the safety guard tripped twice.
+
+Cost:
+
+- An away-reply is **1 `twin_autoreply` call**, at most 3/day (default) with a
+  45-minute gap; the eligibility check itself is free SQL, so the client can ask
+  often without spending anything.
+- One twin-chat turn is **1 `twin_chat` call** (private tier only). It retries
+  once *only* if the safety guard trips.
+- Embeddings for retrieval are free (`gte-small`); if the embedder is
+  unavailable the twin answers with no examples instead of failing.
+
+Routes: `/twin` (her chat). The control room at `/you/twin` gained the switches,
+the wait / max / gap numbers, "answer her now", and the list of recent
+away-replies.
+
 ## 8. Deploy reference (by name — rule #10)
 
 ```bash
@@ -332,6 +395,7 @@ supabase functions deploy twin-greet
 supabase functions deploy seed-greetings
 supabase functions deploy decoy-login
 supabase functions deploy book-page
+supabase functions deploy twin-reply
 # plus everything in LLM_ROUTER.md after a router change
 ```
 
@@ -346,4 +410,6 @@ Secrets added in Phase 1: **`EMBED_SECRET`** (optional — only needed if you pr
 - Greeting bank: **9 private LLM calls**, one time (then editable by hand).
 - Every greeting she sees: **0 LLM calls** on the normal path; the twin spends at most
   `twin_config.greeting_live_per_day` (default 1) live calls per day, ≥6 h apart.
+- One away-reply: **1 private call**, ≤3/day by default, ≥45 min apart.
+- One twin-chat turn: **1 private call** (a second only when the guard trips).
 - Everything personal stays on `noTrain: true` providers (Groq / Cerebras / Cloudflare).

@@ -8,10 +8,18 @@ import ImageLightbox from "./ImageLightbox";
 import SkyBackground from "./SkyBackground";
 import MessageListSkeleton from "./MessageListSkeleton";
 import { isSameDay } from "@/lib/dateUtils";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { useReactions } from "@/hooks/useReactions";
 
 import type { Tables } from "@/integrations/supabase/types";
+
+/** A note the twin wrote in his place while he was away (never a real message). */
+export interface TwinNote {
+  id: number;
+  text: string;
+  mood?: string | null;
+  created_at?: string | null;
+}
 
 interface MessageListProps {
   messages: Tables<"messages">[];
@@ -31,10 +39,15 @@ interface MessageListProps {
   onTeachAi?: (message: Tables<"messages">) => void;
   onAskCompanion?: (message: Tables<"messages">) => void;
   onEmptyDoubleTap?: () => void;
+  /** Standing AI notes from the twin, shown after the real conversation. */
+  twinNotes?: TwinNote[];
+  /** e.g. "Kratagya's AI" — the note is never presented as a message from him. */
+  twinLabel?: string;
+  onTwinNoteDismiss?: (id: number) => void;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
-  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
+  messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap, twinNotes, twinLabel, onTwinNoteDismiss,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -186,6 +199,35 @@ const MessageList: React.FC<MessageListProps> = ({
             </React.Fragment>
           );
         })}
+
+        {/* The twin answered while he was away. Labelled as AI, always. */}
+        {twinNotes?.map((note) => (
+          <div key={`twin-note-${note.id}`} className="mt-3 flex items-start gap-2">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15">
+              <Sparkles className="h-3 w-3 text-primary" />
+            </span>
+            <div className="max-w-[80%]">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {twinLabel ?? "his AI"} · he was away
+              </p>
+              <div className="rounded-2xl rounded-tl-md border border-primary/25 bg-primary/10 px-3.5 py-2.5 text-[14px] leading-relaxed">
+                {note.text}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground">written by his AI, not by him</span>
+                {onTwinNoteDismiss && (
+                  <button
+                    type="button"
+                    onClick={() => onTwinNoteDismiss(note.id)}
+                    className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" /> dismiss
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
 
         {(partnerRecording || partnerTyping) && (
           <TypingIndicator themeText={typingText} isRecording={partnerRecording} />

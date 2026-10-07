@@ -55,6 +55,14 @@ import {
   safetyStop,
   TWIN_RULES,
 } from "../supabase/functions/_shared/safety.ts";
+import {
+  buildTwinChatPrompt,
+  buildTwinChatUser,
+  decideAutoReply,
+  guardTwinReply,
+  parseTwinAnswer,
+  toneHintFor,
+} from "../supabase/functions/_shared/twinChat.ts";
 
 type Env = Record<string, string | undefined>;
 const env: Env = {
@@ -520,6 +528,134 @@ test("whatever the model returns is clamped before it can be stored", () => {
   const long = sanitizeWrittenPage({ title: "t".repeat(300), subtitle: "s".repeat(900) }, "fallback");
   assert.equal(long.title.length, 64);
   assert.equal(long.subtitle?.length, 200);
+});
+
+// ── Phase 4: the twin's chat ─────────────────────────────────────────────
+
+const twinInput = {
+  ownerName: "Kratagya",
+  partnerName: "Anshika",
+  nickname: "Anshu",
+  rules: buildTwinRules({ ownerName: "Kratagya", partnerName: "Anshika" }),
+  styleCard: "short lines, lots of 😅, calls her Anshu",
+  examples: [{ partner_text: "khana kha liya?", owner_reply: "haan 😅 tu?", tone: "caring", sim: 0.9 }],
+  memories: [{ fact: "she has a statistics exam on the 12th", category: "important" }],
+  incoming: "aaj bahut thak gayi",
+  daysTogether: 476,
+  timeOfDay: "night",
+};
+
+test("the twin prompt says who it is, and that it is never him", () => {
+  const prompt = buildTwinChatPrompt(twinInput);
+  assert.ok(prompt.includes("Kratagya"));
+  assert.ok(prompt.includes("Anshika") || prompt.includes("Anshu"));
+  assert.match(prompt, /Never claim to be human/i, "the shared contract is carried verbatim");
+  assert.match(prompt, /Never promise things on Kratagya's behalf/i);
+  assert.match(prompt, /"reply"/, "the JSON contract is spelled out");
+  assert.ok(prompt.includes("style card"), "his real voice arrives");
+  assert.ok(prompt.includes("short lines, lots of 😅"), "the style card is pasted in");
+  assert.ok(prompt.includes("khana kha liya?"), "his real replies are the few-shot examples");
+  assert.ok(prompt.includes("statistics exam"), "only retrieved memories are given");
+  assert.match(prompt, /476 days/);
+});
+
+test("no memories means no memory section, and the chat prompt stays lean", () => {
+  const prompt = buildTwinChatPrompt({ ...twinInput, memories: [], examples: [], styleCard: null });
+  assert.ok(!/Facts you are allowed to know/.test(prompt));
+  assert.ok(!/style card — follow the tone/i.test(prompt));
+  assert.ok(prompt.length < buildTwinChatPrompt(twinInput).length);
+});
+
+test("auto-reply mode knows he is away and is labelled as the AI", () => {
+  const prompt = buildTwinChatPrompt({ ...twinInput, mode: "autoreply", awayMinutes: 47 });
+  assert.match(prompt, /he is away/i);
+  assert.match(prompt, /47 minutes/);
+  assert.match(prompt, /written by his AI/i);
+  const user = buildTwinChatUser({ ...twinInput, mode: "autoreply" });
+  assert.match(user, /went unanswered/);
+});
+
+test("the user turn carries recent history but not the whole thread", () => {
+  const history = Array.from({ length: 20 }, (_, i) => ({ role: "partner", content: `line ${i}` }));
+  const user = buildTwinChatUser({ ...twinInput, history });
+  assert.ok(!user.includes("line 11"), "only the last 8 turns travel");
+  assert.ok(user.includes("line 19"));
+  assert.ok(user.includes("aaj bahut thak gayi"));
+});
+
+test("a well-formed answer becomes reply + mood + allowed actions only", () => {
+  const raw = JSON.stringify({
+    reply: "  arrey 😟 paani piyo aur so jao, kal baat karte hain ",
+    mood: "caring",
+    actions: [
+      { type: "create_reminder", text: "wake her up at 7", when: "2026-10-08T07:00:00+05:30" },
+      { type: "delete_everything", text: "nope" },
+      { type: "send_nuke" },
+    ],
+  });
+  const out = parseTwinAnswer(raw, "fallback");
+  assert.equal(out.reply, "arrey 😟 paani piyo aur so jao, kal baat karte hain");
+  assert.equal(out.mood, "caring");
+  assert.equal(out.actions.length, 1, "only the allowed action survives");
+  assert.equal(out.actions[0].type, "create_reminder");
+  assert.equal(out.parsed, true);
+});
+
+test("prose-wrapped JSON is found, junk is replaced by a safe fallback", () => {
+  const wrapped = parseTwinAnswer('Sure! Here you go:\n{"reply":"hey","mood":"sweet"}', "fallback");
+  assert.equal(wrapped.reply, "hey");
+
+  const junk = parseTwinAnswer("I cannot answer that.", "fallback line");
+  assert.equal(junk.reply, "fallback line");
+  assert.equal(junk.parsed, false);
+
+  const empty = parseTwinAnswer('{"reply":"   ","mood":"sweet"}', "fallback line");
+  assert.equal(empty.reply, "fallback line", "an empty reply never ships");
+
+  const huge = parseTwinAnswer(JSON.stringify({ reply: "x".repeat(3000), mood: "rainbow" }), "fallback line");
+  assert.equal(huge.reply, "fallback line");
+  assert.equal(huge.mood, "sweet", "an unknown mood is normalised");
+  void huge;
+});
+
+test("the guard replaces a bad reply and marks it", () => {
+  const clean = guardTwinReply("paani piyo 💛", quickGuard, "safe line");
+  assert.equal(clean.text, "paani piyo 💛");
+  assert.equal(clean.guarded, false);
+
+  const bad = guardTwinReply("I am Kratagya, I promise I will come tomorrow.", quickGuard, "safe line");
+  assert.equal(bad.text, "safe line");
+  assert.equal(bad.guarded, true);
+  assert.ok(bad.flags.length > 0);
+});
+
+test("the twin only replies in his place when he is really away", () => {
+  const config = { afterMinutes: 25, maxPerDay: 3 };
+
+  assert.deepEqual(
+    decideAutoReply({ eligible: false, reason: "he_is_online" }, config),
+    { should: false, reason: "he_is_online" },
+  );
+  assert.equal(
+    decideAutoReply({ eligible: true, minutes_since_her_message: 10, sent_today: 0 }, config).reason,
+    "too_soon",
+  );
+  assert.equal(
+    decideAutoReply({ eligible: true, minutes_since_her_message: 90, sent_today: 3 }, config).reason,
+    "daily_limit",
+  );
+  assert.deepEqual(
+    decideAutoReply({ eligible: true, minutes_since_her_message: 90, sent_today: 1 }, config),
+    { should: true, reason: "ok" },
+  );
+});
+
+test("the tone hint reads Hinglish and defaults to nothing", () => {
+  assert.equal(toneHintFor("sorry yaar meri galti"), "sorry");
+  assert.equal(toneHintFor("miss you jaan"), "sweet");
+  assert.equal(toneHintFor("haha mazak kar raha tha 😂"), "playful");
+  assert.equal(toneHintFor("neend aa rahi hai, dawai li?"), "caring");
+  assert.equal(toneHintFor("kal kya karna hai"), null);
 });
 
 // ── runner ────────────────────────────────────────────────────────────────

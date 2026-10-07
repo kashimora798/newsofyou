@@ -406,6 +406,11 @@ const ROUTES: Record<string, Route[]> = {
     { provider: "cerebras", model: "llama-3.3-70b" },
     { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
   ],
+  twin_autoreply: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
   face_to_face: [
     { provider: "groq", model: "llama-3.3-70b-versatile" },
     { provider: "cerebras", model: "llama-3.3-70b" },
@@ -518,6 +523,7 @@ interface TaskProfile {
 const TASK_PROFILES: Record<string, TaskProfile> = {
   // plan tasks
   twin_chat: { temperature: 0.85, maxTokens: 300, json: true, maxInputTokens: 3500, cacheTtlSeconds: 0, timeoutMs: 25000, sensitivity: "private" },
+  twin_autoreply: { temperature: 0.9, maxTokens: 220, json: true, maxInputTokens: 3000, cacheTtlSeconds: 0, timeoutMs: 22000, sensitivity: "private" },
   face_to_face: { temperature: 0.5, maxTokens: 500, json: true, maxInputTokens: 3500, cacheTtlSeconds: 0, timeoutMs: 30000, sensitivity: "private" },
   greeting: { temperature: 0.9, maxTokens: 160, json: false, maxInputTokens: 1200, cacheTtlSeconds: 0, timeoutMs: 15000, sensitivity: "private" },
   summary: { temperature: 0.5, maxTokens: 340, json: false, maxInputTokens: 4000, cacheTtlSeconds: 0, timeoutMs: 25000, sensitivity: "private" },

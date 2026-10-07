@@ -328,7 +328,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
 
           {/* ── explore: constellations, not tiles ── */}
           <motion.div variants={item} className="space-y-3 pt-1">
-            <SceneHeading icon={Compass}>Explore</SceneHeading>
+            <SceneHeading icon={Compass}>Gather</SceneHeading>
             <div className="grid grid-cols-4 gap-x-2 gap-y-3.5">
               {EXPLORE_LINKS.map((link) => (
                 <button

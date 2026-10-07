@@ -84,6 +84,20 @@ const SOURCES = [
     distribute: true,
   },
   {
+    name: "twinChat.ts",
+    path: join(SHARED_DIR, "twinChat.ts"),
+    triggers: [
+      "buildTwinChatPrompt(",
+      "buildTwinChatUser(",
+      "parseTwinAnswer(",
+      "decideAutoReply(",
+      "guardTwinReply(",
+      "toneHintFor(",
+      "ALLOWED_ACTIONS",
+    ],
+    distribute: true,
+  },
+  {
     name: "llm.ts",
     path: join(SHARED_DIR, "llm.ts"),
     triggers: [

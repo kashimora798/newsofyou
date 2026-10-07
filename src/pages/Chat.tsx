@@ -18,6 +18,7 @@ import { useAnimationsEnabled } from "@/hooks/useAnimationsEnabled";
 import { useProposals } from "@/hooks/useProposals";
 import { useAiMemory, fetchComposeHelp } from "@/hooks/useAiMemory";
 import { useAiCompanion, type CompanionReaction } from "@/hooks/useAiCompanion";
+import { useTwinAutoReplies } from "@/hooks/useTwinChat";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
 import PinnedMessagesBar from "@/components/chat/PinnedMessagesBar";
@@ -90,6 +91,20 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const currentUser = useCurrentUser(userId);
   const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
   const { messages, loading, loadingMore, hasMore, loadMore, sendMessage } = useMessages(userId);
+  // The twin's notes in his place: shown as a labelled AI line, acked for her,
+  // dismissable by him. Generation is asked for at most once every 5 minutes
+  // and the SQL function decides whether he has really been away long enough.
+  const twinAuto = useTwinAutoReplies(true, Boolean(partner && partner.is_online === false));
+  const unseenNoteKey = twinAuto.replies
+    .filter((r) => !r.seen_at)
+    .map((r) => r.id)
+    .join(",");
+  const ackedNoteKey = useRef("");
+  useEffect(() => {
+    if (role === "admin" || !unseenNoteKey || ackedNoteKey.current === unseenNoteKey) return;
+    ackedNoteKey.current = unseenNoteKey;
+    void twinAuto.ack(unseenNoteKey.split(",").map(Number));
+  }, [role, unseenNoteKey, twinAuto]);
   const { partnerTyping, partnerRecording, handleTyping, handleRecording, setTyping } = useTyping(userId, currentUser?.name ?? undefined);
   const [replyTo, setReplyTo] = useState<Tables<"messages"> | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -649,6 +664,9 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
               onTeachAi={handleTeachAi}
               onAskCompanion={handleAskCompanion}
               onEmptyDoubleTap={() => setSecretEvent({ type: "scratch", result: pickRandom(LOVE_QUOTES), senderName: "You" })}
+              twinNotes={twinAuto.replies}
+              twinLabel={twinAuto.ownerName ? `${twinAuto.ownerName}'s AI` : undefined}
+              onTwinNoteDismiss={role === "admin" ? (id) => void twinAuto.dismiss(id) : undefined}
             />
             <MessageInput
               onSend={handleSend}

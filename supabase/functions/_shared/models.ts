@@ -99,6 +99,11 @@ const ROUTES: Record<string, Route[]> = {
     { provider: "cerebras", model: "llama-3.3-70b" },
     { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
   ],
+  twin_autoreply: [
+    { provider: "groq", model: "llama-3.3-70b-versatile" },
+    { provider: "cerebras", model: "llama-3.3-70b" },
+    { provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+  ],
   face_to_face: [
     { provider: "groq", model: "llama-3.3-70b-versatile" },
     { provider: "cerebras", model: "llama-3.3-70b" },
