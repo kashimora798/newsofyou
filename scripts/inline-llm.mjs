@@ -71,6 +71,19 @@ const SOURCES = [
     distribute: true,
   },
   {
+    name: "book.ts",
+    path: join(SHARED_DIR, "book.ts"),
+    triggers: [
+      "composeHeuristicPage(",
+      "buildBookPrompt(",
+      "sanitizeWrittenPage(",
+      "pickExcerpts(",
+      "moodFromTone(",
+      "BOOK_MOODS",
+    ],
+    distribute: true,
+  },
+  {
     name: "llm.ts",
     path: join(SHARED_DIR, "llm.ts"),
     triggers: [

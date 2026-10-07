@@ -29,6 +29,16 @@ import {
   computeStyleStats,
 } from "../supabase/functions/_shared/style.ts";
 import {
+  BOOK_MOODS,
+  buildBookPrompt,
+  composeHeuristicPage,
+  moodFromTone,
+  pickExcerpts,
+  sanitizeWrittenPage,
+  signatureWord,
+  titleFromLines,
+} from "../supabase/functions/_shared/book.ts";
+import {
   daypartAt,
   fillTemplate,
   liveAllowed,
@@ -402,6 +412,114 @@ test("static greetings always exist for every daypart", () => {
     assert.ok(line.length > 10);
     assert.deepEqual(unknownPlaceholders(line), [], "static lines may only use known placeholders");
   }
+});
+
+// ── the Book (build-plan Phase 6) ────────────────────────────────────────
+
+const line = (text: string, who: "owner" | "partner" = "owner", at = "2026-09-14T18:00:00Z") => ({
+  id: text.slice(0, 4),
+  who,
+  name: who === "owner" ? "Kratagya" : "Anshika",
+  text,
+  at,
+  type: "text",
+});
+
+const dayMaterial = (lines: ReturnType<typeof line>[], stats: Record<string, unknown> = {}) => ({
+  day: "2026-09-14",
+  owner_name: "Kratagya",
+  partner_name: "Anshika",
+  stats: { messages: lines.length, photos: 0, sessions: 1, hours: 1.5, tone: "sweet", ...stats },
+  lines,
+  photos: [],
+  page: null,
+});
+
+test("a page can be written with no LLM call at all", () => {
+  const page = composeHeuristicPage(
+    dayMaterial([
+      line("umbrella bhool gaya tha main"),
+      line("and then it rained on us the whole way home", "partner"),
+      line("best walk ever though", "owner"),
+      line("you kept laughing at my wet hair", "partner"),
+      line("i love you", "owner"),
+      line("love you more", "partner"),
+    ]),
+  );
+  assert.equal(page.generated_by, "heuristic");
+  assert.equal(page.status, "ready");
+  assert.ok(page.title.length >= 3, "a title is always present");
+  assert.ok(page.excerpt.length >= 3, "the page carries real lines");
+  assert.ok(page.stats.messages === 6);
+});
+
+test("titles come from their own words, never invented", () => {
+  const lines = [line("umbrella umbrella umbrella"), line("rain rain", "partner")];
+  assert.equal(signatureWord(lines), "umbrella");
+  const title = titleFromLines(lines, "2026-09-14");
+  assert.ok(title.toLowerCase().includes("umbrella"));
+  assert.ok(!/\d/.test(title), "no dates pretending to be prose");
+});
+
+test("a title falls back to the first line when nothing repeats", () => {
+  const title = titleFromLines([line("kal milte hain")], "2026-09-14");
+  assert.ok(title.length > 0);
+  assert.ok(title.length <= 45);
+});
+
+test("excerpts spread across the day instead of clustering", () => {
+  const many = Array.from({ length: 30 }, (_, i) =>
+    line(`message number ${i} ${"x".repeat(i % 5)}`, i % 3 === 0 ? "partner" : "owner", `2026-09-14T${String(8 + (i % 12)).padStart(2, "0")}:00:00Z`),
+  );
+  const picked = pickExcerpts(many, 6);
+  assert.equal(picked.length, 6);
+  const times = picked.map((p) => Date.parse(String(p.at)));
+  const sorted = [...times].sort((a, b) => a - b);
+  assert.deepEqual(times, sorted, "kept in the order they were said");
+  assert.ok(new Set(times).size >= 4, "not all from the same hour");
+});
+
+test("the mood follows the free tone classifier, and long days read differently", () => {
+  assert.equal(moodFromTone("flirty", {}), "flirty");
+  assert.equal(moodFromTone("sorry", {}), "heavy");
+  assert.equal(moodFromTone("sweet", { messages: 40 }), "tender");
+  assert.equal(moodFromTone("sweet", { messages: 900 }), "sweet");
+  assert.equal(moodFromTone(undefined, { messages: 300 }), "playful");
+  for (const mood of ["flirty", "heavy", "tender", "playful", "caring", "sweet", "ordinary"]) {
+    assert.ok((BOOK_MOODS as readonly string[]).includes(mood));
+  }
+});
+
+test("a nearly empty day is marked thin, not padded out", () => {
+  const page = composeHeuristicPage(dayMaterial([line("hi"), line("hi", "partner")], { messages: 2 }));
+  assert.equal(page.status, "thin");
+  assert.equal(page.title, "A short day");
+});
+
+test("the paid prompt carries the real lines and forbids invention", () => {
+  const { system, user } = buildBookPrompt(
+    dayMaterial([line("khana kha liya?"), line("haan, tu bata", "partner")]),
+    "style card text",
+  );
+  assert.ok(system.includes("never invent", ) || system.toLowerCase().includes("never invent"));
+  assert.ok(system.includes("style card text"));
+  assert.ok(user.includes("khana kha liya?"), "real lines reach the model");
+  assert.ok(user.includes("Anshika:"), "speakers are named");
+  assert.ok(user.includes("2026-09-14"));
+});
+
+test("whatever the model returns is clamped before it can be stored", () => {
+  const ok = sanitizeWrittenPage({ title: '"The umbrella day."', subtitle: "You shared one umbrella and got soaked anyway." }, "fallback");
+  assert.equal(ok.title, "The umbrella day");
+  assert.ok(ok.subtitle && ok.subtitle.length > 10);
+
+  const junk = sanitizeWrittenPage({ title: "  ", subtitle: "short" }, "fallback");
+  assert.equal(junk.title, "fallback", "an empty title never replaces a real one");
+  assert.equal(junk.subtitle, null, "too-short prose is dropped");
+
+  const long = sanitizeWrittenPage({ title: "t".repeat(300), subtitle: "s".repeat(900) }, "fallback");
+  assert.equal(long.title.length, 64);
+  assert.equal(long.subtitle?.length, 200);
 });
 
 // ── runner ────────────────────────────────────────────────────────────────

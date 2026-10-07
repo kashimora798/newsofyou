@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookOpen,
   Bell,
   Bookmark,
   CalendarDays,
@@ -29,6 +30,7 @@ export interface ExploreLink {
 }
 
 export const EXPLORE_LINKS: ExploreLink[] = [
+  { path: "/book", icon: BookOpen, label: "Our Book", hue: 344 },
   { path: "/forest", icon: TreePine, label: "Our Tree", hue: 152 },
   { path: "/games", icon: Gamepad2, label: "Games", hue: 26 },
   { path: "/stats", icon: BarChart3, label: "Stats", hue: 205 },

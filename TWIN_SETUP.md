@@ -290,6 +290,38 @@ How it behaves:
 Supabase JWT, so the default `verify_jwt = true` lets anonymous visitors through
 while still keeping the function authenticated at the platform level.
 
+## 7d. Phase 6 — the Book
+
+One page per day they actually talked. Browsing is **free forever**: opening a
+day composes a page from their own lines (heuristics, no AI) and stores it.
+Only the explicit "ask the twin to write this day properly" tap spends one
+`book` task call (private tier), and that result is kept — one call per day,
+ever. Both partners can add one handwritten margin note and mark a day to keep.
+
+```bash
+supabase db push                          # adds 20261006090000_twin_book.sql
+supabase functions deploy book-page
+```
+
+What the database gives you:
+
+- `book_config` — title, subtitle, dedication, cover style, and `hide_private`
+  (skips `secret`-type messages on pages).
+- `book_pages` — title, subtitle, mood, the curated `excerpt` (their real lines,
+  in order, with who said what), photo, day stats, note, favourite,
+  `generated_by` (heuristic|llm), model + tokens.
+- `book_days(...)` — the table of contents (a day + whether it has a page),
+  callable by either partner.
+- `book_day_material(day)` — the raw material for composing one day (service
+  role only; the edge function fetches it with its own scoped client).
+- `book_page_upsert(...)` — never downgrades a page a person or the twin wrote
+  unless forced.
+- `book_page_note()` / `book_page_favorite()` — guarded, either of them.
+- `book_stats()` — the cover numbers.
+
+Routes: `/book` (cover + contents) and `/book/:date` (a spread). The cover
+refuses to claim credit for AI work: an LLM-written page says so, quietly.
+
 ## 8. Deploy reference (by name — rule #10)
 
 ```bash
@@ -299,6 +331,7 @@ supabase functions deploy spell-login
 supabase functions deploy twin-greet
 supabase functions deploy seed-greetings
 supabase functions deploy decoy-login
+supabase functions deploy book-page
 # plus everything in LLM_ROUTER.md after a router change
 ```
 
