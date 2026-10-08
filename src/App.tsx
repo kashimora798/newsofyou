@@ -13,10 +13,12 @@ import AdminRoute from "@/components/layout/AdminRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 
 // Eagerly loaded (critical path)
-import AdminDashboard from "./pages/AdminDashboard";
-import HiddenLogin from "./pages/HiddenLogin";
+// The decoy portal is the landing page — it stays eager so `/` paints in one
+// round trip. Everything else waits until it is actually opened.
 import DecoyLogin from "./pages/DecoyLogin";
-import SecretLogin from "./pages/SecretLogin";
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const HiddenLogin = lazy(() => import("./pages/HiddenLogin"));
+const SecretLogin = lazy(() => import("./pages/SecretLogin"));
 import OwnerRoute from "@/components/layout/OwnerRoute";
 
 // Lazy loaded

@@ -3,8 +3,7 @@ import { motion } from "framer-motion";
 import { CountUp, ConfettiBurst, FloatingHearts, Reveal } from "./wrappedAnim";
 import { ordinal } from "@/lib/anniversary";
 import type { WrappedData } from "@/hooks/useWrappedData";
-import { Canvas } from "@react-three/fiber";
-import CherryBlossom from "../forest/trees/CherryBlossom";
+import OurTree from "@/components/tree/OurTree";
 
 export interface CardProps {
   data: WrappedData;
@@ -314,12 +313,9 @@ export const FirstMessageCard: React.FC<CardProps> = ({ data }) => (
 // 10 — Secret Garden
 export const SecretGardenCard: React.FC<CardProps> = ({ data }) => (
   <Frame gradient={G.garden}>
-    <div className="absolute inset-0 pointer-events-none z-0">
-      <Canvas camera={{ position: [0, 4, 15], fov: 45 }}>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 10]} intensity={1} />
-        <CherryBlossom position={[0, -2, 0]} scale={2} hasPetals={true} />
-      </Canvas>
+    {/* the same tree as /forest, drawn as SVG — no engine, no textures */}
+    <div className="absolute inset-x-0 top-0 bottom-24 z-0 opacity-90 pointer-events-none">
+      <OurTree totalMessages={data.forestCount} still />
     </div>
     <div className="relative z-10 w-full flex flex-col items-center justify-center text-center px-4 bg-black/20 rounded-3xl py-8 backdrop-blur-md">
       <Reveal delay={0.15}>

@@ -30,33 +30,15 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    target: ["es2015", "chrome58", "firefox57", "safari11"],
+    // Two phones from 2026, not a 2015 browser: a modern target means the
+    // bundler stops rewriting async/await and optional chaining into helpers,
+    // so the shipped JS is smaller and parses faster.
+    target: ["es2020", "chrome90", "safari15", "firefox90"],
     rolldownOptions: {
       external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
     },
     rollupOptions: {
       external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
-      output: {
-        manualChunks(id) {
-          if (id.includes("node_modules")) {
-            if (id.includes("three") || id.includes("@react-three")) {
-              return "three";
-            }
-            if (id.includes("react") || id.includes("react-dom") || id.includes("react-router-dom")) {
-              return "vendor";
-            }
-            if (id.includes("@supabase")) {
-              return "supabase";
-            }
-            if (id.includes("@radix-ui")) {
-              return "ui";
-            }
-            if (id.includes("recharts")) {
-              return "charts";
-            }
-          }
-        },
-      },
     },
     chunkSizeWarningLimit: 1000,
   },

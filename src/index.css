@@ -1,10 +1,9 @@
-/* All @imports must be first in the file */
+/* All @imports must be first in the file.
+   Only the faces the base UI actually uses are fetched here. The chat themes
+   (typewriter, pixel, horror, romance…) pull their own font when worn, via
+   `src/lib/themeFonts.ts` — so a visit to the decoy portal no longer downloads
+   a horror font it can never show. */
 @import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Quicksand:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital@0;1&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&display=swap');
 
 @tailwind base;
@@ -373,6 +372,27 @@ button, a, [role="button"] {
 }
 .animate-date-chip {
   animation: date-chip-in 0.3s ease-out both;
+}
+
+/* Our Tree — petals drifting off the canopy (SVG tree on /forest) */
+@keyframes our-tree-fall {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate3d(var(--sway, 18px), 34vh, 0) rotate(180deg);
+  }
+  100% {
+    transform: translate3d(calc(var(--sway, 18px) * -1), 74vh, 0) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .our-tree-petals {
+    display: none;
+  }
 }
 
 @keyframes fall {

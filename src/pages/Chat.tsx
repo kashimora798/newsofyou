@@ -50,6 +50,7 @@ import ThemeSurprises from "@/components/chat/ThemeSurprises";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { getThemeById } from "@/lib/chatThemes";
+import { ensureThemeFontsFor } from "@/lib/themeFonts";
 import type { Tables } from "@/integrations/supabase/types";
 
 const DYNAMIC_WALLPAPERS: Record<string, string> = {
@@ -145,6 +146,11 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const messageListRef = useRef<{ scrollToMessage: (id: string) => void } | null>(null);
 
   const themeConfig = getThemeById(chatTheme);
+
+  // The theme's own typeface is fetched only when that theme is actually worn.
+  useEffect(() => {
+    ensureThemeFontsFor(themeConfig.cssClass);
+  }, [themeConfig.cssClass]);
   const themeEffects = useThemeEffects(chatTheme);
   const animationsEnabled = useAnimationsEnabled();
 

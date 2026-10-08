@@ -7,35 +7,57 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0f172a" />
     <meta name="format-detection" content="telephone=no" />
-    <!-- TODO: Set the document title to the name of your application -->
+
+    <!-- Nothing here belongs in a search engine. The decoy portal still looks
+         like an ordinary study site to a person; it just never gets indexed. -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    <meta name="referrer" content="no-referrer" />
+
     <title>EduflowAi</title>
-    <meta name="description" content="100%YOU">
-    <meta name="author" content="Lovable" />
+    <meta name="description" content="Study dashboard" />
 
-    <!-- TODO: Update og:title to match your application name -->
-    
-    
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/3b3a710a-0bfe-44fc-a9bc-4fb9902e317b?Expires=1771147779&amp;GoogleAccessId=go-api-on-aws%40gpt-engineer-390607.iam.gserviceaccount.com&amp;Signature=Vg9QETKv4DWbCH1qrh%2FcCg%2Fg927MUOgj8TmRIHry6vGC7bdPS0ZTyM%2FqYuVuA%2BPJjTqT%2FtdjOVAy3%2BP6DDNPZT3FDNEpq7UIxE3ypY7GW9JAWY3cT4101Fj99SgOMdv3c1zKTcvpnBpiFBUsB5GwpgTZ6DIdZaOdAe%2FTLzVALZ5K4CSTF5Ojye6rUlMjshWReKXBY91WU0CrDJ%2BR52XDsEgSkxCPNN9apLgWVVyBpQfzLbyx7NJx%2BB0s6G6seQ8H4wz1281JO7ot0KNCyDq2pxWd%2FS6N3KsSTs6KF5RB%2FY%2FR9sXWcd8IFDhcmGrl3N5W0TnSbfqrcPaRbJi5pHIKkw%3D%3D">
+    <!-- The two origins the first screen actually talks to. -->
+    <link rel="preconnect" href="https://itjukxjshcobpibmbrzq.supabase.co" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@Lovable" />
-    <meta name="twitter:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/3b3a710a-0bfe-44fc-a9bc-4fb9902e317b?Expires=1771147779&amp;GoogleAccessId=go-api-on-aws%40gpt-engineer-390607.iam.gserviceaccount.com&amp;Signature=Vg9QETKv4DWbCH1qrh%2FcCg%2Fg927MUOgj8TmRIHry6vGC7bdPS0ZTyM%2FqYuVuA%2BPJjTqT%2FtdjOVAy3%2BP6DDNPZT3FDNEpq7UIxE3ypY7GW9JAWY3cT4101Fj99SgOMdv3c1zKTcvpnBpiFBUsB5GwpgTZ6DIdZaOdAe%2FTLzVALZ5K4CSTF5Ojye6rUlMjshWReKXBY91WU0CrDJ%2BR52XDsEgSkxCPNN9apLgWVVyBpQfzLbyx7NJx%2BB0s6G6seQ8H4wz1281JO7ot0KNCyDq2pxWd%2FS6N3KsSTs6KF5RB%2FY%2FR9sXWcd8IFDhcmGrl3N5W0TnSbfqrcPaRbJi5pHIKkw%3D%3D">
-    
-  
-  
-  
-  <meta property="og:title" content="EduflowAi">
-  <meta name="twitter:title" content="EduflowAi">
-  <meta property="og:description" content="100%YOU">
-  <meta name="twitter:description" content="100%YOU">
-</head>
+    <!--
+      A first paint that is already the app's colour, inlined so it costs no
+      request and no round trip. React replaces this the moment it mounts.
+    -->
+    <style>
+      html { background: #0f172a; }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(ellipse at 50% 0%, #1e293b 0%, #0f172a 70%);
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0.02em;
+      }
+      #boot .mark { opacity: 0.9; font-size: 15px; }
+      #boot .dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        margin-left: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: boot-pulse 1.1s ease-in-out infinite;
+      }
+      @keyframes boot-pulse { 0%, 100% { opacity: 0.25 } 50% { opacity: 1 } }
+      @media (prefers-reduced-motion: reduce) { #boot .dot { animation: none } }
+    </style>
+  </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot"><div class="mark">EduflowAi<span class="dot"></span></div></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
