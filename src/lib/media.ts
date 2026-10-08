@@ -169,11 +169,19 @@ export async function encodeWithinTarget(
 
 /** Pick the best output type this browser will actually encode. */
 export function pickOutputType(canvas: { toDataURL(type?: string): string }, prefer: CompressOptions["preferType"]): string {
+  const wanted = prefer ?? "image/webp";
   try {
-    const probe = canvas.toDataURL(prefer ?? "image/webp");
-    if (probe.startsWith("data:image/webp")) return "image/webp";
+    const probe = canvas.toDataURL(wanted);
+    const mime = (/^data:([^;,]+)/.exec(probe)?.[1] ?? "").toLowerCase();
+    // The browser honoured the request — take it, whatever it was.
+    if (mime === wanted) return mime;
+    // It gave us something else real: only JPEG and WebP lose transparency, so a
+    // PNG request that came back as PNG-family output is still fine to keep.
+    if (mime.startsWith("image/") && wanted !== "image/webp" && mime !== "image/jpeg") return mime;
   } catch {
     /* fall through */
   }
-  return "image/jpeg";
+  // WebP was asked for and refused → JPEG is the safe small one. A PNG request
+  // that got here is honoured, because dropping alpha would break a sticker.
+  return wanted === "image/webp" ? "image/jpeg" : wanted;
 }

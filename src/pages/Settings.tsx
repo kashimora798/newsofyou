@@ -10,6 +10,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import BottomNav from "@/components/layout/BottomNav";
 import { isCalmMode, setCalmMode } from "@/hooks/useAnimationsEnabled";
 import { hashCode } from "@/hooks/useDecoy";
+import { uploadImage } from "@/lib/uploadImage";
 import { DECOY_SKINS, type DecoySkin } from "@/lib/decoySkins";
 import { useTwinConsent } from "@/hooks/useTwinConsent";
 import { shrinkMediaEnabled, setShrinkMedia } from "@/lib/imageCompress";
@@ -196,14 +197,14 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setAvatarUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `avatars/${userId}_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
-      await supabase.from("user_status").update({ profileurl: data.publicUrl }).eq("user_id", userId);
+    try {
+      const up = await uploadImage(file, { prefix: "avatars", maxDimension: 512 });
+      await supabase.from("user_status").update({ profileurl: up.url }).eq("user_id", userId);
+    } catch (err) {
+      console.error("avatar upload failed", err);
     }
     setAvatarUploading(false);
+    if (e.target) e.target.value = "";
   };
 
   const handleThemeChange = (newTheme: string) => { setTheme(newTheme); saveSettings({ theme: newTheme }); };
@@ -226,14 +227,14 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `wallpapers/${userId}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);
-      const url = urlData.publicUrl;
-      setWallpaper(url); setDynamicWallpaper(false);
-      saveSettings({ wallpaper_url: url, dynamic_wallpaper: false });
+    try {
+      // A wallpaper never needs more than screen size — it is drawn once, behind
+      // everything, so 1600 px of a phone photo is generous.
+      const up = await uploadImage(file, { prefix: `wallpapers/${userId}`, maxDimension: 1600 });
+      setWallpaper(up.url); setDynamicWallpaper(false);
+      saveSettings({ wallpaper_url: up.url, dynamic_wallpaper: false });
+    } catch (err) {
+      console.error("wallpaper upload failed", err);
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";

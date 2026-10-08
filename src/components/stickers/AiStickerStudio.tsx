@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Loader2, Send, Scissors, Film, Wand2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { prepareImageUpload } from "@/lib/imageCompress";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
@@ -75,9 +76,21 @@ const AiStickerStudio: React.FC<AiStickerStudioProps> = ({ onSend }) => {
       const cutout = await removeBackground(srcBlob);
 
       setBusy("saving");
+      // A cutout usually comes back large. Shrink it to sticker size as PNG, so
+      // the transparency survives — a 512 px sticker is a fraction of the bytes.
+      let stickerBlob: Blob = cutout;
+      try {
+        const prepared = await prepareImageUpload(
+          new File([cutout], "sticker.png", { type: "image/png" }),
+          { maxDimension: 512, preferType: "image/png", quality: 0.9 },
+        );
+        if (prepared.compressed && /png|webp/i.test(prepared.file.type)) stickerBlob = prepared.file;
+      } catch {
+        /* keep the full-size cutout */
+      }
       const path = `custom-stickers/${user.id}/ai_${Date.now()}_${Math.random().toString(36).slice(2)}.png`;
-      const { error: upErr } = await supabase.storage.from("chat-images").upload(path, cutout, {
-        contentType: "image/png",
+      const { error: upErr } = await supabase.storage.from("chat-images").upload(path, stickerBlob, {
+        contentType: stickerBlob.type || "image/png",
       });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadImage } from "@/lib/uploadImage";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Upload } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
@@ -61,12 +62,17 @@ const TouchReactionCreator: React.FC<TouchReactionCreatorProps> = ({ userId, onC
       return;
     }
     setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `custom-stickers/${userId}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);
-      setEmoji(urlData.publicUrl);
+    try {
+      // Shrunk to sticker size before it leaves the phone; PNG keeps alpha.
+      const up = await uploadImage(file, {
+        prefix: `custom-stickers/${userId}`,
+        maxDimension: 512,
+        preferType: "image/png",
+      });
+      setEmoji(up.url);
+    } catch (err) {
+      console.error("touch sticker upload failed", err);
+      toast({ title: "Upload failed", variant: "destructive" });
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";

@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadImage } from "@/lib/uploadImage";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
@@ -54,14 +55,15 @@ const ProfileView: React.FC<{ userId: string }> = ({ userId }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `avatars/${userId}_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
-      await supabase.from("user_status").update({ profileurl: data.publicUrl }).eq("user_id", userId);
+    try {
+      // Shrunk before it leaves the phone — an avatar is 96 px on screen.
+      const up = await uploadImage(file, { prefix: `avatars`, maxDimension: 512 });
+      await supabase.from("user_status").update({ profileurl: up.url }).eq("user_id", userId);
+    } catch (err) {
+      console.error("avatar upload failed", err);
     }
     setUploading(false);
+    if (e.target) e.target.value = "";
   };
 
   return (

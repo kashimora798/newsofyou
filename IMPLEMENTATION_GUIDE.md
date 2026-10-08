@@ -372,9 +372,16 @@ by default). It is a device-local preference: it does not sync, it just decides
 whether *your* phone bothers to shrink first.
 
 Alongside each master, a **480 px preview** is uploaded as a sibling
-(`photo.webp` → `photo.thumb.webp`). It costs ~20–40 KB and exists so lists,
-book pages and future grids can show a picture without pulling a full master
-down. Nothing points at it yet; it is there for when they do.
+(`photo.webp` → `photo.thumb.webp`). It costs ~20–40 KB and is what photo
+clusters in the chat draw, so scrolling never pulls full masters down. The
+master is fetched only when a photo is opened, and if a preview is missing the
+image silently falls back to the full file.
+
+**Every upload site goes through the same door** (`src/lib/uploadImage.ts`):
+the chat's attachments, avatars (512 px), chat wallpapers (1600 px) and stickers
+(512 px, as PNG so a sticker keeps its transparency). The chat's own path in
+`MessageInput` does the same shrink and additionally records what the file *is*
+(see §9c). Animated GIFs and videos are always passed through byte-for-byte.
 
 ### "Can we get the quality back without using more storage?"
 

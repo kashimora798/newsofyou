@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { uploadImage } from "@/lib/uploadImage";
 
 interface CustomSticker {
   id: string;
@@ -58,19 +59,23 @@ const StickersView: React.FC<{ userId: string }> = ({ userId }) => {
     setUploadCount(validFiles.length);
 
     const uploads = validFiles.map(async (file) => {
-      const ext = file.name.split(".").pop();
-      const path = `custom-stickers/${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("chat-images").upload(path, file);
-      if (!error) {
-        const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);
+      try {
+        // Sticker-sized before it leaves the phone. PNG keeps transparency; an
+        // animated GIF is passed through untouched (see `worthCompressing`).
+        const up = await uploadImage(file, {
+          prefix: `custom-stickers/${userId}`,
+          maxDimension: 512,
+          preferType: "image/png",
+        });
         await supabase.from("custom_stickers").insert({
           user_id: userId,
-          sticker_url: urlData.publicUrl,
+          sticker_url: up.url,
           label: file.name.replace(/\.[^.]+$/, ""),
         } as any);
         return true;
+      } catch {
+        return false;
       }
-      return false;
     });
 
     const results = await Promise.all(uploads);
