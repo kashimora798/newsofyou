@@ -98,6 +98,23 @@ const SOURCES = [
     distribute: true,
   },
   {
+    name: "actions.ts",
+    path: join(SHARED_DIR, "actions.ts"),
+    triggers: [
+      "parseActionProposal(",
+      "buildActionPrompt(",
+      "buildSummaryPrompt(",
+      "buildPlanPrompt(",
+      "buildFormatPrompt(",
+      "describeAction(",
+      "formatWhen(",
+      "needsConfirm(",
+      "targetTable(",
+      "ACTION_KINDS",
+    ],
+    distribute: true,
+  },
+  {
     name: "memory.ts",
     path: join(SHARED_DIR, "memory.ts"),
     triggers: [

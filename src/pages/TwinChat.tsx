@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import ConsentSheet from "@/components/twin/ConsentSheet";
 import { useTwinChat, type TwinMessage } from "@/hooks/useTwinChat";
 import { useTwinConsent } from "@/hooks/useTwinConsent";
+import { useTwinActions } from "@/hooks/useTwinActions";
+import ActionCard from "@/components/twin/ActionCard";
 
 /**
  * TwinChat — /twin, her private chat with the twin (build-plan Phase 4).
@@ -42,6 +44,13 @@ const MOOD_LABEL: Record<string, string> = {
 };
 
 const STARTERS = ["I miss him", "Tell me something he'd say", "I had a rough day", "Kaise ho tum?"];
+
+/** Things the twin can *do*, not just say. Every write still needs a tap. */
+const ASKS = [
+  { label: "Remind me to…", prompt: "remind me to " },
+  { label: "Send him a message at…", prompt: "send a message saying " },
+  { label: "Add to our calendar", prompt: "add an event " },
+];
 
 const Stars: React.FC = () => (
   <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
@@ -130,6 +139,7 @@ const HerBubble: React.FC<{ message: TwinMessage }> = ({ message }) => (
 const TwinChat: React.FC = () => {
   const consent = useTwinConsent();
   const chat = useTwinChat();
+  const actions = useTwinActions(Boolean(consent.consentedAt));
   const [draft, setDraft] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
@@ -151,11 +161,13 @@ const TwinChat: React.FC = () => {
 
   const empty = chat.messages.length === 0;
 
-  const submit = () => {
+  const submit = async () => {
     const text = draft.trim();
     if (!text || chat.sending) return;
     setDraft("");
-    void chat.send(text);
+    await chat.send(text);
+    // Anything the twin suggested while answering is now waiting for a tap.
+    void actions.load();
   };
 
   const header = (
@@ -285,7 +297,23 @@ const TwinChat: React.FC = () => {
               )}
 
               {empty && (
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {ASKS.map((a) => (
+                    <button
+                      key={a.label}
+                      type="button"
+                      onClick={() => setDraft(a.prompt)}
+                      className="rounded-full px-3 py-1.5 text-[12px]"
+                      style={{ border: "0.5px solid hsl(var(--rose-glow) / 0.35)", color: "hsl(var(--rose-glow))" }}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {empty && (
+                <div className="mt-3 flex flex-wrap gap-2">
                   {STARTERS.map((s) => (
                     <button
                       key={s}
@@ -304,6 +332,38 @@ const TwinChat: React.FC = () => {
               <div ref={bottomRef} className="h-2" />
             </div>
           </div>
+
+          {/* The twin proposes; a person taps. Nothing here has been written yet. */}
+          {(actions.open.length > 0 || actions.lastAnswer) && (
+            <div className="relative z-10 space-y-2 px-4 pb-1">
+              <div className="mx-auto max-w-md space-y-2">
+                {actions.lastAnswer && (
+                  <ActionCard
+                    action={{
+                      id: `answer-${actions.lastAnswer.kind}`,
+                      kind: actions.lastAnswer.kind,
+                      status: "done",
+                      title: actions.lastAnswer.title || "the twin's answer",
+                      payload: { answer: actions.lastAnswer.text },
+                    }}
+                    onCancel={() => actions.dismissAnswer()}
+                  />
+                )}
+                {actions.open.map((a) => (
+                  <ActionCard
+                    key={a.id}
+                    action={a}
+                    onConfirm={async (id) => {
+                      await actions.confirm(id);
+                    }}
+                    onCancel={async (id) => {
+                      await actions.cancel(id);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="relative z-10 px-4 pb-5 pt-2">
             <div className="mx-auto flex max-w-md items-end gap-2">

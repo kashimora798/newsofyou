@@ -1,5 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2 } from "lucide-react";
+// Phase 9 — keep storage small without losing the picture (src/lib/media.ts).
+import { prepareImageUpload, shrinkMediaEnabled, worthCompressing } from "@/lib/imageCompress";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaPanel from "./MediaPanel";
@@ -123,8 +125,26 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
     textareaRef.current?.focus();
   }, [onComposeHelp, composing, text]);
 
-  const uploadAndSendFile = async (file: File) => {
+  const uploadAndSendFile = async (input: File) => {
     setUploading(true);
+
+    // 1. Shrink first (device-side, one master + optional 480px preview).
+    //    A 4 MB phone photo usually lands around 400 KB at the same look; the
+    //    pixels are capped once, so nothing is re-encoded in a loop later.
+    let file = input;
+    let thumb: File | null = null;
+    let mediaNote = "";
+    if (worthCompressing(input, shrinkMediaEnabled())) {
+      try {
+        const prepared = await prepareImageUpload(input);
+        file = prepared.file;
+        thumb = prepared.thumb;
+        mediaNote = prepared.compressed ? prepared.note : "";
+      } catch {
+        file = input; // never block a send on compression
+      }
+    }
+
     let fileExt = file.name ? file.name.split(".").pop() : "";
     if (!fileExt || fileExt === file.name) {
       if (file.type === "image/gif") fileExt = "gif";
@@ -141,6 +161,14 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
     const bucket = isImage || isVideo || isAudio ? "chat-images" : "documents";
 
     const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file);
+
+    // The grid preview rides along under a sibling name — same path + .thumb.
+    // Nothing references it yet; it is there for lists, so opening a thread
+    // never has to pull full masters down.
+    if (!uploadError && thumb) {
+      const thumbPath = filePath.replace(/(\.[a-z0-9]+)$/i, ".thumb$1");
+      await supabase.storage.from(bucket).upload(thumbPath, thumb).catch(() => undefined);
+    }
 
     if (!uploadError) {
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
@@ -162,6 +190,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
       }
       setText("");
       onCancelReply();
+      if (mediaNote) toast({ title: "Media shrunk before upload", description: mediaNote });
     } else {
       toast({ title: "Failed to upload file ðŸ˜¢", description: uploadError.message, variant: "destructive" });
     }

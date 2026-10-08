@@ -56,6 +56,29 @@ import {
   TWIN_RULES,
 } from "../supabase/functions/_shared/safety.ts";
 import {
+  MEDIA_LIMITS,
+  describeSavings,
+  encodeWithinTarget,
+  fitWithin,
+  humanBytes,
+  needsThumb,
+  shouldCompress,
+  startingQuality,
+} from "../src/lib/media.ts";
+import {
+  ACTION_KINDS,
+  buildActionPrompt,
+  buildFormatPrompt,
+  buildPlanPrompt,
+  buildSummaryPrompt,
+  describeAction,
+  formatWhen,
+  needsConfirm,
+  parseActionProposal,
+  targetTable,
+  toIsoInZone,
+} from "../supabase/functions/_shared/actions.ts";
+import {
   buildMemoryPrompt,
   dedupeFacts,
   extractFactCandidates,
@@ -801,6 +824,181 @@ test("mechanical rows and placeholders are not words anyone said", () => {
   assert.equal(isPlaceholderContent("❤️❤️"), true);
   assert.equal(isPlaceholderContent("  "), true);
   assert.equal(isPlaceholderContent("I love you"), false);
+});
+
+// ── Phase 7: assistant actions ───────────────────────────────────────────
+
+const NOW = new Date("2026-10-08T07:00:00Z"); // 12:30 pm IST
+
+test("a request becomes exactly one validated card", () => {
+  const raw = JSON.stringify({
+    kind: "create_reminder",
+    title: "Call mum",
+    note: "she asked about the viva",
+    when: "2026-10-09T19:00",
+    preview: "Call mum — Fri 9 Oct, 7:00 pm",
+  });
+  const action = parseActionProposal(raw, { now: NOW, offsetMinutes: 330 });
+  assert.ok(action, "a valid proposal survives");
+  assert.equal(action!.kind, "create_reminder");
+  assert.equal(action!.payload.title, "Call mum");
+  assert.equal(action!.when, "2026-10-09T19:00:00+05:30");
+  assert.equal(needsConfirm(action!.kind), true);
+  assert.equal(targetTable(action!.kind), "reminders");
+});
+
+test("a time in the past, a bad kind or a missing field is refused", () => {
+  const past = parseActionProposal('{"kind":"add_event","title":"Dinner","when":"2020-01-01T20:00"}', { now: NOW });
+  assert.equal(past, null, "no cards for the past");
+
+  const badKind = parseActionProposal('{"kind":"delete_everything","title":"nope"}', { now: NOW });
+  assert.equal(badKind, null);
+
+  const noTime = parseActionProposal('{"kind":"create_reminder","title":"Call mum"}', { now: NOW });
+  assert.equal(noTime, null, "a reminder without a time is not a reminder");
+
+  const noText = parseActionProposal('{"kind":"schedule_message","when":"2026-10-09T09:00"}', { now: NOW });
+  assert.equal(noText, null);
+
+  assert.equal(parseActionProposal("I cannot help with that.", { now: NOW }), null);
+});
+
+test("read kinds need no tap, and their answer travels", () => {
+  const summary = parseActionProposal('{"kind":"daily_summary","answer":"A slow, good day."}', { now: NOW });
+  assert.ok(summary);
+  assert.equal(needsConfirm(summary!.kind), false);
+  assert.equal(targetTable(summary!.kind), null);
+  assert.equal(summary!.payload.answer, "A slow, good day.");
+
+  const format = parseActionProposal('{"kind":"format_message","text":"I am sorry, I will call at 8."}', { now: NOW });
+  assert.equal(format!.payload.suggestion, "I am sorry, I will call at 8.");
+});
+
+test("writes are clamped before they can be shown", () => {
+  const long = parseActionProposal(
+    JSON.stringify({ kind: "schedule_message", text: "x".repeat(2000), when: "2026-10-09T09:00", title: "t".repeat(400) }),
+    { now: NOW },
+  );
+  assert.equal(long!.payload.text!.length, 900);
+  assert.equal(long!.title.length, 120);
+});
+
+test("local wall-clock strings become real instants", () => {
+  assert.equal(toIsoInZone("2026-10-09 19:00", 330), "2026-10-09T19:00:00+05:30");
+  assert.equal(toIsoInZone("2026-10-09T19:00:30", 0), "2026-10-09T19:00:30+00:00");
+  assert.equal(toIsoInZone("2026-10-09T19:00:00Z", 330), "2026-10-09T19:00:00.000Z");
+  assert.equal(toIsoInZone("soon", 330), null);
+});
+
+test("the card says what will happen, in plain words", () => {
+  const label = formatWhen("2026-10-09T13:30:00Z", "Asia/Kolkata");
+  assert.ok(label && /9 Oct/.test(label), `unexpected label: ${label}`);
+  assert.match(
+    describeAction("create_reminder", { title: "Call mum" }, "2026-10-09T13:30:00Z"),
+    /Call mum/,
+  );
+  assert.match(describeAction("schedule_message", { text: "goodnight" }), /goodnight/);
+  assert.equal(ACTION_KINDS.length, 6);
+});
+
+test("the three prompts ground the model in what the twin actually knows", () => {
+  const action = buildActionPrompt({
+    request: "remind me to call mum at 7",
+    nowIso: "2026-10-08 12:30",
+    tz: "Asia/Kolkata",
+    ownerName: "Kratagya",
+    partnerName: "Anshika",
+    requester: "partner",
+  });
+  assert.match(action.system, /ONLY propose/);
+  assert.match(action.system, /Anshika/);
+  assert.ok(action.user.includes("call mum"));
+
+  const summary = buildSummaryPrompt({
+    ownerName: "Kratagya",
+    partnerName: "Anshika",
+    day: "2026-10-08",
+    lines: [{ who: "Anshika", text: "aaj bahut kaam tha" }],
+    highlights: [{ kind: "feeling", text: "tumhari yaad aa rahi thi" }],
+  });
+  assert.match(summary.system, /never invent/);
+  assert.ok(summary.user.includes("aaj bahut kaam tha"));
+  assert.ok(summary.user.includes("tumhari yaad"));
+
+  const plan = buildPlanPrompt({
+    ownerName: "Kratagya",
+    partnerName: "Anshika",
+    request: "what should we do this weekend?",
+    memories: [{ fact: "loves filter coffee" }],
+    highlights: [{ kind: "place", text: "wanted to try the new cafe" }],
+    upcoming: [{ title: "Viva", when: "2026-10-12T09:00" }],
+  });
+  assert.ok(plan.user.includes("loves filter coffee"));
+  assert.ok(plan.user.includes("new cafe"));
+  assert.match(plan.system, /one thing/);
+
+  const format = buildFormatPrompt({ draft: "call kar lena", ownerName: "Kratagya", partnerName: "Anshika", tone: "gentle" });
+  assert.ok(format.system.includes("gentle"));
+  assert.ok(format.user.includes("call kar lena"));
+});
+
+// ── Phase 9: media compression ───────────────────────────────────────────
+
+test("a phone photo is fitted into the cap, aspect ratio intact", () => {
+  const r = fitWithin(4000, 3000, MEDIA_LIMITS.maxDimension);
+  assert.equal(r.scaled, true);
+  assert.equal(r.width, MEDIA_LIMITS.maxDimension);
+  assert.equal(r.height, 1800);
+  assert.equal(fitWithin(1200, 900, 2400).scaled, false, "small images are not touched");
+  assert.deepEqual(fitWithin(0, 0, 2400), { width: 0, height: 0, scaled: false });
+});
+
+test("quality starts lower only when the file is far over target", () => {
+  assert.equal(startingQuality(500_000, 500_000), MEDIA_LIMITS.quality);
+  const big = startingQuality(8_000_000, 500_000);
+  assert.ok(big < MEDIA_LIMITS.quality && big >= MEDIA_LIMITS.minQuality, `unexpected: ${big}`);
+});
+
+test("the encoder walks quality down until it fits, and never below the floor", async () => {
+  let calls = 0;
+  const encoder = async (q: number) => {
+    calls++;
+    return new Blob([new Uint8Array(Math.round(1_000_000 * q))]);
+  };
+  const fitted = await encodeWithinTarget(encoder, { originalBytes: 4_000_000, targetBytes: 500_000, minQuality: 0.5 });
+  assert.ok(fitted);
+  assert.ok(fitted!.blob.size <= 500_000, "the target is met");
+  assert.ok(calls <= 4, "at most four passes");
+
+  const impossible = await encodeWithinTarget(async () => new Blob([new Uint8Array(9_000_000)]), {
+    originalBytes: 9_000_000,
+    targetBytes: 100_000,
+    minQuality: 0.6,
+  });
+  assert.ok(impossible, "it still returns the smallest try rather than nothing");
+});
+
+test("only the things worth re-encoding are re-encoded", () => {
+  const photo = { type: "image/jpeg", name: "a.jpg", size: 4_000_000 };
+  assert.equal(shouldCompress(photo, { enabled: true }), true);
+  assert.equal(
+    shouldCompress({ type: "image/jpeg", name: "a.jpg", size: 6_000_000 }, { enabled: false }),
+    true,
+    "huge files are always shrunk, even with the setting off",
+  );
+  assert.equal(shouldCompress({ type: "image/jpeg", name: "a.jpg", size: 200_000 }, { enabled: true }), false);
+  assert.equal(shouldCompress({ type: "image/gif", name: "a.gif", size: 8_000_000 }, { enabled: true }), false);
+  assert.equal(shouldCompress({ type: "video/mp4", name: "a.mp4", size: 9_000_000 }, { enabled: true }), false);
+  assert.equal(shouldCompress({ type: "", name: "IMG_0421.HEIC", size: 3_000_000 }, { enabled: true }), true);
+});
+
+test("savings are described the way a person would say them", () => {
+  assert.equal(describeSavings(3_400_000, 480_000), "3.4 MB → 480 KB (86% less)");
+  assert.match(describeSavings(400_000, 400_000), /already about as small/);
+  assert.equal(humanBytes(400), "400 B");
+  assert.equal(needsThumb(2400), true);
+  assert.equal(needsThumb(480), false);
+  assert.ok(MEDIA_LIMITS.maxDimension >= 1600, "the master stays sharp on any screen");
 });
 
 // ── runner ────────────────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import { useProposals } from "@/hooks/useProposals";
 import { useAiMemory, fetchComposeHelp } from "@/hooks/useAiMemory";
 import { useAiCompanion, type CompanionReaction } from "@/hooks/useAiCompanion";
 import { useTwinAutoReplies } from "@/hooks/useTwinChat";
+import { useTwinActions } from "@/hooks/useTwinActions";
 import ChatHeader from "@/components/chat/ChatHeader";
 import MessageList from "@/components/chat/MessageList";
 import PinnedMessagesBar from "@/components/chat/PinnedMessagesBar";
@@ -95,6 +96,8 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   // dismissable by him. Generation is asked for at most once every 5 minutes
   // and the SQL function decides whether he has really been away long enough.
   const twinAuto = useTwinAutoReplies(true, Boolean(partner && partner.is_online === false));
+  // Phase 7: the twin can improve a draft (and only ever *propose* anything else).
+  const twinActions = useTwinActions(true);
   const unseenNoteKey = twinAuto.replies
     .filter((r) => !r.seen_at)
     .map((r) => r.id)
@@ -528,14 +531,26 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
     setCompanion({ loading: false, result });
   }, [reactToMessage]);
 
-  const handleComposeHelp = useCallback(async (draft: string) => {
-    const { suggestion, error } = await fetchComposeHelp(draft, partner?.user_id);
-    if (error) {
-      toast({ title: "Compose help unavailable", description: error.message, variant: "destructive" });
-      return null;
-    }
-    return suggestion;
-  }, [partner?.user_id]);
+  /**
+   * "Say it a little better". The twin does it first (it knows his voice and
+   * can use the style card); the older compose helper stays as the fallback for
+   * when the twin is switched off or the router is out of quota.
+   */
+  const handleComposeHelp = useCallback(
+    async (draft: string) => {
+      if (draft.trim()) {
+        const improved = await twinActions.reformat(draft);
+        if (improved) return improved;
+      }
+      const { suggestion, error } = await fetchComposeHelp(draft, partner?.user_id);
+      if (error) {
+        toast({ title: "Compose help unavailable", description: error.message, variant: "destructive" });
+        return null;
+      }
+      return suggestion;
+    },
+    [partner?.user_id, twinActions],
+  );
 
   // Decoy / panic mode: replace the entire chat with a disguised AI app.
   // Real messages are never rendered while this is active.

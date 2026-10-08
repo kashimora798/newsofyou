@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut, Bot, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut, Bot, ShieldCheck, ImageDown } from "lucide-react";
 import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -12,6 +12,7 @@ import { isCalmMode, setCalmMode } from "@/hooks/useAnimationsEnabled";
 import { hashCode } from "@/hooks/useDecoy";
 import { DECOY_SKINS, type DecoySkin } from "@/lib/decoySkins";
 import { useTwinConsent } from "@/hooks/useTwinConsent";
+import { shrinkMediaEnabled, setShrinkMedia } from "@/lib/imageCompress";
 import DecoyLoginSettings from "@/components/settings/DecoyLoginSettings";
 
 const SettingsPage: React.FC = () => {
@@ -116,6 +117,7 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   // profile
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  const [shrinkMedia, setShrinkMediaState] = useState(() => shrinkMediaEnabled());
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -584,6 +586,41 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
         </section>
 
         {/* ── Features ── */}
+        <section>
+          <SectionLabel>Storage</SectionLabel>
+          <Group>
+            <Row
+              icon={<ImageDown className="h-[18px] w-[18px]" />}
+              label="Shrink photos before sending"
+              trailing={
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={shrinkMedia}
+                  onClick={() => {
+                    const next = !shrinkMedia;
+                    setShrinkMedia(next);
+                    setShrinkMediaState(next);
+                  }}
+                  className={`relative h-[30px] w-[50px] rounded-full transition-colors ${
+                    shrinkMedia ? "bg-[#34c759]" : "bg-muted"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-[3px] h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                      shrinkMedia ? "translate-x-[23px]" : "translate-x-[3px]"
+                    }`}
+                  />
+                </button>
+              }
+            />
+          </Group>
+          <p className="mt-1 px-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            Photos are re-encoded on your phone (modern codec, long edge capped at 2400px) before upload — usually 70–90% less
+            storage for the same look. Videos and GIFs are never re-encoded. Anything above 4 MB is always shrunk.
+          </p>
+        </section>
+
         <section>
           <SectionLabel>Features</SectionLabel>
           <Group>
