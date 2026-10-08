@@ -25,6 +25,8 @@ const StudyApp = lazy(() => import("./pages/StudyApp"));
 const DevScene = lazy(() => import("./pages/DevScene"));
 const Book = lazy(() => import("./pages/Book"));
 const TwinChat = lazy(() => import("./pages/TwinChat"));
+const FaceToFace = lazy(() => import("./pages/FaceToFace"));
+const BookPrint = lazy(() => import("./pages/BookPrint"));
 const BookPageView = lazy(() => import("./pages/BookPage"));
 const DevBook = lazy(() => import("./pages/DevBook"));
 const Chat = lazy(() => import("./pages/Chat"));
@@ -111,8 +113,10 @@ const App = () => (
                   <Route path="/custom-touch-reactions" element={<P><CustomTouchReactions /></P>} />
                   <Route path="/achievements" element={<P><Achievements /></P>} />
                   <Route path="/book" element={<P><Book /></P>} />
+                  <Route path="/book/print" element={<P><BookPrint /></P>} />
                   <Route path="/book/:date" element={<P><BookPageView /></P>} />
                   <Route path="/twin" element={<P><TwinChat /></P>} />
+                  <Route path="/face-to-face" element={<P><FaceToFace /></P>} />
                   <Route path="/letter-collection" element={<P><LetterCollection /></P>} />
                   <Route path="/bookmarks" element={<P><Bookmarks /></P>} />
                   <Route path="/reminders" element={<P><Reminders /></P>} />

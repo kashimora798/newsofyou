@@ -396,6 +396,14 @@ const TwinChat: React.FC = () => {
             <p className="mx-auto mt-2 max-w-md text-center text-[10.5px] text-muted-foreground">
               answered by {ownerName}&apos;s AI — never by him pretending
             </p>
+            {/* When the thing is heavy, the room is better than a chat. */}
+            <p className="mx-auto mt-1 max-w-md text-center text-[10.5px] text-muted-foreground">
+              something heavy?{" "}
+              <Link to="/face-to-face" className="underline decoration-dotted hover:text-foreground">
+                open Face to Face
+              </Link>{" "}
+              — both of you, one topic, ground rules
+            </p>
           </div>
         </>
       )}

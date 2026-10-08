@@ -98,6 +98,23 @@ const SOURCES = [
     distribute: true,
   },
   {
+    name: "ftf.ts",
+    path: join(SHARED_DIR, "ftf.ts"),
+    triggers: [
+      "FTF_RULES",
+      "buildSoftenPrompt(",
+      "buildClosingPrompt(",
+      "parseSoften(",
+      "parseClosing(",
+      "safetyResources(",
+      "shouldStop(",
+      "stopFlags(",
+      "heuristicClosing(",
+      "shouldOfferClosing(",
+    ],
+    distribute: true,
+  },
+  {
     name: "actions.ts",
     path: join(SHARED_DIR, "actions.ts"),
     triggers: [

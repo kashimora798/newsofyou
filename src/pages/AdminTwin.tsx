@@ -10,6 +10,8 @@ import {
   Power,
   Download,
   Brain,
+  Wrench,
+  Database,
   Pin,
   PinOff,
   Quote,
@@ -82,6 +84,7 @@ const AdminTwin: React.FC = () => {
   const [chatStats, setChatStats] = useState<Record<string, unknown> | null>(null);
   const [autoReplies, setAutoReplies] = useState<AutoReplyRow[]>([]);
   const [chatRules, setChatRules] = useState({ after: 25, max: 3, gap: 45 });
+  const [maint, setMaint] = useState<Record<string, any> | null>(null);
   const [rulesDirty, setRulesDirty] = useState(false);
 
   const load = useCallback(async () => {
@@ -124,6 +127,39 @@ const AdminTwin: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The owner's status report (index readiness, open cards/rooms, last sweep).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { data } = await supabase.functions.invoke("twin-maintenance", { body: {} });
+        setMaint((data as Record<string, any>) ?? null);
+      } catch {
+        /* the card simply stays empty */
+      }
+    })();
+  }, []);
+
+  const runMaintenance = async (body: Record<string, unknown>, label: string) => {
+    setBusy(label);
+    try {
+      const { data, error } = await supabase.functions.invoke("twin-maintenance", { body });
+      if (error) throw error;
+      setMaint((data as Record<string, any>) ?? null);
+      const payload = data as Record<string, any>;
+      toast({
+        title: "Done",
+        description:
+          label === "rebuild"
+            ? `${payload.embedded ?? 0} vectors filled in ${payload.rounds ?? 0} round(s). ${payload.note ?? ""}`
+            : `${payload.expired_cards ?? 0} stale card(s) closed, ${payload.faded_rooms ?? 0} room(s) faded.`,
+      });
+    } catch (e) {
+      toast({ title: "Could not run", description: e instanceof Error ? e.message : "", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const filtered = useMemo(
     () =>
@@ -419,6 +455,52 @@ const AdminTwin: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Maintenance (Phase 9) — the two commands you would otherwise run in a terminal */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Wrench className="h-4 w-4 text-primary" /> Maintenance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={maint?.index?.ready ? "default" : "secondary"}>
+                {maint?.index?.ready ? "the index is ready" : "the index needs a build"}
+              </Badge>
+              {maint?.index && (
+                <>
+                  <Badge variant="outline">{maint.index.sessions} sessions</Badge>
+                  <Badge variant="outline">{maint.index.reply_pairs} reply pairs</Badge>
+                  {(maint.index.chunks_without_vector > 0 || maint.index.reply_pairs_without_vector > 0) && (
+                    <Badge variant="destructive">
+                      {maint.index.chunks_without_vector + maint.index.reply_pairs_without_vector} without vectors
+                    </Badge>
+                  )}
+                </>
+              )}
+              {maint?.open && <Badge variant="outline">{maint.open.action_cards} open card(s)</Badge>}
+              {maint?.open?.rooms !== undefined && <Badge variant="outline">{maint.open.rooms} room(s)</Badge>}
+              {maint?.last_nightly?.ran_at && (
+                <Badge variant="secondary">last sweep {new Date(maint.last_nightly.ran_at).toLocaleString()}</Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              “Build the index” re-cuts the sessions, chunks and reply pairs from your chat and then fills every missing vector
+              (free, inside Supabase). It never touches your messages. Run it once after setup, and again after a big import.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={busy === "rebuild"} onClick={() => void runMaintenance({ rebuild: true, full: true }, "rebuild")}>
+                {busy === "rebuild" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+                <span className="ml-1.5">Build the index</span>
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy === "tidy"} onClick={() => void runMaintenance({ housekeeping: true }, "tidy")}>
+                {busy === "tidy" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                <span className="ml-1.5">Tidy up</span>
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -1,492 +1,313 @@
-// twin-nightly — memory 2.0's sweep (build-plan Phase 5).
+// face-to-face — the hard-conversation room (build-plan Phase 8).
 //
-//   POST { days?: 7, force?: boolean }
-//     → { ok, days, highlights, facts_heuristic, facts_llm, llm_calls, tokens }
+//   POST { action: "open",   topic }              → a new room (0 calls)
+//   POST { action: "state",  session_id? }        → everything the screen needs (0)
+//   POST { action: "join",   session_id }         → 0
+//   POST { action: "agree",  session_id }         → 0
+//   POST { action: "pause",  session_id, paused } → 0
+//   POST { action: "soften", session_id, text }   → 1 `face_to_face` call, nothing stored
+//   POST { action: "send",   session_id, text, softened? }  → 0 calls
+//   POST { action: "close",  session_id }         → 1 `summary` call (free fallback)
 //
-// The free part does the work: for each day in the window, `_shared/memory.ts`
-// picks the lines worth keeping (promises, plans, dates, firsts, feelings) and
-// pulls durable facts straight out of their own sentences. Those are stored with
-// no AI at all.
+// The two rules this function enforces, in code:
+//   * a turn is only written when it is really that person's turn;
+//   * the moment a turn carries a self-harm or abuse signal, the room stops and
+//     both people are shown real resources — the assistant does not continue.
 //
-// The paid part is one call per sweep, and only for the top ~5% of the day's
-// candidates — the lines most likely to hold something durable that the
-// patterns missed. Everything stays on the private (noTrain) providers.
-//
-// Gating lives in SQL: `twin_nightly_state()` refuses a sweep less than 3 hours
-// after the last one (the owner may force a second one from the control room).
-// Nothing here touches the couple's `messages` (hard rule #1 — read only).
+// The raw text of a turn is what is checked for safety, and the raw text is
+// what is kept (beside the softened version) — nobody can be misquoted.
 
-// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/memory.ts) ──
-// ── BEGIN INLINE: memory.ts ──
+// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/ftf.ts) ──
+// ── BEGIN INLINE: ftf.ts ──
 /**
- * memory.ts — the free half of memory 2.0 (build-plan Phase 5).
+ * ftf.ts — Face to Face, the hard-conversation room (build-plan Phase 8).
  *
- * The rule this file exists to enforce: **the twin notices with heuristics and
- * only thinks with the model when it is worth it.** Everything here is pure —
- * no Deno, no clock of its own, no network — so it runs in the nightly sweep,
- * in the "remember what matters" button, and in the tests, identically.
+ * What this module is for: making it easier to say a difficult thing without
+ * hurting the person you are saying it to — and knowing when **not** to keep
+ * mediating at all.
  *
- * Three jobs:
- *   1. `extractHighlights()` — the lines worth keeping from a day: promises,
- *      plans, dates, firsts, feelings, gifts, places, milestones. English and
- *      Hinglish, because that is how they actually talk.
- *   2. `extractFactCandidates()` — durable facts ("loves filter coffee",
- *      "birthday is 12 March") straight out of their own sentences. These are
- *      inserted with no AI call at all.
- *   3. `selectWorthAsking()` — the top ~5%, the only lines worth one model call.
+ * Three jobs, all pure:
+ *   1. `FTF_RULES` — the six ground rules both people agree to before the first
+ *      word. Same text for both; the room will not start until they agree.
+ *   2. `buildSoftenPrompt()` / `parseSoften()` — rewrite one person's turn so
+ *      the *point* survives and the blame does not. The rewrite is a suggestion:
+ *      the person reads it, can edit it, and only what they send is stored
+ *      (with their original kept beside it, so nobody is ever misquoted).
+ *   3. `safetyResources()` / `shouldStop()` — the moment a turn carries a
+ *      self-harm or abuse signal, the room stops and real help is shown. The
+ *      assistant never tries to "handle" that.
  *
- * Nothing here writes to the database; the edge functions own that.
+ * Nothing here talks to a network or a clock.
  */
 
-export type MemoryCategory = "likes" | "dislikes" | "important" | "date" | "other";
+export type FtfStopFlag = "self_harm" | "abuse" | string;
 
-export interface DayLine {
-  id: string;
+export interface FtfTurn {
+  id?: string;
   user_id: string;
-  username?: string | null;
-  content: string;
-  created_at: string;
-}
-
-export interface HighlightCandidate {
-  message_id: string;
-  user_id: string;
-  day: string;
   kind: string;
-  text: string;
-  score: number;
+  content: string;
+  softened?: boolean;
+  flags?: string[];
+  created_at?: string;
 }
 
-export interface FactCandidate {
-  fact: string;
-  category: MemoryCategory;
-  /** Which side of the couple the fact is about, by id — never by name. */
-  about: "owner" | "partner";
-  kind: string | null;
-  message_id: string;
-  day: string;
-  importance: number;
-  quote: string;
+export interface SoftenedTurn {
+  /** The rewrite. Never sent automatically. */
+  gentler: string;
+  /** One line of "what I actually need", for the sender to check. */
+  need: string;
+  /** One line of "how this may land", for the sender to consider. */
+  land: string;
+  parsed: boolean;
 }
 
-/**
- * Kind patterns, most specific first. Each entry is a list of spellings —
- * English, Hindi and Hinglish — because a lexicon that only reads English
- * misses most of what these two write.
- */
-const KIND_PATTERNS: { kind: string; weight: number; patterns: RegExp[] }[] = [
-  {
-    kind: "milestone",
-    weight: 0.32,
-    patterns: [
-      /\b(engagement|engaged|proposal|propose|roka|sagai|shaadi|shadi|marriage|married|moved in|move in)\b/i,
-      /\b(first anniversary|saalgirah)\b/i,
-    ],
-  },
-  {
-    kind: "promise",
-    weight: 0.28,
-    patterns: [
-      /\b(i promise|promise you|pinky promise|i swear|you have my word)\b/i,
-      /\b(pakka|vada|wada|kasam|vaada)\b/i,
-      /\b(i(?:'ll| will) (?:definitely |surely )?(?:come|meet|be there|call|do it))\b/i,
-    ],
-  },
-  {
-    kind: "first",
-    weight: 0.26,
-    patterns: [/\b(first time|for the first time|pehli baar|pehla|pehli)\b/i],
-  },
-  {
-    kind: "date",
-    weight: 0.24,
-    patterns: [
-      /\b(birthday|janamdin|janmdin|happy bday|hbd|anniversary|saalgirah|dob|date of birth)\b/i,
-      /\b(\d{1,2}(?:st|nd|rd|th)?\s?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i,
-      /\b(\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)var)\b/i,
-    ],
-  },
-  {
-    kind: "gift",
-    weight: 0.2,
-    patterns: [
-      /\b(gift|surprise|present)\b/i,
-      /\b(laaya|layi|laye|diya|diye|bought you|got you)\b/i,
-    ],
-  },
-  {
-    kind: "place",
-    weight: 0.16,
-    patterns: [
-      /\b(ghar|home|office|station|airport|cafe|restaurant|mandir|temple|hospital|market|chowk)\b/i,
-      /\b(goa|manali|jaipur|delhi|mumbai|bangalore|pune|shimla|rishikesh|udaipur)\b/i,
-    ],
-  },
-  {
-    kind: "feeling",
-    weight: 0.18,
-    patterns: [
-      /\b(i miss you|miss you|miss u|yaad aa rahi|yaad aata|tumhari yaad)\b/i,
-      /\b(i love you|love you|love u|pyar|pyaar|jaan|baby)\b/i,
-      /\b(sorry|maaf|gussa|hurt|loney|akela|thank you|grateful)\b/i,
-    ],
-  },
-  {
-    kind: "plan",
-    weight: 0.14,
-    patterns: [
-      /\b(kal|tomorrow|next week|agle hafte|this weekend|tonight|aaj raat|milte hai|milna|meet up|dinner|movie|trip)\b/i,
-      /\b(plan|decide kar|final kar)\b/i,
-    ],
-  },
-];
+/** The ground rules. Short on purpose — nobody reads a manifesto mid-argument. */
+const FTF_RULES = `Six rules for this room, for both of us:
+1. One thing at a time. We finish one, then the next.
+2. I talk about what I felt and what I need — not about what is wrong with you.
+3. No name-calling, no mocking, no "you always / you never".
+4. Either of us can say "pause" and we stop, without a penalty.
+5. Nothing said here gets used as a weapon later, or forwarded.
+6. The AI only helps us say things more clearly. It never takes a side, and it never decides anything for us.`;
 
-const HEART_OR_SPARK = /[❤️💛💚💙💜🧡💕💖💗💓💞💘😍🥰😘😻🫶✨]/u;
-const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
-
-/**
- * The same two filters the SQL side uses (`twin_is_ignored_message` /
- * `twin_is_placeholder_content`, from the Phase 1 tuning migration). Kept here
- * so a function that pulls its own `messages` rows still reads only real words.
- */
-const MECHANICAL_TYPES = new Set(["touch_reaction", "reaction", "react", "coinflip", "rps", "bored", "system"]);
-const PLACEHOLDER = /^\[(voice note|voice|sticker|gif|image|photo|video|file|document|media|deleted)\]$/i;
-const ONLY_EMOJI = /^[\s\p{So}\p{Sk}\u200D\uFE0E\uFE0F]+$/u;
-
-/** A tap, a game outcome, a system row — not something anyone said. */
-function isMechanicalMessage(messageType: string | null | undefined): boolean {
-  return MECHANICAL_TYPES.has(String(messageType ?? "text").toLowerCase());
-}
-
-/** A caption with no words in it. */
-function isPlaceholderContent(content: string | null | undefined): boolean {
-  const t = String(content ?? "").trim();
-  return t === "" || PLACEHOLDER.test(t) || ONLY_EMOJI.test(t);
-}
-
-/** Strip a line down to text we can compare and store. */
-function normalize(text: string): string {
-  return String(text ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function clean(text: string, max = 180): string {
-  return normalize(text).slice(0, max);
-}
-
-/** The first (most specific) kind that fits, or null. */
-function kindOf(text: string): { kind: string; weight: number } | null {
-  const t = String(text ?? "");
-  for (const entry of KIND_PATTERNS) {
-    if (entry.patterns.some((p) => p.test(t))) return { kind: entry.kind, weight: entry.weight };
-  }
-  return null;
-}
-
-/**
- * How much a line deserves to be kept. Deliberately boring: length in the
- * "says something" band, a kind, warmth, a concrete detail (a digit or a name).
- */
-function highlightScore(text: string, kind: string | null): number {
-  const t = normalize(text);
-  if (t.length < 8) return 0;
-
-  let score = 0.3;
-  if (t.length >= 24 && t.length <= 220) score += 0.12;
-  if (t.length >= 60) score += 0.05;
-  if (t.length < 14) score -= 0.12;
-
-  const entry = KIND_PATTERNS.find((e) => e.kind === kind);
-  if (entry) score += entry.weight;
-
-  if (HEART_OR_SPARK.test(t)) score += 0.12;
-  else if (EMOJI.test(t)) score += 0.05;
-  if (/[!]/.test(t)) score += 0.05;
-  if (/\d/.test(t)) score += 0.06;
-  if (/\b(sirf|always|never|sabse|favourite|favorite|best)\b/i.test(t)) score += 0.06;
-  if (t.endsWith("?")) score -= 0.08;
-  // A wall of forwarded text is not a memory.
-  if (/^https?:\/\//.test(t)) score -= 0.3;
-
-  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
-}
-
-/**
- * Keep the lines worth remembering from one day. At most `maxPerDay`, never the
- * same sentence twice, strongest first. `minScore` is the bar for a line with
- * no recognized kind to still qualify (as "other").
- */
-function extractHighlights(
-  lines: DayLine[],
-  opts: { day: string; maxPerDay?: number; minScore?: number } = { day: "" },
-): HighlightCandidate[] {
-  const maxPerDay = Math.max(1, opts.maxPerDay ?? 4);
-  const minScore = opts.minScore ?? 0.45;
-  const seen = new Set<string>();
-  const out: HighlightCandidate[] = [];
-
-  for (const line of lines ?? []) {
-    const text = clean(line.content);
-    if (text.length < 8) continue;
-
-    const found = kindOf(text);
-    const kind = found?.kind ?? "other";
-    const score = highlightScore(text, found?.kind ?? null);
-    if (!found && score < Math.max(minScore, 0.6)) continue;
-    if (score < 0.35) continue;
-
-    const key = `${kind}:${text.toLowerCase().replace(/[^a-z0-9\u0900-\u097F ]+/gi, "").trim()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    out.push({
-      message_id: line.id,
-      user_id: line.user_id,
-      day: opts.day || (line.created_at ?? "").slice(0, 10),
-      kind,
-      text,
-      score,
-    });
-  }
-
-  return out.sort((a, b) => b.score - a.score).slice(0, maxPerDay);
-}
-
-/** Sentence-ish splitter used by the fact patterns. */
-function sentences(text: string): string[] {
-  return normalize(text)
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/**
- * Tidy a captured phrase into something a person would recognize: no leading
- * "mujhe / hai / that", no trailing "hai / is", no dangling punctuation.
- * Hinglish word order puts the verb at the end, so both ends need work.
- */
-function phrase(text: string, max = 45, cutClause = false): string {
-  const base = cutClause ? clean(text, max).split(/[;,]/)[0] : clean(text, max);
-  return base
-    .replace(/^(?:mujhe|mujhko|mein|main|mai|i|to|that|ki|ka|ke|hai|h|is)\s+/i, "")
-    .replace(/\s+(?:hai|h|is|tha|thi|the|raha|rahi|rahe|kar|karna|hoti|hota)$/i, "")
-    .replace(/[.!,;:\s]+$/, "")
-    .trim();
-}
-
-const FACT_PATTERNS: { category: MemoryCategory; build: (m: RegExpMatchArray) => string | null; pattern: RegExp }[] = [
-  // "my favourite food is rajma chawal" / "mera favourite colour blue hai"
-  {
-    category: "likes",
-    pattern: /\b(?:my|mera|meri|apna)\s+(?:favourite|favorite|fav)\s+(.{2,30}?)\s+(?:is|hai|h)\s+(.{2,40})/i,
-    build: (m) => {
-      const what = phrase(m[1], 30, true);
-      const value = phrase(m[2], 40, true);
-      return what && value ? `favourite ${what}: ${value}` : null;
-    },
-  },
-  // "I love filter coffee" / "mujhe barish bahut pasand hai"
-  {
-    category: "likes",
-    pattern: /\b(?:i|main|mai|mein|mujhe|hum)\s+(?:really\s+|bahut\s+|bohot\s+|too\s+)?(?:love|like|pasand)\s+(?:to\s+)?(.{3,45})/i,
-    build: (m) => {
-      const v = phrase(m[1], 45, true);
-      return v.length >= 3 ? `loves ${v}` : null;
-    },
-  },
-  // "I hate crowds" / "mujhe noise pasand nahi"
-  {
-    category: "dislikes",
-    pattern: /\b(?:i|main|mai|mujhe)\s+(?:really\s+|bahut\s+|bohot\s+)?(?:hate|dislike|can't stand|cant stand)\s+(.{3,45})/i,
-    build: (m) => {
-      const v = phrase(m[1], 45, true);
-      return v.length >= 3 ? `dislikes ${v}` : null;
-    },
-  },
-  {
-    category: "dislikes",
-    pattern: /\b(.{3,40}?)\s+pasand nahi\b/i,
-    build: (m) => {
-      const v = phrase(m[1], 40, true);
-      return v.length >= 3 ? `dislikes ${v}` : null;
-    },
-  },
-  // "allergic to peanuts"
-  {
-    category: "important",
-    pattern: /\ballergic to\s+(.{2,40})/i,
-    build: (m) => `allergic to ${clean(m[1], 40)}`,
-  },
-  // "remember I have an exam on the 12th"
-  {
-    category: "important",
-    pattern: /\b(?:remember|yaad rakhna|note kar|don't forget|dont forget|bhoolna nahi)\b[:,]?\s*(.{4,90})/i,
-    build: (m) => {
-      const v = clean(m[1], 90).replace(/[.!,;:\s]+$/, "");
-      return v.length >= 4 ? `remember: ${v}` : null;
-    },
-  },
-  // "my birthday is 12 March" / "mera birthday 12 march hai"
-  {
-    category: "date",
-    pattern:
-      /\b(?:my|mera|meri|tumhara|your)?\s*(birthday|janamdin|janmdin|anniversary|saalgirah)\b[^0-9]{0,14}(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|\d{1,2}(?:st|nd|rd|th)?)/i,
-    build: (m) => {
-      const what = clean(m[1], 20).toLowerCase();
-      const when = phrase(m[2], 20);
-      return when ? `${what}: ${when}` : null;
-    },
-  },
-];
-
-/**
- * Durable facts from their own sentences — no AI, no guessing. Precision beats
- * recall on purpose: a wrong memory is worse than a missing one.
- */
-function extractFactCandidates(
-  lines: DayLine[],
-  opts: { ownerId: string; max?: number; day?: string },
-): FactCandidate[] {
-  const max = Math.max(1, opts.max ?? 8);
-  const out: FactCandidate[] = [];
-  const seen = new Set<string>();
-
-  for (const line of lines ?? []) {
-    const text = normalize(line.content);
-    if (text.length < 8) continue;
-
-    const day = opts.day || (line.created_at ?? "").slice(0, 10);
-    const found = kindOf(text);
-    const about: "owner" | "partner" = line.user_id === opts.ownerId ? "owner" : "partner";
-
-    for (const { category, pattern, build } of FACT_PATTERNS) {
-      const match = text.match(pattern);
-      if (!match) continue;
-      const fact = build(match);
-      if (!fact) continue;
-
-      const key = fact.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      out.push({
-        fact,
-        category,
-        about,
-        kind: found?.kind ?? null,
-        message_id: line.id,
-        day,
-        importance: Number(
-          Math.min(1, 0.4 + (category === "important" ? 0.25 : category === "date" ? 0.3 : 0.15)).toFixed(3),
-        ),
-        quote: clean(text, 120),
-      });
-      break; // one fact per sentence is plenty
-    }
-  }
-
-  return out.slice(0, max);
-}
-
-/** Higher = more worth remembering. Recency is the only clock used. */
-function importanceOf(candidate: { kind?: string | null; importance?: number; day?: string | null }, today?: string): number {
-  let base = candidate.importance ?? 0.5;
-  const entry = KIND_PATTERNS.find((e) => e.kind === candidate.kind);
-  if (entry) base = Math.max(base, 0.45 + entry.weight);
-  if (candidate.day && today) {
-    const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${candidate.day}T00:00:00Z`)) / 86_400_000);
-    if (Number.isFinite(days)) base += days <= 2 ? 0.1 : days <= 7 ? 0.05 : 0;
-  }
-  return Math.max(0, Math.min(1, Number(base.toFixed(3))));
-}
-
-/**
- * The top slice — the only lines worth a model call (plan §Phase 5: heuristics
- * for everything, LLM for the top 5%). Always capped, never zero when there is
- * something good to ask about.
- */
-function selectWorthAsking<T extends { importance?: number; score?: number }>(
-  candidates: T[],
-  opts: { percent?: number; cap?: number; minImportance?: number } = {},
-): T[] {
-  const percent = Math.max(1, Math.min(100, opts.percent ?? 5));
-  const cap = Math.max(0, opts.cap ?? 2);
-  const minImportance = opts.minImportance ?? 0.6;
-
-  const ranked = [...(candidates ?? [])].sort(
-    (a, b) => (b.importance ?? b.score ?? 0) - (a.importance ?? a.score ?? 0),
-  );
-  if (ranked.length === 0 || cap === 0) return [];
-
-  const take = Math.max(1, Math.min(cap, Math.ceil((ranked.length * percent) / 100)));
-  return ranked.filter((c) => (c.importance ?? c.score ?? 0) >= minImportance).slice(0, take);
-}
-
-/** Facts that say the same thing, however they were phrased. */
-function dedupeFacts<T extends { fact: string }>(facts: T[]): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const f of facts ?? []) {
-    const key = normalize(f.fact)
-      .toLowerCase()
-      .replace(/^(loves|dislikes|likes|remember:)\s*/, "")
-      .replace(/[^a-z0-9\u0900-\u097F ]+/gi, "")
-      .trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(f);
-  }
-  return out;
-}
-
-/** The one prompt the sweep may spend a call on (build-plan §5 / Phase 5). */
-function buildMemoryPrompt(
-  lines: { who: string; text: string }[],
-  names: { ownerName: string; partnerName: string },
-): { system: string; user: string } {
+/** The prompt for one rewrite. Grounded, never sanitising the complaint away. */
+function buildSoftenPrompt(input: {
+  draft: string;
+  senderName: string;
+  partnerName: string;
+  topicsSoFar?: string[];
+}): { system: string; user: string } {
   const system =
-    `You read a few lines a couple wrote to each other and extract only facts that will still be true in a month. ` +
-    `People: ${names.ownerName} (him), ${names.partnerName} (her). ` +
-    `Capture preferences, favourites, dates, allergies, people, places, promises that matter — NOT moods, plans for tomorrow, or chatter. ` +
-    `Write each fact as a short third-person phrase (max 12 words), in English, e.g. "loves filter coffee", "birthday is 12 March". ` +
-    `Reply with ONLY JSON: {"facts":[{"fact":"...","category":"likes|dislikes|important|date|other","about":"${names.ownerName}|${names.partnerName}"}]}. ` +
-    `At most 5 facts. If nothing is durable, return {"facts":[]}.`;
+    `You help ${input.senderName} say something difficult to ${input.partnerName} without hurting them. ` +
+    `Rewrite their message so that:\n` +
+    `- every concrete fact and the actual complaint stay — never soften the problem away or turn it into "never mind";\n` +
+    `- blame goes: no "you always", "you never", "you made me", no mockery, no threats, no sarcasm;\n` +
+    `- it is written in first person about their own feelings and needs ("I felt… when…; what I need is…");\n` +
+    `- it stays their language (English / Hindi / Hinglish) and about as long as what they wrote;\n` +
+    `- nothing new is added: no facts, no apologies they did not offer, no promises.\n` +
+    `Reply with JSON only: {"gentler": "...", "need": "one short line: what they actually need", "land": "one short line: how it may land on ${input.partnerName}"}`;
 
-  const user = lines.map((l) => `${l.who}: ${l.text}`).join("\n");
-  return { system, user: `Lines:\n${user}` };
+  const earlier = (input.topicsSoFar ?? []).filter(Boolean).slice(-6);
+  const user = earlier.length
+    ? `Already said in this room:\n${earlier.map((t) => `- ${t}`).join("\n")}\n\nNew message to rewrite:\n${input.draft}`
+    : `Message to rewrite:\n${input.draft}`;
+
+  return { system, user };
 }
 
-/** Pull the good stuff out of one day, in one call. */
-function summarizeDay(
-  lines: DayLine[],
-  opts: { day: string; ownerId: string; maxHighlights?: number; maxFacts?: number },
-): { highlights: HighlightCandidate[]; facts: FactCandidate[] } {
+/** Some models wrap JSON in prose — find the object. Renamed to stay unique. */
+function parseFtfJson(raw: string): Record<string, unknown> | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const attempt = (s: string) => {
+    try {
+      const v = JSON.parse(s);
+      return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+  const direct = attempt(text);
+  if (direct) return direct;
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  return attempt(text.slice(start, end + 1));
+}
+
+const tidy = (v: unknown, max: number): string =>
+  String(v ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+
+/** Whatever came back, only a usable rewrite is kept. */
+function parseSoften(raw: string, fallbackDraft: string): SoftenedTurn {
+  const obj = parseFtfJson(raw);
+  const gentler = tidy(obj?.gentler ?? obj?.reply ?? obj?.text, 900);
+
+  if (!obj || gentler.length < 4) {
+    return { gentler: fallbackDraft, need: "", land: "", parsed: false };
+  }
+
   return {
-    highlights: extractHighlights(lines, { day: opts.day, maxPerDay: opts.maxHighlights ?? 4 }),
-    facts: extractFactCandidates(lines, { ownerId: opts.ownerId, day: opts.day, max: opts.maxFacts ?? 6 }),
+    gentler,
+    need: tidy(obj?.need ?? obj?.what_i_need, 160),
+    land: tidy(obj?.land ?? obj?.how_it_may_land, 160),
+    parsed: true,
   };
 }
 
-export type { DayLine as MemoryDayLine };
+/**
+ * The moment the room stops. Deliberately broad on purpose: a missed flag is a
+ * person left alone with something terrible; a false positive only costs one
+ * conversation being interrupted with an offer of help.
+ */
+const STOP_PATTERNS: { flag: FtfStopFlag; patterns: RegExp[] }[] = [
+  {
+    flag: "self_harm",
+    patterns: [
+      /\b(?:kill|hurt|cut|harm)(?:ing)? myself\b/i,
+      /\b(?:want|wanna|going) to die\b/i,
+      /\bsuicid(?:e|al)\b/i,
+      /\bend (?:it all|my life|everything)\b/i,
+      /\bno (?:reason|point) (?:to|in) liv(?:e|ing)\b/i,
+      /\bjaan den[ae]|jaan de dung[ai]|aatmhatya|khudkhushi|khatam kar (?:dunga|dungi) (?:sab|apna)\b/i,
+      /\bmar (?:jaunga|jaungi|jaana|jana|jaaun|jaun)\b/i,
+      /\bmarna chah(?:ta|ti) (?:hoon|hun)\b/i,
+      /\bjeena nahi chaht(?:a|i)\b/i,
+    ],
+  },
+  {
+    flag: "abuse",
+    patterns: [
+      /\b(?:he|she|they|partner|husband|wife|boyfriend|girlfriend|papa|dad|father|uncle|bhai) (?:hits?|beat|beats|hit|slapped|choked|threatened|raped|touched) me\b/i,
+      /\bi(?:'m| am) (?:scared|afraid) (?:of|for) (?:him|her|them|my life|my safety)\b/i,
+      /\b(?:mar|maar) ?(?:deta|deti|diya|di)\b/i,
+      /\b(?:force|forced|forcing) (?:me|kar)/i,
+      /\b(?:ghar|ghar mein) (?:nahi|na) (?:jaana|jaana) chahti\b/i,
+    ],
+  },
+];
+
+/** Which flags a piece of text carries (if any). */
+function stopFlags(text: string): FtfStopFlag[] {
+  const t = String(text ?? "");
+  const flags: FtfStopFlag[] = [];
+  for (const { flag, patterns } of STOP_PATTERNS) {
+    if (patterns.some((p) => p.test(t))) flags.push(flag);
+  }
+  return flags;
+}
+
+/** Convenience: does this stop the room? */
+function shouldStop(text: string): { stop: boolean; flags: FtfStopFlag[] } {
+  const flags = stopFlags(text);
+  return { stop: flags.length > 0, flags };
+}
+
+/**
+ * What both of them see when a room stops. Real Indian helplines, in the order
+ * someone would actually use them. The AI steps out of the way entirely.
+ */
+function safetyResources(flags: FtfStopFlag[] = []): string {
+  const head =
+    flags.includes("abuse")
+      ? "I'm going to stop helping here, because what you just wrote is not something a chat should carry."
+      : "I'm going to stop helping here, because you just wrote something about not being safe, and that matters much more than anything I was doing.";
+
+  return [
+    head,
+    "",
+    "Please talk to a real person today — one of these, or anyone you trust:",
+    "• Tele-MANAS (India, 24×7): 14416 — free, and they speak Hindi and English",
+    "• AASRA (24×7): 98204 66726",
+    "• KIRAN mental-health helpline (24×7): 1800-599-0019",
+    "• iCall (Mon–Sat, 10am–8pm): 91529 87821",
+    "• If someone is hurting you: Women's Helpline 181 · Police 112 · Childline 1098",
+    "",
+    "If you are in immediate danger, call 112 now.",
+    "",
+    "This room is paused, not closed. Anything you two want to say to each other can still be said — but not through me.",
+  ].join("\n");
+}
+
+/** Whose turn is it now? Kept here so the UI and the SQL never disagree. */
+function nextTurn(current: string | null, a: string, b: string | null): string | null {
+  if (!b) return current ?? a;
+  if (!current) return a;
+  return current === a ? b : a;
+}
+
+/** Has the room gone on long enough to deserve a closing note? */
+function shouldOfferClosing(session: { turn_count?: number; max_turns?: number; stage?: string }): boolean {
+  if (session.stage === "closing") return true;
+  const count = Number(session.turn_count ?? 0);
+  const max = Number(session.max_turns ?? 24);
+  return count >= max;
+}
+
+/**
+ * The closing note: what each of them said they needed, and one next step.
+ * The prompt asks for JSON so the room can render it as three short blocks.
+ */
+function buildClosingPrompt(input: {
+  ownerName: string;
+  partnerName: string;
+  topic: string;
+  turns: FtfTurn[];
+}): { system: string; user: string } {
+  const system =
+    `Two people just finished a hard conversation about "${input.topic}". ` +
+    `Write a short closing note that helps them remember it kindly. ` +
+    `Reply with JSON only: {"note": "3-5 short sentences, plain and warm, no advice, no therapy-speak", ` +
+    `"needs_${input.ownerName.toLowerCase().replace(/[^a-z]/g, "") || "a"}": "one line — what he asked for", ` +
+    `"needs_${input.partnerName.toLowerCase().replace(/[^a-z]/g, "") || "b"}": "one line — what she asked for", ` +
+    `"next_step": "one concrete, small thing they agreed to try"}. ` +
+    `Use only what is in their words. If they did not agree anything, say so gently in next_step rather than inventing it.`;
+
+  const transcript = input.turns
+    .filter((t) => t.kind === "message" && t.content.trim())
+    .map((t) => `${t.user_id === "owner" ? input.ownerName : input.partnerName}: ${t.content}`)
+    .join("\n");
+
+  return { system, user: `Their conversation:\n${transcript.slice(0, 5000)}` };
+}
+
+/** Whatever the model returned, reduced to what the note card renders. */
+function parseClosing(raw: string, fallback: { note: string }): {
+  note: string;
+  aNeed: string;
+  bNeed: string;
+  nextStep: string;
+  parsed: boolean;
+} {
+  const obj = parseFtfJson(raw);
+  const note = tidy(obj?.note, 1200);
+  const values = Object.values(obj ?? {});
+  const needs = values.filter((v) => typeof v === "string").slice(0, 4) as string[];
+
+  return {
+    note: note.length >= 10 ? note : fallback.note,
+    aNeed: tidy(obj?.needs_a ?? needs[0], 200),
+    bNeed: tidy(obj?.needs_b ?? needs[1], 200),
+    nextStep: tidy(obj?.next_step ?? obj?.nextStep, 200),
+    parsed: Boolean(obj && note.length >= 10),
+  };
+}
+
+/** A free closing note — used when the model is out of quota or fails. */
+function heuristicClosing(turns: FtfTurn[], names: { a: string; b: string }): string {
+  const spoken = turns.filter((t) => t.kind === "message" && t.content.trim());
+  const a = spoken.filter((t) => t.user_id === "owner").length;
+  const b = spoken.filter((t) => t.user_id === "partner").length;
+  if (spoken.length === 0) {
+    return "The room is closed — nothing was said this time, and that is allowed too. The door stays open.";
+  }
+  return (
+    `You both came into this room instead of letting it sit: ${names.a} said ${a} thing${a === 1 ? "" : "s"}, ` +
+    `${names.b} said ${b}. Nobody has to have won it. ` +
+    `If something is still open, the next move is a small one — one sentence, one hour, no history.`
+  );
+}
+
+export type { FtfStopFlag as FtfStopFlagType, FtfTurn as FtfTurnRow };
 export {
-  buildMemoryPrompt,
-  clean,
-  dedupeFacts,
-  extractFactCandidates,
-  extractHighlights,
-  highlightScore,
-  importanceOf,
-  isMechanicalMessage,
-  isPlaceholderContent,
-  phrase,
-  KIND_PATTERNS,
-  kindOf,
-  normalize,
-  selectWorthAsking,
-  summarizeDay,
+  buildClosingPrompt,
+  buildSoftenPrompt,
+  FTF_RULES,
+  heuristicClosing,
+  nextTurn,
+  parseClosing,
+  parseFtfJson,
+  parseSoften,
+  safetyResources,
+  shouldOfferClosing,
+  shouldStop,
+  stopFlags,
 };
-// ── END INLINE: memory.ts ──
+// ── END INLINE: ftf.ts ──
 // ── END GENERATED BLOCK ──
 
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
@@ -1519,133 +1340,86 @@ Deno.serve(async (req) => {
   try {
     const { userId, supabase } = await requirePartner(req);
     const body = await req.json().catch(() => ({}));
-    const days = Math.max(1, Math.min(31, Number(body?.days ?? 7) || 7));
-    const force = body?.force === true;
+    const action = String(body?.action ?? "state");
 
-    const { data: state } = await supabase.rpc("twin_nightly_state", { p_force: force });
-    if (state && state.allowed === false) {
-      return jsonResponse({ skipped: true, reason: state.reason ?? "too_soon", minutes_since: state.minutes_since, state });
-    }
+    // Every room RPC checks `auth.uid()`, so those calls run as the person.
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const asUser = async () => {
+      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+      return createClient(envGet("SUPABASE_URL")!, envGet("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    };
+    const me = await asUser();
 
     const { data: cfg } = await supabase.from("twin_config").select("*").eq("id", 1).maybeSingle();
-    if (!cfg) throw new AiError(409, "Twin is not configured yet.");
+    const ownerName: string = cfg?.owner_name ?? "him";
+    const partnerName: string = cfg?.partner_name ?? "her";
+    const names = { ownerName, partnerName };
+    const isOwner = userId === (cfg?.owner_user_id ?? "");
 
-    const ownerName: string = cfg.owner_name ?? "him";
-    const partnerName: string = cfg.partner_name ?? "her";
-
-    // Names → ids, so a fact is attributed to a person and not a string.
-    const { data: statuses } = await supabase.from("user_status").select("user_id, name");
-    const nameToId = new Map<string, string>(
-      (statuses ?? [])
-        .filter((s: { name: string | null }) => s.name)
-        .map((s: { user_id: string; name: string }) => [s.name.toLowerCase(), s.user_id]),
-    );
-    nameToId.set(ownerName.toLowerCase(), cfg.owner_user_id);
-    nameToId.set(partnerName.toLowerCase(), cfg.partner_user_id);
-
-    // The window: the last `days` days, today included (a re-run is harmless —
-    // highlights dedupe on their text, facts on their lowercase fact).
-    const istToday = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
-    const dayList: string[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      dayList.push(new Date(Date.parse(`${istToday}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10));
+    // ── free actions ──────────────────────────────────────────────────────
+    if (action === "open") {
+      const { data, error } = await me.rpc("ftf_open", { p_topic: String(body?.topic ?? "").slice(0, 200) });
+      if (error) throw new AiError(400, error.message);
+      return jsonResponse({ ok: true, session: data });
     }
 
-    let highlights = 0;
-    let factsHeuristic = 0;
-    const askAbout: { who: string; text: string; messageId: string; day: string; about: "owner" | "partner" }[] = [];
-    const seenFacts = new Set<string>();
+    if (action === "join") {
+      const { data, error } = await me.rpc("ftf_join", { p_session: body?.session_id });
+      if (error) throw new AiError(400, error.message);
+      return jsonResponse({ ok: true, session: data });
+    }
 
-    for (const day of dayList) {
-      const { data: rows } = await supabase.rpc("twin_day_messages", { p_day: day });
-      const lines = ((rows ?? []) as DayLineRow[]).map((r) => ({
-        id: r.id,
-        user_id: r.user_id,
-        username: r.username,
-        content: r.content ?? "",
-        created_at: r.created_at,
-      }));
-      if (lines.length === 0) continue;
+    if (action === "agree") {
+      const { data, error } = await me.rpc("ftf_agree", { p_session: body?.session_id });
+      if (error) throw new AiError(400, error.message);
+      return jsonResponse({ ok: true, session: data, both_agreed: (data as { both_agreed?: boolean })?.both_agreed });
+    }
 
-      const { highlights: dayHighlights, facts } = summarizeDay(lines, {
-        day,
-        ownerId: cfg.owner_user_id,
-        maxHighlights: 4,
-        maxFacts: 6,
+    if (action === "pause") {
+      const { data, error } = await me.rpc("ftf_pause", {
+        p_session: body?.session_id,
+        p_paused: body?.paused !== false,
+      });
+      if (error) throw new AiError(400, error.message);
+      return jsonResponse({ ok: true, session: data });
+    }
+
+    if (action === "state") {
+      const { data, error } = await me.rpc("ftf_state", { p_session: body?.session_id ?? null });
+      if (error) throw new AiError(400, error.message);
+      return jsonResponse({ ok: true, ...(data as Record<string, unknown>) });
+    }
+
+    // ── the one paid action that is never stored ──────────────────────────
+    if (action === "soften") {
+      const draft = String(body?.text ?? "").trim().slice(0, 900);
+      if (!draft) throw new AiError(400, "nothing to rewrite");
+
+      // Safety first — before the model, not after. A turn that trips a stop
+      // flag never gets "improved"; the room stops.
+      const stop = shouldStop(draft);
+      if (stop.stop) {
+        return jsonResponse({ ok: false, stop: true, flags: stop.flags, resources: safetyResources(stop.flags) });
+      }
+
+      const { data: state } = await me.rpc("ftf_state", { p_session: body?.session_id });
+      const turns = ((state as { turns?: FtfTurn[] })?.turns ?? []).filter((t) => t.kind === "message").slice(-6);
+
+      const prompt = buildSoftenPrompt({
+        draft,
+        senderName: isOwner ? ownerName : partnerName,
+        partnerName: isOwner ? partnerName : ownerName,
+        topicsSoFar: turns.map((t) => `${t.user_id === cfg?.owner_user_id ? ownerName : partnerName}: ${t.content}`),
       });
 
-      // ── highlights (free, and never duplicated) ──────────────────────────
-      if (dayHighlights.length > 0) {
-        const { data: existing } = await supabase.from("message_highlights").select("text").eq("day", day);
-        const known = new Set((existing ?? []).map((r: { text: string }) => r.text.toLowerCase()));
-        const fresh = dayHighlights.filter((h) => !known.has(h.text.toLowerCase()));
-        if (fresh.length > 0) {
-          const { error } = await supabase.from("message_highlights").insert(
-            fresh.map((h) => ({
-              message_id: h.message_id,
-              user_id: h.user_id,
-              day: h.day,
-              kind: h.kind,
-              text: h.text,
-              score: h.score,
-              source: "heuristic",
-            })),
-          );
-          if (!error) highlights += fresh.length;
-        }
-      }
-
-      // ── facts the patterns caught (free) ─────────────────────────────────
-      for (const fact of facts) {
-        const key = fact.fact.toLowerCase();
-        if (seenFacts.has(key)) continue;
-        seenFacts.add(key);
-
-        const subject = fact.about === "owner" ? cfg.owner_user_id : cfg.partner_user_id;
-        const { data: saved } = await supabase.rpc("twin_memory_upsert", {
-          p_subject: subject,
-          p_fact: fact.fact,
-          p_category: fact.category,
-          p_source: "auto",
-          p_confidence: 0.55,
-          p_importance: importanceOf(fact, istToday),
-          p_day: fact.day,
-          p_message_id: fact.message_id,
-          p_kind: fact.kind,
-          p_owner: userId,
-        });
-        if (saved?.ok) factsHeuristic += 1;
-      }
-
-      // ── what might need the model: the strongest lines of the day ────────
-      const worth = selectWorthAsking(dayHighlights, { percent: 5, cap: 3, minImportance: 0.55 });
-      for (const h of worth) {
-        askAbout.push({
-          who: h.user_id === cfg.owner_user_id ? ownerName : partnerName,
-          text: h.text,
-          messageId: h.message_id,
-          day: h.day,
-          about: h.user_id === cfg.owner_user_id ? "owner" : "partner",
-        });
-      }
-    }
-
-    // ── the one paid step ───────────────────────────────────────────────────
-    let factsLlm = 0;
-    let llmCalls = 0;
-    let tokens = 0;
-
-    const askLines = askAbout.slice(0, 24);
-    if (askLines.length > 0) {
       try {
-        const prompt = buildMemoryPrompt(
-          askLines.map((l) => ({ who: l.who, text: l.text })),
-          { ownerName, partnerName },
-        );
         const result = await callLLM({
-          task: "extract",
+          task: "face_to_face",
           sensitivity: "private",
-          tag: "nightly-memory",
+          tag: "ftf-soften",
           userId,
           json: true,
           messages: [
@@ -1653,90 +1427,121 @@ Deno.serve(async (req) => {
             { role: "user", content: prompt.user },
           ],
         });
-        llmCalls += 1;
-        tokens += (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
 
-        const parsed = parseJsonLoose<{ facts?: { fact?: string; category?: string; about?: string; quote?: string }[] }>(
-          result.text,
-        );
-        const returned = dedupeFacts(
-          (parsed?.facts ?? [])
-            .filter((f) => f.fact && f.fact.trim().length >= 4)
-            .map((f) => ({ fact: String(f.fact).trim(), category: f.category ?? "other", about: f.about ?? "" })),
-        ).slice(0, 5);
+        // The rewrite gets the same safety screen as the draft: if the model
+        // returned something that trips a flag, it is not offered at all.
+        const checked = shouldStop(result.text);
+        const softened = parseSoften(result.text, draft);
+        const safe = !checked.stop && !shouldStop(softened.gentler).stop;
 
-        for (const f of returned) {
-          const subject = nameToId.get(String(f.about).toLowerCase()) ?? null;
-          if (!subject || subject === undefined) continue;
-          if (subject !== cfg.owner_user_id && subject !== cfg.partner_user_id) continue;
-
-          const { data: saved } = await supabase.rpc("twin_memory_upsert", {
-            p_subject: subject,
-            p_fact: f.fact,
-            p_category: f.category,
-            p_source: "auto",
-            p_confidence: 0.8,
-            p_importance: 0.7,
-            p_day: askLines[0]?.day ?? null,
-            p_kind: null,
-            p_owner: userId,
-          });
-          if (saved?.ok) factsLlm += 1;
-        }
+        return jsonResponse({
+          ok: true,
+          ...softened,
+          safe,
+          model: `${result.provider}/${result.model}`,
+          tokens: (result.tokensIn ?? 0) + (result.tokensOut ?? 0),
+        });
       } catch (e) {
-        // The night is not lost: the free pass already stored what it found.
-        console.error("nightly memory LLM step failed:", e instanceof Error ? e.message : e);
+        // No rewrite available? Their own words are always allowed.
+        return jsonResponse({ ok: true, gentler: draft, need: "", land: "", parsed: false, unavailable: true, error: e instanceof Error ? e.message : "unavailable" });
       }
     }
 
-    // Housekeeping that belongs to the same beat as the memory sweep: action
-    // cards that nobody tapped, and rooms nobody came back to. Both are free.
-    let expiredCards = 0;
-    let fadedRooms = 0;
-    try {
-      const { data: n } = await supabase.rpc("twin_actions_expire");
-      expiredCards = Number(n ?? 0) || 0;
-      const { data: r } = await supabase.rpc("ftf_sweep", { p_idle_hours: 48 });
-      fadedRooms = Number(r ?? 0) || 0;
-    } catch (e) {
-      console.error("nightly housekeeping skipped:", e instanceof Error ? e.message : e);
+    // ── sending a turn ────────────────────────────────────────────────────
+    if (action === "send") {
+      const raw = String(body?.text ?? "").trim().slice(0, 3000);
+      if (!raw) throw new AiError(400, "nothing to say");
+
+      const stop = shouldStop(raw);
+      const softenedText = typeof body?.softened === "string" ? String(body.softened).trim().slice(0, 3000) : "";
+      const useSoftened = body?.use_softened === true && softenedText.length > 0;
+      const content = useSoftened ? softenedText : raw;
+
+      const { data, error } = await me.rpc("ftf_add_turn", {
+        p_session: body?.session_id,
+        p_content: content,
+        p_original: useSoftened ? raw : null,
+        p_softened: useSoftened,
+        p_flags: stop.flags,
+        p_kind: "message",
+      });
+      if (error) throw new AiError(400, error.message);
+
+      const stopped = Boolean((data as { stopped?: boolean })?.stopped);
+
+      // The room stopped: both of them get the resources as a system turn, and
+      // the assistant says nothing else.
+      if (stopped) {
+        await supabase.from("ftf_turns").insert({
+          session_id: body?.session_id,
+          user_id: userId,
+          kind: "resources",
+          content: safetyResources(stop.flags),
+          flags: stop.flags,
+        });
+      }
+
+      return jsonResponse({ ok: true, stopped, flags: stop.flags, ...(data as Record<string, unknown>) });
     }
 
-    const { data: log } = await supabase.rpc("twin_nightly_log", {
-      p_days: days,
-      p_highlights: highlights,
-      p_facts_heuristic: factsHeuristic,
-      p_facts_llm: factsLlm,
-      p_llm_calls: llmCalls,
-      p_tokens: tokens,
-      p_note:
-        (askLines.length > 0 ? `asked about ${askLines.length} line(s)` : "heuristics only") +
-        `; closed ${expiredCards} stale card(s), ${fadedRooms} faded room(s)`,
-    });
+    // ── closing the room ──────────────────────────────────────────────────
+    if (action === "close") {
+      const { data: state } = await me.rpc("ftf_state", { p_session: body?.session_id });
+      const session = (state as { session?: Record<string, unknown> })?.session ?? {};
+      const turns = ((state as { turns?: FtfTurn[] })?.turns ?? []).filter((t) => t.kind === "message");
 
-    return jsonResponse({
-      ok: true,
-      days,
-      window: { from: dayList[0], to: dayList[dayList.length - 1] },
-      highlights,
-      facts_heuristic: factsHeuristic,
-      facts_llm: factsLlm,
-      llm_calls: llmCalls,
-      tokens,
-      asked_about: askLines.length,
-      expired_cards: expiredCards,
-      faded_rooms: fadedRooms,
-      log,
-    });
+      // A closing note only makes sense once something was said; and if the
+      // room stopped for safety, there is no note — the resources stand.
+      if (turns.length === 0 || (session as { status?: string }).status === "stopped") {
+        const { data, error } = await me.rpc("ftf_close", { p_session: body?.session_id, p_note: null });
+        if (error) throw new AiError(400, error.message);
+        return jsonResponse({ ok: true, note: null, session: data });
+      }
+
+      const prompt = buildClosingPrompt({
+        ownerName,
+        partnerName,
+        topic: String((session as { topic?: string }).topic ?? "something"),
+        turns: turns.map((t) => ({
+          ...t,
+          user_id: t.user_id === cfg?.owner_user_id ? "owner" : "partner",
+        })),
+      });
+
+      let note = heuristicClosing(turns.map((t) => ({ ...t, user_id: t.user_id === cfg?.owner_user_id ? "owner" : "partner" })), {
+        a: ownerName,
+        b: partnerName,
+      });
+      let parsed = { aNeed: "", bNeed: "", nextStep: "" };
+
+      try {
+        const result = await callLLM({
+          task: "summary",
+          sensitivity: "private",
+          tag: "ftf-close",
+          userId,
+          json: true,
+          messages: [
+            { role: "system", content: prompt.system },
+            { role: "user", content: prompt.user },
+          ],
+        });
+        const closing = parseClosing(result.text, { note });
+        note = closing.note;
+        parsed = { aNeed: closing.aNeed, bNeed: closing.bNeed, nextStep: closing.nextStep };
+      } catch (e) {
+        // the free note above stands; the room still closes
+        console.error("ftf closing note fell back to heuristics:", e instanceof Error ? e.message : e);
+      }
+
+      const { data, error } = await me.rpc("ftf_close", { p_session: body?.session_id, p_note: note });
+      if (error) throw new AiError(400, error.message);
+
+      return jsonResponse({ ok: true, note, ...parsed, session: data });
+    }
+
+    throw new AiError(400, `Unknown action: ${action}`);
   } catch (e) {
     return errorResponse(e);
   }
 });
-
-interface DayLineRow {
-  id: string;
-  user_id: string;
-  username: string | null;
-  content: string | null;
-  created_at: string;
-}

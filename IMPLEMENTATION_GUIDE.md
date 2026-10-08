@@ -24,10 +24,12 @@ change.
 | 4 | Her chat with the twin + the away-reply in the real chat | `20261007090000_twin_chat.sql` | `twin-reply` |
 | 5 | Memory 2.0 — heuristics first, the model only for the top 5% | `20261008090000_twin_memory.sql` | `twin-nightly`, `ai-memory-extract` |
 | 7 | Assistant actions — the twin proposes, you tap | `20261008120000_twin_actions.sql` | `twin-actions` |
+| 8 | Face to Face — the hard-conversation room | `20261008150000_twin_ftf.sql` | `face-to-face` |
 | 9a | Media compression (storage + quality) | — | — |
+| 9b | Printed book (A5, one day per page) + owner maintenance | — | `twin-maintenance` |
 
-Still to come in the plan: **8** (Face to Face) and the rest of **9**
-(ops, admin polish, printed-book export, tests).
+With that, every phase of the plan is built. What remains is not a phase: it is
+live use — apply §2–§9 once, then keep adding lines, pages and rooms.
 
 ---
 
@@ -268,6 +270,80 @@ select public.twin_actions_list(10);
 
 ---
 
+## 8b. Face to Face (Phase 8)
+
+```bash
+supabase db push                      # 20261008150000_twin_ftf.sql
+supabase functions deploy face-to-face
+```
+
+A room for the conversation that is too heavy for the chat. One topic, both of
+you, six ground rules you both agree before a word is exchanged (`ftf_agree` —
+the room genuinely refuses turns until then).
+
+- Turns alternate. Before sending, either of you can tap the wand: one private
+  `face_to_face` call rewrites what you wrote so the point survives and the blame
+  does not. You read it, you can edit it, and you choose — **only what you choose
+  is stored**, with your original kept beside it (nothing can be misquoted).
+- Either of you can pause, without saying why. That is a ground rule, not a bug.
+- **When a turn carries a self-harm or abuse signal the room stops.** No more
+  mediation, no closing note: both of you are shown real helplines (Tele-MANAS
+  14416, AASRA, KIRAN, iCall, 181, 112) and the assistant is out of it. The flag
+  is recorded on the turn.
+- “Wrap up” writes the closing note: the free version needs no AI at all, and
+  with AI it adds what each of you asked for and one small next step.
+- Rooms nobody returns to fade after 48 h (`ftf_sweep`, also called by
+  `twin-nightly` and by the Tidy up button below).
+
+Verify:
+
+```sql
+select public.ftf_state();        -- the open room, if any
+select * from public.ftf_recent(12);
+```
+
+Route: `/face-to-face` (also in the Gather drawer on Home, and linked from the
+twin chat).
+
+---
+
+## 8c. Maintenance: the owner's one button (Phase 9)
+
+```bash
+supabase functions deploy twin-maintenance
+```
+
+`/you/twin` → **Maintenance** does the two things that otherwise need a
+terminal, owner-only:
+
+- **Build the index** — `twin_rebuild_all(true)` in SQL, then it loops
+  `embed-backfill` until every chunk and reply pair has a vector, and reports
+  how many it filled and what is still missing. Free; it never touches
+  `messages`.
+- **Tidy up** — closes action cards nobody tapped and fades rooms nobody
+  returned to. The same two things happen inside `twin-nightly`.
+
+The card also shows readiness (sessions, reply pairs, vectors missing, open
+cards, open rooms, last sweep). If the vectors are still incomplete after a tap,
+just tap again — it is batched on purpose so no single request runs too long.
+
+---
+
+## 8d. The printed book (Phase 9)
+
+Nothing to run. Open `/book/print` (or the “print the whole book” pill on the
+book's cover screen):
+
+- one day per page, the cover first, a closing page last;
+- A5 portrait with 16 mm margins, colour preserved — the exact thing a print
+  shop asks for;
+- **Print / Save as PDF** in the toolbar is the export. Days that were never
+  opened still print, because the browser composes them for free.
+
+Ask the shop for "print as-is, no scaling".
+
+---
+
 ## 9. Media: storage load, and the honest answer about quality
 
 ### What the app does now (no database step at all)
@@ -356,6 +432,8 @@ supabase functions deploy book-page
 supabase functions deploy twin-reply
 supabase functions deploy twin-nightly
 supabase functions deploy twin-actions
+supabase functions deploy face-to-face
+supabase functions deploy twin-maintenance
 supabase functions deploy ai-memory-extract
 # plus everything in LLM_ROUTER.md after a router change
 ```
@@ -393,6 +471,10 @@ it — the script tells you which ones changed.
 | "How was today?" | 1 (`summary`), cached per day |
 | A plan or a draft rewrite | 1 each |
 | A card being confirmed | 0 — it is a database write |
+| Opening a Face to Face room, agreeing, sending a turn as written | 0 |
+| Asking for a gentler version of one turn | 1 (`face_to_face`) — and nothing is stored unless you send it |
+| Wrapping up a room | 1 (`summary`), with a free fallback note |
+| Printing the book, building the index, tidying up | 0 |
 | Every photo you send | 0 — compression is on-device |
 
 Daily budget: `LLM_DAILY_TOKEN_BUDGET` (default 60 000). When it runs out,
@@ -415,6 +497,10 @@ it is resting, cards are simply not proposed.
    twin in every path — no function in this repo writes to it except the app's
    own send path.
 6. No prompt content is stored in `llm_usage`; it records counts and tokens only.
+7. A Face to Face turn is never rewritten silently: the softened version is a
+   suggestion you can edit, and your original is kept beside it.
+8. If a turn signals self-harm or abuse, the assistant stops and real helplines
+   are shown — it does not try to handle it.
 
 ---
 
@@ -429,4 +515,7 @@ it is resting, cards are simply not proposed.
 | Cards never appear in `/twin` | the phrase must match a kind — "remind me to…", "send him a message at…", "add an event…" |
 | Auto-reply never fires | it needs him **offline** past the wait, her last message unanswered, and the day/gap budgets to allow it — `/you/twin` shows "nothing sent" plus the reason |
 | Storage still growing fast | Settings → Storage, and check videos — they are deliberately untouched |
+| Face to Face says the rules are not agreed | both of you tap "I agree" — the room waits for both, by design |
+| A room says "paused" and will not take a turn | either of you can resume; a pause needs no reason |
+| The book prints blank pages | days with no lines that day are intentionally quiet — untick "only days with a written page" |
 | Everything AI fails | `select * from public.llm_usage order by day desc limit 20;` and the secrets in §2 |

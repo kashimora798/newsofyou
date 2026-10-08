@@ -6,7 +6,8 @@ import BottomNav from "@/components/layout/BottomNav";
 import HomeScene from "@/components/home/HomeScene";
 import { useBookDays, useBookMeta, type BookDayRow } from "@/hooks/useBook";
 import { BOOK_STYLES, MOOD_LABELS, bookStyle, monthLabel, shortDayLabel, weekdayLabel } from "@/components/book/bookStyle";
-import { Loader2 } from "lucide-react";
+import { Loader2, Printer } from "lucide-react";
+import { Link } from "react-router-dom";
 
 /**
  * Book — the index (build-plan Phase 6).
@@ -261,8 +262,19 @@ const Book: React.FC = () => {
               </motion.div>
             )}
 
+            {/* printed export (Phase 9): the whole book, one day per page */}
+            <div className="mx-auto mt-1 flex max-w-2xl justify-center">
+              <Link
+                to="/book/print"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
+                style={{ border: "0.5px solid hsl(var(--moon-white) / 0.12)" }}
+              >
+                <Printer className="h-3.5 w-3.5" /> print the whole book · A5, one day per page
+              </Link>
+            </div>
+
             {/* table of contents */}
-            <div className="mx-auto mt-7 max-w-2xl space-y-5">
+            <div className="mx-auto mt-6 max-w-2xl space-y-5">
               {grouped.length === 0 && (
                 <p className="pane p-5 text-center text-[13px] text-muted-foreground">
                   The book fills itself from your chats. Once your days are indexed (Phase 1 rebuild), they will appear here —

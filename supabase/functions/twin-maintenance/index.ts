@@ -1,493 +1,17 @@
-// twin-nightly — memory 2.0's sweep (build-plan Phase 5).
+// twin-maintenance — the owner's one button for the unglamorous work (Phase 9).
 //
-//   POST { days?: 7, force?: boolean }
-//     → { ok, days, highlights, facts_heuristic, facts_llm, llm_calls, tokens }
+//   POST {}                        → a status report (free)
+//   POST { rebuild: true, full? }  → re-cut sessions/chunks/reply pairs, then
+//                                    fill every missing vector
+//   POST { housekeeping: true }    → expire stale action cards, fade idle rooms
 //
-// The free part does the work: for each day in the window, `_shared/memory.ts`
-// picks the lines worth keeping (promises, plans, dates, firsts, feelings) and
-// pulls durable facts straight out of their own sentences. Those are stored with
-// no AI at all.
-//
-// The paid part is one call per sweep, and only for the top ~5% of the day's
-// candidates — the lines most likely to hold something durable that the
-// patterns missed. Everything stays on the private (noTrain) providers.
-//
-// Gating lives in SQL: `twin_nightly_state()` refuses a sweep less than 3 hours
-// after the last one (the owner may force a second one from the control room).
-// Nothing here touches the couple's `messages` (hard rule #1 — read only).
+// Why it exists: Phase 1's build is `twin_rebuild_all(true)` in SQL plus the
+// `embed-backfill` loop — two steps that need a terminal. This gives the same
+// two steps one tap in the control room, owner-only, and reports honestly what
+// it did. It never writes to `messages` (hard rule #1) and never calls a model.
 
-// ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/memory.ts) ──
-// ── BEGIN INLINE: memory.ts ──
-/**
- * memory.ts — the free half of memory 2.0 (build-plan Phase 5).
- *
- * The rule this file exists to enforce: **the twin notices with heuristics and
- * only thinks with the model when it is worth it.** Everything here is pure —
- * no Deno, no clock of its own, no network — so it runs in the nightly sweep,
- * in the "remember what matters" button, and in the tests, identically.
- *
- * Three jobs:
- *   1. `extractHighlights()` — the lines worth keeping from a day: promises,
- *      plans, dates, firsts, feelings, gifts, places, milestones. English and
- *      Hinglish, because that is how they actually talk.
- *   2. `extractFactCandidates()` — durable facts ("loves filter coffee",
- *      "birthday is 12 March") straight out of their own sentences. These are
- *      inserted with no AI call at all.
- *   3. `selectWorthAsking()` — the top ~5%, the only lines worth one model call.
- *
- * Nothing here writes to the database; the edge functions own that.
- */
-
-export type MemoryCategory = "likes" | "dislikes" | "important" | "date" | "other";
-
-export interface DayLine {
-  id: string;
-  user_id: string;
-  username?: string | null;
-  content: string;
-  created_at: string;
-}
-
-export interface HighlightCandidate {
-  message_id: string;
-  user_id: string;
-  day: string;
-  kind: string;
-  text: string;
-  score: number;
-}
-
-export interface FactCandidate {
-  fact: string;
-  category: MemoryCategory;
-  /** Which side of the couple the fact is about, by id — never by name. */
-  about: "owner" | "partner";
-  kind: string | null;
-  message_id: string;
-  day: string;
-  importance: number;
-  quote: string;
-}
-
-/**
- * Kind patterns, most specific first. Each entry is a list of spellings —
- * English, Hindi and Hinglish — because a lexicon that only reads English
- * misses most of what these two write.
- */
-const KIND_PATTERNS: { kind: string; weight: number; patterns: RegExp[] }[] = [
-  {
-    kind: "milestone",
-    weight: 0.32,
-    patterns: [
-      /\b(engagement|engaged|proposal|propose|roka|sagai|shaadi|shadi|marriage|married|moved in|move in)\b/i,
-      /\b(first anniversary|saalgirah)\b/i,
-    ],
-  },
-  {
-    kind: "promise",
-    weight: 0.28,
-    patterns: [
-      /\b(i promise|promise you|pinky promise|i swear|you have my word)\b/i,
-      /\b(pakka|vada|wada|kasam|vaada)\b/i,
-      /\b(i(?:'ll| will) (?:definitely |surely )?(?:come|meet|be there|call|do it))\b/i,
-    ],
-  },
-  {
-    kind: "first",
-    weight: 0.26,
-    patterns: [/\b(first time|for the first time|pehli baar|pehla|pehli)\b/i],
-  },
-  {
-    kind: "date",
-    weight: 0.24,
-    patterns: [
-      /\b(birthday|janamdin|janmdin|happy bday|hbd|anniversary|saalgirah|dob|date of birth)\b/i,
-      /\b(\d{1,2}(?:st|nd|rd|th)?\s?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i,
-      /\b(\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)var)\b/i,
-    ],
-  },
-  {
-    kind: "gift",
-    weight: 0.2,
-    patterns: [
-      /\b(gift|surprise|present)\b/i,
-      /\b(laaya|layi|laye|diya|diye|bought you|got you)\b/i,
-    ],
-  },
-  {
-    kind: "place",
-    weight: 0.16,
-    patterns: [
-      /\b(ghar|home|office|station|airport|cafe|restaurant|mandir|temple|hospital|market|chowk)\b/i,
-      /\b(goa|manali|jaipur|delhi|mumbai|bangalore|pune|shimla|rishikesh|udaipur)\b/i,
-    ],
-  },
-  {
-    kind: "feeling",
-    weight: 0.18,
-    patterns: [
-      /\b(i miss you|miss you|miss u|yaad aa rahi|yaad aata|tumhari yaad)\b/i,
-      /\b(i love you|love you|love u|pyar|pyaar|jaan|baby)\b/i,
-      /\b(sorry|maaf|gussa|hurt|loney|akela|thank you|grateful)\b/i,
-    ],
-  },
-  {
-    kind: "plan",
-    weight: 0.14,
-    patterns: [
-      /\b(kal|tomorrow|next week|agle hafte|this weekend|tonight|aaj raat|milte hai|milna|meet up|dinner|movie|trip)\b/i,
-      /\b(plan|decide kar|final kar)\b/i,
-    ],
-  },
-];
-
-const HEART_OR_SPARK = /[❤️💛💚💙💜🧡💕💖💗💓💞💘😍🥰😘😻🫶✨]/u;
-const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
-
-/**
- * The same two filters the SQL side uses (`twin_is_ignored_message` /
- * `twin_is_placeholder_content`, from the Phase 1 tuning migration). Kept here
- * so a function that pulls its own `messages` rows still reads only real words.
- */
-const MECHANICAL_TYPES = new Set(["touch_reaction", "reaction", "react", "coinflip", "rps", "bored", "system"]);
-const PLACEHOLDER = /^\[(voice note|voice|sticker|gif|image|photo|video|file|document|media|deleted)\]$/i;
-const ONLY_EMOJI = /^[\s\p{So}\p{Sk}\u200D\uFE0E\uFE0F]+$/u;
-
-/** A tap, a game outcome, a system row — not something anyone said. */
-function isMechanicalMessage(messageType: string | null | undefined): boolean {
-  return MECHANICAL_TYPES.has(String(messageType ?? "text").toLowerCase());
-}
-
-/** A caption with no words in it. */
-function isPlaceholderContent(content: string | null | undefined): boolean {
-  const t = String(content ?? "").trim();
-  return t === "" || PLACEHOLDER.test(t) || ONLY_EMOJI.test(t);
-}
-
-/** Strip a line down to text we can compare and store. */
-function normalize(text: string): string {
-  return String(text ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function clean(text: string, max = 180): string {
-  return normalize(text).slice(0, max);
-}
-
-/** The first (most specific) kind that fits, or null. */
-function kindOf(text: string): { kind: string; weight: number } | null {
-  const t = String(text ?? "");
-  for (const entry of KIND_PATTERNS) {
-    if (entry.patterns.some((p) => p.test(t))) return { kind: entry.kind, weight: entry.weight };
-  }
-  return null;
-}
-
-/**
- * How much a line deserves to be kept. Deliberately boring: length in the
- * "says something" band, a kind, warmth, a concrete detail (a digit or a name).
- */
-function highlightScore(text: string, kind: string | null): number {
-  const t = normalize(text);
-  if (t.length < 8) return 0;
-
-  let score = 0.3;
-  if (t.length >= 24 && t.length <= 220) score += 0.12;
-  if (t.length >= 60) score += 0.05;
-  if (t.length < 14) score -= 0.12;
-
-  const entry = KIND_PATTERNS.find((e) => e.kind === kind);
-  if (entry) score += entry.weight;
-
-  if (HEART_OR_SPARK.test(t)) score += 0.12;
-  else if (EMOJI.test(t)) score += 0.05;
-  if (/[!]/.test(t)) score += 0.05;
-  if (/\d/.test(t)) score += 0.06;
-  if (/\b(sirf|always|never|sabse|favourite|favorite|best)\b/i.test(t)) score += 0.06;
-  if (t.endsWith("?")) score -= 0.08;
-  // A wall of forwarded text is not a memory.
-  if (/^https?:\/\//.test(t)) score -= 0.3;
-
-  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
-}
-
-/**
- * Keep the lines worth remembering from one day. At most `maxPerDay`, never the
- * same sentence twice, strongest first. `minScore` is the bar for a line with
- * no recognized kind to still qualify (as "other").
- */
-function extractHighlights(
-  lines: DayLine[],
-  opts: { day: string; maxPerDay?: number; minScore?: number } = { day: "" },
-): HighlightCandidate[] {
-  const maxPerDay = Math.max(1, opts.maxPerDay ?? 4);
-  const minScore = opts.minScore ?? 0.45;
-  const seen = new Set<string>();
-  const out: HighlightCandidate[] = [];
-
-  for (const line of lines ?? []) {
-    const text = clean(line.content);
-    if (text.length < 8) continue;
-
-    const found = kindOf(text);
-    const kind = found?.kind ?? "other";
-    const score = highlightScore(text, found?.kind ?? null);
-    if (!found && score < Math.max(minScore, 0.6)) continue;
-    if (score < 0.35) continue;
-
-    const key = `${kind}:${text.toLowerCase().replace(/[^a-z0-9\u0900-\u097F ]+/gi, "").trim()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    out.push({
-      message_id: line.id,
-      user_id: line.user_id,
-      day: opts.day || (line.created_at ?? "").slice(0, 10),
-      kind,
-      text,
-      score,
-    });
-  }
-
-  return out.sort((a, b) => b.score - a.score).slice(0, maxPerDay);
-}
-
-/** Sentence-ish splitter used by the fact patterns. */
-function sentences(text: string): string[] {
-  return normalize(text)
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/**
- * Tidy a captured phrase into something a person would recognize: no leading
- * "mujhe / hai / that", no trailing "hai / is", no dangling punctuation.
- * Hinglish word order puts the verb at the end, so both ends need work.
- */
-function phrase(text: string, max = 45, cutClause = false): string {
-  const base = cutClause ? clean(text, max).split(/[;,]/)[0] : clean(text, max);
-  return base
-    .replace(/^(?:mujhe|mujhko|mein|main|mai|i|to|that|ki|ka|ke|hai|h|is)\s+/i, "")
-    .replace(/\s+(?:hai|h|is|tha|thi|the|raha|rahi|rahe|kar|karna|hoti|hota)$/i, "")
-    .replace(/[.!,;:\s]+$/, "")
-    .trim();
-}
-
-const FACT_PATTERNS: { category: MemoryCategory; build: (m: RegExpMatchArray) => string | null; pattern: RegExp }[] = [
-  // "my favourite food is rajma chawal" / "mera favourite colour blue hai"
-  {
-    category: "likes",
-    pattern: /\b(?:my|mera|meri|apna)\s+(?:favourite|favorite|fav)\s+(.{2,30}?)\s+(?:is|hai|h)\s+(.{2,40})/i,
-    build: (m) => {
-      const what = phrase(m[1], 30, true);
-      const value = phrase(m[2], 40, true);
-      return what && value ? `favourite ${what}: ${value}` : null;
-    },
-  },
-  // "I love filter coffee" / "mujhe barish bahut pasand hai"
-  {
-    category: "likes",
-    pattern: /\b(?:i|main|mai|mein|mujhe|hum)\s+(?:really\s+|bahut\s+|bohot\s+|too\s+)?(?:love|like|pasand)\s+(?:to\s+)?(.{3,45})/i,
-    build: (m) => {
-      const v = phrase(m[1], 45, true);
-      return v.length >= 3 ? `loves ${v}` : null;
-    },
-  },
-  // "I hate crowds" / "mujhe noise pasand nahi"
-  {
-    category: "dislikes",
-    pattern: /\b(?:i|main|mai|mujhe)\s+(?:really\s+|bahut\s+|bohot\s+)?(?:hate|dislike|can't stand|cant stand)\s+(.{3,45})/i,
-    build: (m) => {
-      const v = phrase(m[1], 45, true);
-      return v.length >= 3 ? `dislikes ${v}` : null;
-    },
-  },
-  {
-    category: "dislikes",
-    pattern: /\b(.{3,40}?)\s+pasand nahi\b/i,
-    build: (m) => {
-      const v = phrase(m[1], 40, true);
-      return v.length >= 3 ? `dislikes ${v}` : null;
-    },
-  },
-  // "allergic to peanuts"
-  {
-    category: "important",
-    pattern: /\ballergic to\s+(.{2,40})/i,
-    build: (m) => `allergic to ${clean(m[1], 40)}`,
-  },
-  // "remember I have an exam on the 12th"
-  {
-    category: "important",
-    pattern: /\b(?:remember|yaad rakhna|note kar|don't forget|dont forget|bhoolna nahi)\b[:,]?\s*(.{4,90})/i,
-    build: (m) => {
-      const v = clean(m[1], 90).replace(/[.!,;:\s]+$/, "");
-      return v.length >= 4 ? `remember: ${v}` : null;
-    },
-  },
-  // "my birthday is 12 March" / "mera birthday 12 march hai"
-  {
-    category: "date",
-    pattern:
-      /\b(?:my|mera|meri|tumhara|your)?\s*(birthday|janamdin|janmdin|anniversary|saalgirah)\b[^0-9]{0,14}(\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|\d{1,2}(?:st|nd|rd|th)?)/i,
-    build: (m) => {
-      const what = clean(m[1], 20).toLowerCase();
-      const when = phrase(m[2], 20);
-      return when ? `${what}: ${when}` : null;
-    },
-  },
-];
-
-/**
- * Durable facts from their own sentences — no AI, no guessing. Precision beats
- * recall on purpose: a wrong memory is worse than a missing one.
- */
-function extractFactCandidates(
-  lines: DayLine[],
-  opts: { ownerId: string; max?: number; day?: string },
-): FactCandidate[] {
-  const max = Math.max(1, opts.max ?? 8);
-  const out: FactCandidate[] = [];
-  const seen = new Set<string>();
-
-  for (const line of lines ?? []) {
-    const text = normalize(line.content);
-    if (text.length < 8) continue;
-
-    const day = opts.day || (line.created_at ?? "").slice(0, 10);
-    const found = kindOf(text);
-    const about: "owner" | "partner" = line.user_id === opts.ownerId ? "owner" : "partner";
-
-    for (const { category, pattern, build } of FACT_PATTERNS) {
-      const match = text.match(pattern);
-      if (!match) continue;
-      const fact = build(match);
-      if (!fact) continue;
-
-      const key = fact.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      out.push({
-        fact,
-        category,
-        about,
-        kind: found?.kind ?? null,
-        message_id: line.id,
-        day,
-        importance: Number(
-          Math.min(1, 0.4 + (category === "important" ? 0.25 : category === "date" ? 0.3 : 0.15)).toFixed(3),
-        ),
-        quote: clean(text, 120),
-      });
-      break; // one fact per sentence is plenty
-    }
-  }
-
-  return out.slice(0, max);
-}
-
-/** Higher = more worth remembering. Recency is the only clock used. */
-function importanceOf(candidate: { kind?: string | null; importance?: number; day?: string | null }, today?: string): number {
-  let base = candidate.importance ?? 0.5;
-  const entry = KIND_PATTERNS.find((e) => e.kind === candidate.kind);
-  if (entry) base = Math.max(base, 0.45 + entry.weight);
-  if (candidate.day && today) {
-    const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${candidate.day}T00:00:00Z`)) / 86_400_000);
-    if (Number.isFinite(days)) base += days <= 2 ? 0.1 : days <= 7 ? 0.05 : 0;
-  }
-  return Math.max(0, Math.min(1, Number(base.toFixed(3))));
-}
-
-/**
- * The top slice — the only lines worth a model call (plan §Phase 5: heuristics
- * for everything, LLM for the top 5%). Always capped, never zero when there is
- * something good to ask about.
- */
-function selectWorthAsking<T extends { importance?: number; score?: number }>(
-  candidates: T[],
-  opts: { percent?: number; cap?: number; minImportance?: number } = {},
-): T[] {
-  const percent = Math.max(1, Math.min(100, opts.percent ?? 5));
-  const cap = Math.max(0, opts.cap ?? 2);
-  const minImportance = opts.minImportance ?? 0.6;
-
-  const ranked = [...(candidates ?? [])].sort(
-    (a, b) => (b.importance ?? b.score ?? 0) - (a.importance ?? a.score ?? 0),
-  );
-  if (ranked.length === 0 || cap === 0) return [];
-
-  const take = Math.max(1, Math.min(cap, Math.ceil((ranked.length * percent) / 100)));
-  return ranked.filter((c) => (c.importance ?? c.score ?? 0) >= minImportance).slice(0, take);
-}
-
-/** Facts that say the same thing, however they were phrased. */
-function dedupeFacts<T extends { fact: string }>(facts: T[]): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const f of facts ?? []) {
-    const key = normalize(f.fact)
-      .toLowerCase()
-      .replace(/^(loves|dislikes|likes|remember:)\s*/, "")
-      .replace(/[^a-z0-9\u0900-\u097F ]+/gi, "")
-      .trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(f);
-  }
-  return out;
-}
-
-/** The one prompt the sweep may spend a call on (build-plan §5 / Phase 5). */
-function buildMemoryPrompt(
-  lines: { who: string; text: string }[],
-  names: { ownerName: string; partnerName: string },
-): { system: string; user: string } {
-  const system =
-    `You read a few lines a couple wrote to each other and extract only facts that will still be true in a month. ` +
-    `People: ${names.ownerName} (him), ${names.partnerName} (her). ` +
-    `Capture preferences, favourites, dates, allergies, people, places, promises that matter — NOT moods, plans for tomorrow, or chatter. ` +
-    `Write each fact as a short third-person phrase (max 12 words), in English, e.g. "loves filter coffee", "birthday is 12 March". ` +
-    `Reply with ONLY JSON: {"facts":[{"fact":"...","category":"likes|dislikes|important|date|other","about":"${names.ownerName}|${names.partnerName}"}]}. ` +
-    `At most 5 facts. If nothing is durable, return {"facts":[]}.`;
-
-  const user = lines.map((l) => `${l.who}: ${l.text}`).join("\n");
-  return { system, user: `Lines:\n${user}` };
-}
-
-/** Pull the good stuff out of one day, in one call. */
-function summarizeDay(
-  lines: DayLine[],
-  opts: { day: string; ownerId: string; maxHighlights?: number; maxFacts?: number },
-): { highlights: HighlightCandidate[]; facts: FactCandidate[] } {
-  return {
-    highlights: extractHighlights(lines, { day: opts.day, maxPerDay: opts.maxHighlights ?? 4 }),
-    facts: extractFactCandidates(lines, { ownerId: opts.ownerId, day: opts.day, max: opts.maxFacts ?? 6 }),
-  };
-}
-
-export type { DayLine as MemoryDayLine };
-export {
-  buildMemoryPrompt,
-  clean,
-  dedupeFacts,
-  extractFactCandidates,
-  extractHighlights,
-  highlightScore,
-  importanceOf,
-  isMechanicalMessage,
-  isPlaceholderContent,
-  phrase,
-  KIND_PATTERNS,
-  kindOf,
-  normalize,
-  selectWorthAsking,
-  summarizeDay,
-};
-// ── END INLINE: memory.ts ──
-// ── END GENERATED BLOCK ──
+const MAX_EMBED_ROUNDS = Number(Deno.env.get("MAINT_MAX_EMBED_ROUNDS") ?? 20);
+const EMBED_BATCH = Number(Deno.env.get("MAINT_EMBED_BATCH") ?? 48);
 
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
 const corsHeaders = {
@@ -1517,226 +1041,108 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { userId, supabase } = await requirePartner(req);
+    // Owner only: this is the one function in the twin family with no partner path.
+    const { userId, supabase, config } = await requireOwner(req);
     const body = await req.json().catch(() => ({}));
-    const days = Math.max(1, Math.min(31, Number(body?.days ?? 7) || 7));
-    const force = body?.force === true;
 
-    const { data: state } = await supabase.rpc("twin_nightly_state", { p_force: force });
-    if (state && state.allowed === false) {
-      return jsonResponse({ skipped: true, reason: state.reason ?? "too_soon", minutes_since: state.minutes_since, state });
-    }
+    const status = async () => {
+      const counts = await Promise.all([
+        supabase.from("chat_sessions").select("id", { count: "exact", head: true }),
+        supabase.from("chat_chunks").select("id", { count: "exact", head: true }),
+        supabase.from("chat_chunks").select("id", { count: "exact", head: true }).is("embedding", null),
+        supabase.from("reply_pairs").select("id", { count: "exact", head: true }),
+        supabase.from("reply_pairs").select("id", { count: "exact", head: true }).is("embedding", null),
+        supabase.from("twin_actions").select("id", { count: "exact", head: true }).eq("status", "proposed"),
+        supabase.from("ftf_sessions").select("id", { count: "exact", head: true }).in("status", ["waiting", "active", "paused", "stopped"]),
+        supabase.from("twin_nightly_runs").select("ran_at, highlights, facts_heuristic, facts_llm, llm_calls, note").order("ran_at", { ascending: false }).limit(1),
+      ]);
 
-    const { data: cfg } = await supabase.from("twin_config").select("*").eq("id", 1).maybeSingle();
-    if (!cfg) throw new AiError(409, "Twin is not configured yet.");
+      const [sessions, chunks, chunksMissing, pairs, pairsMissing, openCards, openRooms, lastRun] = counts;
 
-    const ownerName: string = cfg.owner_name ?? "him";
-    const partnerName: string = cfg.partner_name ?? "her";
+      return {
+        ok: true,
+        index: {
+          sessions: sessions.count ?? 0,
+          chunks: chunks.count ?? 0,
+          chunks_without_vector: chunksMissing.count ?? 0,
+          reply_pairs: pairs.count ?? 0,
+          reply_pairs_without_vector: pairsMissing.count ?? 0,
+          ready: (chunksMissing.count ?? 1) === 0 && (pairsMissing.count ?? 1) === 0 && (pairs.count ?? 0) > 0,
+        },
+        open: { action_cards: openCards.count ?? 0, rooms: openRooms.count ?? 0 },
+        last_nightly: (lastRun.data ?? [])[0] ?? null,
+        owner: config?.owner_name ?? null,
+      };
+    };
 
-    // Names → ids, so a fact is attributed to a person and not a string.
-    const { data: statuses } = await supabase.from("user_status").select("user_id, name");
-    const nameToId = new Map<string, string>(
-      (statuses ?? [])
-        .filter((s: { name: string | null }) => s.name)
-        .map((s: { user_id: string; name: string }) => [s.name.toLowerCase(), s.user_id]),
-    );
-    nameToId.set(ownerName.toLowerCase(), cfg.owner_user_id);
-    nameToId.set(partnerName.toLowerCase(), cfg.partner_user_id);
+    if (body?.rebuild) {
+      const full = body?.full !== false; // a rebuild from a button should be honest: full by default
+      const { data: rebuilt, error } = await supabase.rpc("twin_rebuild_all", { p_full: full });
+      if (error) throw new AiError(500, `Rebuild failed: ${error.message}`);
 
-    // The window: the last `days` days, today included (a re-run is harmless —
-    // highlights dedupe on their text, facts on their lowercase fact).
-    const istToday = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
-    const dayList: string[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      dayList.push(new Date(Date.parse(`${istToday}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10));
-    }
+      // Then fill every vector, in batches, inside this one call.
+      const url = (envGet("SUPABASE_URL") ?? "").replace(/\/$/, "");
+      const serviceKey = envGet("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      let rounds = 0;
+      let embedded = 0;
+      let remaining = { chunks: 0, pairs: 0 };
 
-    let highlights = 0;
-    let factsHeuristic = 0;
-    const askAbout: { who: string; text: string; messageId: string; day: string; about: "owner" | "partner" }[] = [];
-    const seenFacts = new Set<string>();
-
-    for (const day of dayList) {
-      const { data: rows } = await supabase.rpc("twin_day_messages", { p_day: day });
-      const lines = ((rows ?? []) as DayLineRow[]).map((r) => ({
-        id: r.id,
-        user_id: r.user_id,
-        username: r.username,
-        content: r.content ?? "",
-        created_at: r.created_at,
-      }));
-      if (lines.length === 0) continue;
-
-      const { highlights: dayHighlights, facts } = summarizeDay(lines, {
-        day,
-        ownerId: cfg.owner_user_id,
-        maxHighlights: 4,
-        maxFacts: 6,
-      });
-
-      // ── highlights (free, and never duplicated) ──────────────────────────
-      if (dayHighlights.length > 0) {
-        const { data: existing } = await supabase.from("message_highlights").select("text").eq("day", day);
-        const known = new Set((existing ?? []).map((r: { text: string }) => r.text.toLowerCase()));
-        const fresh = dayHighlights.filter((h) => !known.has(h.text.toLowerCase()));
-        if (fresh.length > 0) {
-          const { error } = await supabase.from("message_highlights").insert(
-            fresh.map((h) => ({
-              message_id: h.message_id,
-              user_id: h.user_id,
-              day: h.day,
-              kind: h.kind,
-              text: h.text,
-              score: h.score,
-              source: "heuristic",
-            })),
-          );
-          if (!error) highlights += fresh.length;
-        }
-      }
-
-      // ── facts the patterns caught (free) ─────────────────────────────────
-      for (const fact of facts) {
-        const key = fact.fact.toLowerCase();
-        if (seenFacts.has(key)) continue;
-        seenFacts.add(key);
-
-        const subject = fact.about === "owner" ? cfg.owner_user_id : cfg.partner_user_id;
-        const { data: saved } = await supabase.rpc("twin_memory_upsert", {
-          p_subject: subject,
-          p_fact: fact.fact,
-          p_category: fact.category,
-          p_source: "auto",
-          p_confidence: 0.55,
-          p_importance: importanceOf(fact, istToday),
-          p_day: fact.day,
-          p_message_id: fact.message_id,
-          p_kind: fact.kind,
-          p_owner: userId,
-        });
-        if (saved?.ok) factsHeuristic += 1;
-      }
-
-      // ── what might need the model: the strongest lines of the day ────────
-      const worth = selectWorthAsking(dayHighlights, { percent: 5, cap: 3, minImportance: 0.55 });
-      for (const h of worth) {
-        askAbout.push({
-          who: h.user_id === cfg.owner_user_id ? ownerName : partnerName,
-          text: h.text,
-          messageId: h.message_id,
-          day: h.day,
-          about: h.user_id === cfg.owner_user_id ? "owner" : "partner",
-        });
-      }
-    }
-
-    // ── the one paid step ───────────────────────────────────────────────────
-    let factsLlm = 0;
-    let llmCalls = 0;
-    let tokens = 0;
-
-    const askLines = askAbout.slice(0, 24);
-    if (askLines.length > 0) {
-      try {
-        const prompt = buildMemoryPrompt(
-          askLines.map((l) => ({ who: l.who, text: l.text })),
-          { ownerName, partnerName },
-        );
-        const result = await callLLM({
-          task: "extract",
-          sensitivity: "private",
-          tag: "nightly-memory",
-          userId,
-          json: true,
-          messages: [
-            { role: "system", content: prompt.system },
-            { role: "user", content: prompt.user },
-          ],
-        });
-        llmCalls += 1;
-        tokens += (result.tokensIn ?? 0) + (result.tokensOut ?? 0);
-
-        const parsed = parseJsonLoose<{ facts?: { fact?: string; category?: string; about?: string; quote?: string }[] }>(
-          result.text,
-        );
-        const returned = dedupeFacts(
-          (parsed?.facts ?? [])
-            .filter((f) => f.fact && f.fact.trim().length >= 4)
-            .map((f) => ({ fact: String(f.fact).trim(), category: f.category ?? "other", about: f.about ?? "" })),
-        ).slice(0, 5);
-
-        for (const f of returned) {
-          const subject = nameToId.get(String(f.about).toLowerCase()) ?? null;
-          if (!subject || subject === undefined) continue;
-          if (subject !== cfg.owner_user_id && subject !== cfg.partner_user_id) continue;
-
-          const { data: saved } = await supabase.rpc("twin_memory_upsert", {
-            p_subject: subject,
-            p_fact: f.fact,
-            p_category: f.category,
-            p_source: "auto",
-            p_confidence: 0.8,
-            p_importance: 0.7,
-            p_day: askLines[0]?.day ?? null,
-            p_kind: null,
-            p_owner: userId,
+      while (rounds < Math.max(1, MAX_EMBED_ROUNDS)) {
+        rounds += 1;
+        let res: Response;
+        try {
+          res = await fetch(`${url}/functions/v1/embed-backfill`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({ limit: EMBED_BATCH }),
           });
-          if (saved?.ok) factsLlm += 1;
+        } catch (e) {
+          console.error("embed-backfill call failed:", e instanceof Error ? e.message : e);
+          break;
         }
-      } catch (e) {
-        // The night is not lost: the free pass already stored what it found.
-        console.error("nightly memory LLM step failed:", e instanceof Error ? e.message : e);
+
+        if (!res.ok) {
+          console.error(`embed-backfill returned ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+          break;
+        }
+
+        const payload = (await res.json().catch(() => ({}))) as {
+          embedded?: Record<string, number>;
+          remaining?: Record<string, number>;
+          embedder?: string;
+        };
+        embedded += Number(payload.embedded?.chunks ?? 0) + Number(payload.embedded?.reply_pairs ?? 0);
+        remaining = {
+          chunks: Number(payload.remaining?.chunks ?? 0),
+          pairs: Number(payload.remaining?.reply_pairs ?? 0),
+        };
+        if (payload.embedder === "unavailable" || (remaining.chunks === 0 && remaining.pairs === 0)) break;
       }
+
+      return jsonResponse({
+        ok: true,
+        rebuilt,
+        embedded,
+        rounds,
+        remaining,
+        note:
+          remaining.chunks > 0 || remaining.pairs > 0
+            ? "There are still rows without vectors — tap again, or run scripts/embed-backfill.mjs."
+            : "Every chunk and reply pair has a vector.",
+        status: await status(),
+      });
     }
 
-    // Housekeeping that belongs to the same beat as the memory sweep: action
-    // cards that nobody tapped, and rooms nobody came back to. Both are free.
-    let expiredCards = 0;
-    let fadedRooms = 0;
-    try {
-      const { data: n } = await supabase.rpc("twin_actions_expire");
-      expiredCards = Number(n ?? 0) || 0;
-      const { data: r } = await supabase.rpc("ftf_sweep", { p_idle_hours: 48 });
-      fadedRooms = Number(r ?? 0) || 0;
-    } catch (e) {
-      console.error("nightly housekeeping skipped:", e instanceof Error ? e.message : e);
+    if (body?.housekeeping) {
+      const [{ data: cards }, { data: rooms }] = await Promise.all([
+        supabase.rpc("twin_actions_expire"),
+        supabase.rpc("ftf_sweep", { p_idle_hours: 48 }),
+      ]);
+      return jsonResponse({ ok: true, expired_cards: Number(cards ?? 0) || 0, faded_rooms: Number(rooms ?? 0) || 0, status: await status() });
     }
 
-    const { data: log } = await supabase.rpc("twin_nightly_log", {
-      p_days: days,
-      p_highlights: highlights,
-      p_facts_heuristic: factsHeuristic,
-      p_facts_llm: factsLlm,
-      p_llm_calls: llmCalls,
-      p_tokens: tokens,
-      p_note:
-        (askLines.length > 0 ? `asked about ${askLines.length} line(s)` : "heuristics only") +
-        `; closed ${expiredCards} stale card(s), ${fadedRooms} faded room(s)`,
-    });
-
-    return jsonResponse({
-      ok: true,
-      days,
-      window: { from: dayList[0], to: dayList[dayList.length - 1] },
-      highlights,
-      facts_heuristic: factsHeuristic,
-      facts_llm: factsLlm,
-      llm_calls: llmCalls,
-      tokens,
-      asked_about: askLines.length,
-      expired_cards: expiredCards,
-      faded_rooms: fadedRooms,
-      log,
-    });
+    return jsonResponse(await status());
   } catch (e) {
     return errorResponse(e);
   }
 });
-
-interface DayLineRow {
-  id: string;
-  user_id: string;
-  username: string | null;
-  content: string | null;
-  created_at: string;
-}

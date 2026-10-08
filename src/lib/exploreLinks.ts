@@ -7,6 +7,7 @@ import {
   CheckSquare,
   Gamepad2,
   Hand,
+  Handshake,
   Heart,
   Mail,
   Send,
@@ -32,6 +33,7 @@ export interface ExploreLink {
 
 export const EXPLORE_LINKS: ExploreLink[] = [
   { path: "/twin", icon: Sparkles, label: "His AI", hue: 342 },
+  { path: "/face-to-face", icon: Handshake, label: "Face to Face", hue: 8 },
   { path: "/book", icon: BookOpen, label: "Our Book", hue: 344 },
   { path: "/forest", icon: TreePine, label: "Our Tree", hue: 152 },
   { path: "/games", icon: Gamepad2, label: "Games", hue: 26 },

@@ -66,6 +66,18 @@ import {
   startingQuality,
 } from "../src/lib/media.ts";
 import {
+  FTF_RULES,
+  buildClosingPrompt,
+  buildSoftenPrompt,
+  heuristicClosing,
+  nextTurn,
+  parseClosing,
+  parseSoften,
+  safetyResources,
+  shouldOfferClosing,
+  shouldStop,
+} from "../supabase/functions/_shared/ftf.ts";
+import {
   ACTION_KINDS,
   buildActionPrompt,
   buildFormatPrompt,
@@ -999,6 +1011,139 @@ test("savings are described the way a person would say them", () => {
   assert.equal(needsThumb(2400), true);
   assert.equal(needsThumb(480), false);
   assert.ok(MEDIA_LIMITS.maxDimension >= 1600, "the master stays sharp on any screen");
+});
+
+// ── Phase 8: Face to Face ────────────────────────────────────────────────
+
+const A = "11111111-1111-1111-1111-111111111111";
+const B = "22222222-2222-2222-2222-222222222222";
+
+test("the ground rules are short, mutual and honest about the AI", () => {
+  assert.ok(FTF_RULES.split("\n").length <= 8, "nobody reads a manifesto mid-argument");
+  assert.match(FTF_RULES, /either of us can say "pause"/i);
+  assert.match(FTF_RULES, /never takes a side/i);
+});
+
+test("a rewrite keeps the complaint and drops the blame", () => {
+  const prompt = buildSoftenPrompt({
+    draft: "you never listen, you always do this",
+    senderName: "Anshika",
+    partnerName: "Kratagya",
+  });
+  assert.ok(prompt.system.includes("Anshika") && prompt.system.includes("Kratagya"));
+  assert.match(prompt.system, /never soften the problem away/i);
+  assert.match(prompt.user, /you never listen/);
+
+  const earlier = buildSoftenPrompt({
+    draft: "and another thing",
+    senderName: "A",
+    partnerName: "B",
+    topicsSoFar: ["Kratagya: I was late because of the demo"],
+  });
+  assert.ok(earlier.user.includes("Already said in this room"));
+});
+
+test("a rewritten turn is a suggestion — prose-wrapped JSON still parses, junk falls back", () => {
+  const good = parseSoften(
+    'Sure! {"gentler":"I felt alone when I waited and nobody told me. What I need is a heads-up next time.","need":"a heads-up when plans change","land":"he may feel accused at first"}',
+    "fallback",
+  );
+  assert.match(good.gentler, /^I felt alone/);
+  assert.equal(good.need, "a heads-up when plans change");
+  assert.equal(good.land, "he may feel accused at first");
+  assert.equal(good.parsed, true);
+
+  const junk = parseSoften("I can't help with that.", "their own words");
+  assert.equal(junk.gentler, "their own words", "their own words are always allowed");
+  assert.equal(junk.parsed, false);
+});
+
+test("self-harm and abuse stop the room — plainly and in Hinglish", () => {
+  assert.equal(shouldStop("I'm fine, just tired").stop, false);
+  assert.equal(shouldStop("we argued about the dishes again").stop, false);
+
+  const self = shouldStop("honestly sometimes I want to die");
+  assert.equal(self.stop, true);
+  assert.ok(self.flags.includes("self_harm"));
+
+  assert.equal(shouldStop("main mar jaunga, koi fayda nahi").stop, true);
+  assert.equal(shouldStop("khudkhushi ke baare mein soch rahi hoon").stop, true);
+
+  const abuse = shouldStop("he hits me when he drinks");
+  assert.equal(abuse.stop, true);
+  assert.ok(abuse.flags.includes("abuse"));
+  assert.equal(shouldStop("wo maar deta hai").stop, true);
+});
+
+test("the resources card is real, kind, and stops the AI from talking", () => {
+  const card = safetyResources(["self_harm"]);
+  assert.match(card, /14416/, "Tele-MANAS");
+  assert.match(card, /98204 66726/, "AASRA");
+  assert.match(card, /181/);
+  assert.match(card, /112/);
+  assert.match(card, /stop helping/i);
+  assert.ok(!/\bI understand\b/.test(card), "no therapy-speak");
+
+  const abuseCard = safetyResources(["abuse"]);
+  assert.match(abuseCard, /not something a chat should carry/);
+});
+
+test("turns alternate, and the room knows when it has run long", () => {
+  assert.equal(nextTurn(A, A, B), B);
+  assert.equal(nextTurn(B, A, B), A);
+  assert.equal(nextTurn(null, A, B), A);
+  assert.equal(nextTurn(A, A, null), A, "a room with nobody else yet does not flip");
+
+  assert.equal(shouldOfferClosing({ turn_count: 24, max_turns: 24 }), true);
+  assert.equal(shouldOfferClosing({ turn_count: 3, max_turns: 24 }), false);
+  assert.equal(shouldOfferClosing({ stage: "closing" }), true);
+});
+
+test("the closing note asks for what each of them needed", () => {
+  const prompt = buildClosingPrompt({
+    ownerName: "Kratagya",
+    partnerName: "Anshika",
+    topic: "last night",
+    turns: [
+      { user_id: "owner", kind: "message", content: "I'm sorry I shouted." },
+      { user_id: "partner", kind: "message", content: "I need to know when you'll be late." },
+      { user_id: "owner", kind: "system", content: "ignored" },
+    ],
+  });
+  assert.match(prompt.system, /"note"/);
+  assert.match(prompt.system, /next_step/);
+  assert.ok(prompt.user.includes("I'm sorry I shouted"));
+  assert.ok(!prompt.user.includes("ignored"), "only real turns are summarised");
+
+  const parsed = parseClosing(
+    JSON.stringify({ note: "You both came back to it, which is the hard part.", needs_a: "to be forgiven", needs_b: "a heads-up next time", next_step: "text when you leave the office" }),
+    { note: "fallback" },
+  );
+  assert.equal(parsed.note, "You both came back to it, which is the hard part.");
+  assert.equal(parsed.aNeed, "to be forgiven");
+  assert.equal(parsed.bNeed, "a heads-up next time");
+  assert.equal(parsed.nextStep, "text when you leave the office");
+
+  const junk = parseClosing("no json here", { note: "fallback note" });
+  assert.equal(junk.note, "fallback note");
+  assert.equal(junk.parsed, false);
+});
+
+test("with no AI at all, the room still closes kindly", () => {
+  const quiet = heuristicClosing([], { a: "Kratagya", b: "Anshika" });
+  assert.match(quiet, /nothing was said/i);
+
+  const real = heuristicClosing(
+    [
+      { user_id: "owner", kind: "message", content: "I'm sorry." },
+      { user_id: "partner", kind: "message", content: "I hear you." },
+      { user_id: "partner", kind: "message", content: "Let's try again tomorrow." },
+    ],
+    { a: "Kratagya", b: "Anshika" },
+  );
+  assert.match(real, /Kratagya said 1 thing/);
+  assert.match(real, /Anshika said 2/);
+  assert.match(real, /Nobody has to have won it/);
 });
 
 // ── runner ────────────────────────────────────────────────────────────────
