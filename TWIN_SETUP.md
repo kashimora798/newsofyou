@@ -1,8 +1,14 @@
 # Love Twin — setup & operations
 
+> **Start with [`IMPLEMENTATION_GUIDE.md`](./IMPLEMENTATION_GUIDE.md)** — it is the
+> single, ordered runbook (what to run in the database, in what order, and why).
+> This file keeps the twin's pipeline detail.
+
+
 Phases delivered so far: **0 (LLM router) · 1 (memory index) · 2 (spell door +
 greetings) · 3 (Home scene) · 6 (the Book) · 4 (twin chat + away-reply) ·
-5 (memory 2.0)**. Phase 7 (assistant actions) is next.
+5 (memory 2.0) · 7 (assistant actions) · 9a (media compression)**.
+Phase 8 (Face to Face) and the rest of 9 are next.
 Router details live in [`LLM_ROUTER.md`](./LLM_ROUTER.md); this file covers the twin
 pipeline: what to apply, what to run, and how to verify.
 
@@ -453,6 +459,7 @@ supabase functions deploy book-page
 supabase functions deploy twin-reply
 supabase functions deploy twin-nightly
 supabase functions deploy ai-memory-extract
+supabase functions deploy twin-actions
 # plus everything in LLM_ROUTER.md after a router change
 ```
 

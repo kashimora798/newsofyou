@@ -47,7 +47,7 @@ before trusting it, then flip the flag in `models.ts` — the whole app follows.
 
 ## Tasks
 
-Plan tasks: `twin_chat`, `twin_autoreply`, `face_to_face`, `greeting`, `summary`, `extract`, `guard`.
+Plan tasks: `twin_chat`, `twin_autoreply`, `assist`, `face_to_face`, `greeting`, `summary`, `extract`, `guard`.
 App tasks (kept working): `companion`, `chat`, `classify`, `json`, `hint`, `decoy`, `game`, `daily_question`.
 Each has temperature / output cap / input budget / timeout / default sensitivity in `TASK_PROFILES`.
 
