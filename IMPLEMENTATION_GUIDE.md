@@ -109,6 +109,11 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
 node scripts/embed-backfill.mjs
 ```
 
+Steps 1–3 above are also a single tap once `twin-maintenance` is deployed:
+**`/you/twin` → Maintenance → “Build the index”** does the rebuild and then loops
+the vector backfill until nothing is missing. The terminal route stays for a
+machine with the service key and for the very first build.
+
 ```sql
 -- 4. One private LLM call: the style card (his voice, editable in /you/twin)
 select public.twin_style_card;   -- after calling build-style-card from the UI
@@ -419,6 +424,33 @@ All the knobs are in one place: `MEDIA_LIMITS` in `src/lib/media.ts`
 
 ---
 
+## 9b. Putting it online (myanshika.xyz)
+
+The site is a static build; all the private work happens in Supabase.
+
+1. **Build on the host, not in this sandbox** (the production build is memory
+   hungry and OOMs locally). On Vercel: framework Vite, build `npm run build`,
+   output `dist`. `vercel.json` already rewrites every path to `/`, so `/book`,
+   `/twin` and `/face-to-face` survive a refresh instead of 404-ing.
+2. **Environment variables on the host** (never a service key):
+   `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (the anon key — public by
+   design), optionally `VITE_GIPHY_API_KEY`. Everything else lives in
+   `supabase secrets set` and never reaches the browser.
+3. **Domain**: add `myanshika.xyz` (+ `www`) in the host's dashboard, then point
+   the registrar's A/CNAME records where it says. Wait for the certificate.
+4. **Check the four doors after the first deploy:**
+   - `/` → the school portal (this is what a stranger sees)
+   - `/study` → only after the decoy credential; the fake student portal
+   - `/real` (and `/you/login`) → the spell door
+   - `/login` → 404 on purpose
+   - `/home`, `/book`, `/twin`, `/face-to-face` → login required
+5. **Rotate the decoy password** (Settings → Decoy) once the domain is live.
+
+Nothing about this step touches the database; the edge functions are already
+deployed and run on Supabase.
+
+---
+
 ## 10. Deploy reference (by name — never deploy `_shared` alone)
 
 ```bash
@@ -511,7 +543,7 @@ it is resting, cards are simply not proposed.
 | "Twin is not configured yet" | §2 — the `twin_config` row |
 | Greetings are stale duplicates | `/you/twin` → Greeting bank → Rebuild |
 | Book days are empty | §3 — `twin_rebuild_all(true)` and the embed backfill |
-| Twin replies ignore your old chats | `select count(*) from public.reply_pairs where embedding is not null;` |
+| Twin replies ignore your old chats | `count(*)` on `reply_pairs where embedding is not null` — or just tap Build the index in `/you/twin` |
 | Cards never appear in `/twin` | the phrase must match a kind — "remind me to…", "send him a message at…", "add an event…" |
 | Auto-reply never fires | it needs him **offline** past the wait, her last message unanswered, and the day/gap budgets to allow it — `/you/twin` shows "nothing sent" plus the reason |
 | Storage still growing fast | Settings → Storage, and check videos — they are deliberately untouched |
