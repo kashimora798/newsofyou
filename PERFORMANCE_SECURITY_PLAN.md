@@ -73,12 +73,12 @@ re-downloads the shell and the fonts.
 
 | # | Finding | Where | Why it matters |
 | --- | --- | --- | --- |
-| 🔴 1 | **`fetch-link-preview` is an unauthenticated open proxy with no URL validation** | `supabase/functions/fetch-link-preview/index.ts` | `fetch(url)` on anything a caller sends, then `res.text()` with no size cap. That reaches `http://169.254.169.254/…` (cloud metadata), the local Supabase stack, or any internal host — and anyone with the public anon key can use it as free bandwidth at your expense |
-| 🔴 2 | **`send-scheduled-messages` has no caller check** | `supabase/functions/send-scheduled-messages/index.ts` | It holds the service-role key and sends every due scheduled message. No auth guard at all: any caller can fire it repeatedly |
+| ✅ 1 | ~~**`fetch-link-preview` is an unauthenticated open proxy with no URL validation**~~ — **fixed in `6a261d4`** (partner session + resolved-address guard + redirect and size caps) | `supabase/functions/fetch-link-preview/index.ts` | `fetch(url)` on anything a caller sends, then `res.text()` with no size cap. That reaches `http://169.254.169.254/…` (cloud metadata), the local Supabase stack, or any internal host — and anyone with the public anon key can use it as free bandwidth at your expense |
+| ✅ 2 | ~~**`send-scheduled-messages` has no caller check**~~ — **fixed in `6a261d4`** (service-role bearer or job secret, 100/call, no double sends) | `supabase/functions/send-scheduled-messages/index.ts` | It holds the service-role key and sends every due scheduled message. No auth guard at all: any caller can fire it repeatedly |
 | 🟠 3 | **Storage buckets are public and world-readable** | `20260215061205_…sql`: `documents` bucket `public = true`, `SELECT USING (bucket_id = 'documents')`; `chat-images` created outside migrations | Every file ever sent has a permanent, unauthenticated URL. Inserts are allowed for *any* authenticated user, in *any* folder |
 | 🟠 4 | **Sign-ups are presumably still open at the Auth level** | Supabase project setting (not in the repo) | `is_partner` protects `messages`, but several older tables still say `USING (true)` / `auth.role() = 'authenticated'` (`daily_checklists`, `shared_events`, …) — a stranger who signs up reads those |
-| 🟠 5 | **Crawlers are explicitly invited in** | `public/robots.txt` = `Allow: /` for `*`; no `noindex` anywhere; title `EduflowAi`, description `100%YOU` | Google can index `/study`, `/real`, `/home`, `/book`. The decoy story leaks, and the private app becomes discoverable |
-| 🟡 6 | **No security headers** | `vercel.json` has only a rewrite rule | No CSP, no `frame-ancestors`, no HSTS, no `nosniff`, no `Referrer-Policy`. A romance app is exactly the thing to clickjack or to leak URLs from |
+| ✅ 5 | ~~**Crawlers are explicitly invited in**~~ — **fixed in `6a261d4`** (robots refuses all, `noindex`, no-referrer) | `public/robots.txt` = `Allow: /` for `*`; no `noindex` anywhere; title `EduflowAi`, description `100%YOU` | Google can index `/study`, `/real`, `/home`, `/book`. The decoy story leaks, and the private app becomes discoverable |
+| ✅ 6 | ~~**No security headers**~~ — **fixed in `6a261d4`** (CSP, HSTS, nosniff, Referrer-Policy, Permissions-Policy) | `vercel.json` has only a rewrite rule | No CSP, no `frame-ancestors`, no HSTS, no `nosniff`, no `Referrer-Policy`. A romance app is exactly the thing to clickjack or to leak URLs from |
 | 🟡 7 | **Session lives in `localStorage`, no device lock** | `src/integrations/supabase/client.ts` | An unlocked phone, or any XSS, is a full session. There is a `user_login_sessions` table but no screen to see or revoke devices |
 | 🟡 8 | **No backup, export or retention policy** | — | `llm_usage`, `llm_cache` grow forever; there is no "take our data out" button and no nightly dump |
 | 🟡 9 | **`npm audit`/supply chain untouched** | `package.json` | 62 runtime deps, some heavy and decorative (`recharts`, `@imgly/background-removal`) |
@@ -96,7 +96,24 @@ LLM calls go through one router.
 Each phase lists **what**, **gain** (measured where I could measure it),
 **risk**, and **how we verify**.
 
-### P0 — Get the weight off (highest gain, near-zero risk, no decisions needed)
+### P0 — Get the weight off ✅ **DONE** (commit `6a261d4`)
+
+Measured result: **first load 589 → 218 KB JS + 26 KB CSS gzip**, `index.html`
+down to one script and no preloads, `public/` **84.82 MB → 68 KB**, build output
+**111 MB → 21 MB**, deps 62 → 57, `tsc` baseline 35 → 26, tests 29 → 45.
+
+The 3D is gone entirely (as you asked): forest page, bark textures, leaf PNGs,
+`.glb` models and the ambience track, plus the WebGL canvas that was embedded in
+a Wrapped card. "Our Tree" survives as one SVG with the same stages, and it now
+asks the database to *count* instead of paging through every message's text.
+
+Also done in the same pass (were P3 items 13–14, the two live holes):
+`fetch-link-preview` (was an unauthenticated open proxy — SSRF into the cloud
+metadata endpoint) and `send-scheduled-messages` (held the service-role key and
+accepted anyone's call). Plus crawler lockout, CSP/HSTS/headers, and an inlined
+first paint. Details and the verification steps: guide §9d.
+
+<details><summary>The original P0 plan, for reference</summary>
 
 1. **Delete the `manualChunks` block in `vite.config.ts`** and make
    `AdminDashboard`, `HiddenLogin`, `SecretLogin` lazy. Keep `DecoyLogin`
@@ -128,7 +145,9 @@ Each phase lists **what**, **gain** (measured where I could measure it),
    splash so the first paint is never a blank white rectangle.
    *Gain: fewer round trips before the first byte of app code; no identity leak.*
 
-### P1 — Make it *feel* fast
+</details>
+
+### P1 — Make it *feel* fast ← next
 
 5. **Critical CSS + skeleton first paint.** Inline the handful of rules the login
    and home shells need, and preload the one font above the fold.

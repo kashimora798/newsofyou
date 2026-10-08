@@ -28,9 +28,10 @@ change.
 | 9a | Media compression (storage + quality) | — | — |
 | 9b | Printed book (A5, one day per page) + owner maintenance | — | `twin-maintenance` |
 | 9c | Chat media drawn the way WhatsApp does: albums, bare photos, document cards | `20261008180000_chat_attachments.sql` | — |
+| 9d | Fast, light and secure: no 3D, −60% first load, SSRF and open-function fixes, headers | — | `fetch-link-preview`, `send-scheduled-messages` (hardened) |
 
 With that, every phase of the plan is built. What remains is not a phase: it is
-live use — apply §2–§9c once, then keep adding lines, pages and rooms.
+live use — apply §2–§9d once, then keep adding lines, pages and rooms.
 
 ---
 
@@ -519,6 +520,131 @@ deployed and run on Supabase.
 
 ---
 
+## 9d. Fast, light and secure (the P0 pass)
+
+Measured on this machine with `npm run build` and `gzip -9`, before → after:
+
+| | Before | After |
+| --- | --- | --- |
+| What the first screen downloads | 589 KB gzip JS | **218 KB JS + 26 KB CSS** |
+| Requests before it can draw | entry + 5 `modulepreload`s | **1 script** |
+| three.js | 621 KB chunk + a 4.0 MB `ez-tree` chunk | **gone** |
+| `public/` | 84.82 MB | **68 KB** |
+| Build output | 111 MB | **21 MB** |
+| Runtime dependencies | 62 | **57** |
+| `tsc` baseline | 35 errors | **26** |
+| Tests | 29 | **45** |
+
+### There is no 3D any more
+
+The forest was a WebGL scene: 11 bark texture sets, leaf PNGs, seven `.glb` models
+and an ambience track, 84 MB of assets, to draw one tree. It is gone — as requested.
+
+- **"Our Tree" lives on.** `src/lib/treeGrowth.ts` holds the stages (Sapling →
+  Ancient & Eternal) as plain data; `src/components/tree/OurTree.tsx` draws one
+  SVG tree that grows with them; `/forest` is now that page. The Wrapped "secret
+  garden" card uses the same tree with no canvas.
+- **It reads far less.** The old page paged through *every message in the
+  conversation*, 200 rows at a time, downloading text it never showed. Now
+  `useTreeGrowth` asks the database to **count** — one request, one number, the
+  same cost whether you have 50 messages or 50,000.
+- **The safety net.** `src/test/perfGuards.test.ts` fails if `three`,
+  `@react-three/*` or `ez-tree` ever come back, if the texture/model folders
+  reappear, or if `manualChunks` is re-added to `vite.config.ts`.
+
+### Why the first load was 589 KB, and why it is 218 KB
+
+`vite.config.ts` had a `manualChunks` block pinning three/charts/vendor/react
+into named chunks — and Vite preloads every chunk in the entry's static graph.
+The decoy portal was therefore pulling a WebGL engine and a chart library before
+it could draw a word. The block is gone, and the three heaviest pages that were
+statically imported (`AdminDashboard`, `HiddenLogin`, `SecretLogin`) are now
+lazy. `/` is the landing page and stays eager, so it still paints in one trip.
+
+To move it further, later: the remaining 218 KB is React, the router, Supabase,
+Radix and framer-motion. It can be trimmed, but each cut is a real trade-off
+against the animations and controls you asked for — a P1/P2 job, not a free win.
+
+### Fonts
+
+Seven Google-Fonts imports became two (`Nunito`, `Quicksand`, `Caveat`). The
+themed faces — typewriter, pixel, horror, romance — are fetched **when their
+theme is worn**, by `src/lib/themeFonts.ts`. A visitor to the decoy portal no
+longer downloads a horror font it can never show.
+
+### The two security holes that were open
+
+**1. `fetch-link-preview` was an open proxy.** It took a URL from anyone, with
+no sign-in, no scheme check and no size cap, and fetched it from inside
+Supabase's network — reachable: the cloud metadata endpoint
+(`169.254.169.254`), your local Supabase stack, any private host, plus free
+bandwidth and a port scanner. It now:
+
+- requires a **partner session** (the app already sends one — no change needed);
+- allows only `http`/`https`, on ports 80/443, with no credentials in the URL;
+- **resolves the host** and refuses loopback, RFC1918, link-local, CGNAT,
+  benchmarking, multicast, IPv6 unique-local, and IPv4-mapped IPv6 — so a
+  hostname pointing at `127.0.0.1` is refused too;
+- follows at most **2 redirects, re-checking each hop**;
+- caps the body at **256 KB**, times out at 5 s, and only parses `text/html`;
+- answers vaguely on failure, so a probe learns nothing.
+
+Verified with 33 checks against the real code (metadata IP, IPv4-mapped IPv6,
+private-range hostnames, mixed public/private answers, wrong schemes and ports).
+
+**2. `send-scheduled-messages` accepted anyone.** It holds the service-role key
+and sends every due scheduled message, and it asked for no proof at all. It now
+requires the service-role bearer token **or** the shared job secret, delivers at
+most 100 per call, and marks rows sent only while still unsent — so two callers
+racing can never double-send.
+
+### Headers, crawlers and the shell
+
+- `robots.txt` refuses every crawler (wildcard and named ones); `index.html`
+  carries `noindex, nofollow, noarchive, nosnippet` and `referrer: no-referrer`.
+- `vercel.json` adds a Content-Security-Policy (`frame-ancestors 'none'`,
+  `object-src 'none'`, no inline script), HSTS, `nosniff`, `Referrer-Policy`,
+  `Permissions-Policy` (microphone and camera stay allowed for voice notes and
+  photos), plus `immutable` caching for hashed assets and revalidation for the
+  HTML.
+- The page shell now paints its own colour immediately (an inlined splash), names
+  Supabase and the font host via `preconnect`, and drops the expired
+  Google-Storage `og:image` that leaked authorship.
+
+### What you still have to do by hand
+
+1. **Deploy the two hardened functions** (the app keeps sending link previews
+   with its session token, so nothing else changes):
+   ```bash
+   supabase functions deploy fetch-link-preview
+   supabase functions deploy send-scheduled-messages
+   ```
+2. **Give the scheduler a secret** (only if you drive scheduled messages from a
+   cron or the local runner):
+   ```bash
+   supabase secrets set SCHEDULED_JOB_SECRET=$(openssl rand -hex 24)
+   ```
+   then call the function with `x-job-secret: <that value>` (or the service-role
+   bearer, which `scripts/twin-nightly.mjs` already uses).
+3. **Turn off public sign-ups in Supabase** — Dashboard → Authentication →
+   Sign In / Providers → disable "Allow new users to sign up". This one cannot
+   be done from a file and it matters: the whole security model assumes the
+   database only ever holds the accounts you created. Do it before the domain
+   goes live.
+4. **Set your real title/description** if you want the decoy to read differently
+   (`index.html` currently says `EduflowAi` / `Study dashboard`).
+
+### How to check it stayed fixed
+
+```bash
+npm run build                      # then look at dist/index.html — one script, no preloads
+npx vitest run                     # 45 tests, including the guards above
+du -sh public                      # should be a few KB, never tens of MB
+curl -sI https://myanshika.xyz | grep -iE 'content-security|strict-transport|x-frame'
+```
+
+---
+
 ## 10. Deploy reference (by name — never deploy `_shared` alone)
 
 ```bash
@@ -535,6 +661,8 @@ supabase functions deploy twin-actions
 supabase functions deploy face-to-face
 supabase functions deploy twin-maintenance
 supabase functions deploy ai-memory-extract
+supabase functions deploy fetch-link-preview
+supabase functions deploy send-scheduled-messages
 # plus everything in LLM_ROUTER.md after a router change
 ```
 
