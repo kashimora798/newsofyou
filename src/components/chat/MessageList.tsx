@@ -222,9 +222,6 @@ const MessageList: React.FC<MessageListProps> = ({
                         )}
                       </span>
                     )}
-                    <span className="text-[10px] opacity-40">
-                      {item.messages.length} photo{item.messages.length === 1 ? "" : "s"}
-                    </span>
                   </div>
                 </div>
               </React.Fragment>
