@@ -27,9 +27,10 @@ change.
 | 8 | Face to Face — the hard-conversation room | `20261008150000_twin_ftf.sql` | `face-to-face` |
 | 9a | Media compression (storage + quality) | — | — |
 | 9b | Printed book (A5, one day per page) + owner maintenance | — | `twin-maintenance` |
+| 9c | Chat media drawn the way WhatsApp does: albums, bare photos, document cards | `20261008180000_chat_attachments.sql` | — |
 
 With that, every phase of the plan is built. What remains is not a phase: it is
-live use — apply §2–§9 once, then keep adding lines, pages and rooms.
+live use — apply §2–§9c once, then keep adding lines, pages and rooms.
 
 ---
 
@@ -421,6 +422,66 @@ All the knobs are in one place: `MEDIA_LIMITS` in `src/lib/media.ts`
 (`maxDimension`, `quality`, `minQuality`, `compressAboveBytes`,
 `alwaysShrinkAboveBytes`, `thumbWidth`). Change a number, run
 `npm run build`, redeploy the site. No migration, no function deploy.
+
+---
+
+## 9c. Media in the chat, the way WhatsApp draws it (Phase 9c)
+
+The thread now lays media out the way the screenshot in the brief asked for.
+Nothing about `messages` changed — it is still append-only and read-only to us.
+Everything below is *rendering* plus one small side table.
+
+**What you will see**
+
+| Sent | Drawn as |
+| --- | --- |
+| One photo, no caption | the photo bare (no bubble), with the time and the ticks on the picture |
+| Two to ten photos, same sender, no captions, within 3 minutes | one rounded cluster with thin seams — 2 side by side, 3 as a square with a tall first tile, 4+ as 2×2, extras counted as `+3` |
+| Any photo with a caption, a reply or a reaction | an ordinary bubble, so nothing is lost |
+| A PDF or other document | a card: coloured label square, the filename, then `2 pages • 1.1 MB • PDF`, with a download arrow |
+| A video | a thumbnail, a play button, and the length in the corner |
+| Tapping a photo in a cluster | opens the viewer on that photo; `←` `→` or the arrows step through the rest of the album |
+
+**The one database piece**
+
+Migration `supabase/migrations/20261008180000_chat_attachments.sql` — run it with
+`supabase db push` (same command as every other migration; it is idempotent).
+
+```sql
+-- what it adds, in one breath:
+chat_attachments   -- one row per uploaded file, keyed by its storage path
+chat_attachment_save(...)   -- upsert; only fills blanks, never overwrites with null
+chat_attachments_for(text[])  -- the rows for the media currently on screen
+```
+
+RLS is on with a partner-read policy; the save function only ever writes rows
+whose path is inside the caller's own folder, so neither partner can claim the
+other's file. **Nothing breaks before you push it** — if the table is not there
+yet the chat simply draws photos without reserved height and documents without
+the page count. No edge function, no secret, no key.
+
+**Where the page count comes from.** The sender's own browser reads the PDF's
+page tree out of the first and last 512 KB of the file (`src/lib/pdfMeta.ts`).
+The file never leaves the device to be measured, and it is only read at all
+because the number has to live somewhere the other phone can see it. If the
+count cannot be told confidently, the card shows `1.1 MB • PDF` instead of
+guessing.
+
+**Cheap by construction.** Each cluster draws the `.thumb` sibling that the
+upload already writes (480 px, ~10–20× smaller), so scrolling a wall of photos
+never pulls full masters down; the master is fetched only when a photo is opened,
+and if a preview is missing the image silently falls back to the full file.
+
+**How to test it**
+
+1. `supabase db push`, then `npm run dev`.
+2. Open the chat and attach **several photos at once** (the picker is now
+   multi-select). They should land as one cluster with the time under it.
+3. Attach a PDF and check the card reads `N pages • size • PDF` on both phones.
+4. Reload the page — the geometry and the card details must be identical,
+   because both come from the database rather than from local memory.
+5. `npx vitest run` → 24 tests, including the album geometry and the PDF
+   counter.
 
 ---
 

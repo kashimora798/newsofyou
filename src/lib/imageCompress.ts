@@ -174,6 +174,52 @@ export async function prepareImageUpload(file: File, opts: CompressOptions = {})
 }
 
 /**
+ * Width and height of any image file, without uploading it. Used to reserve the
+ * right space in the thread before the bytes arrive (Phase 9c).
+ */
+export async function probeImageSize(file: Blob): Promise<{ width: number; height: number } | null> {
+  try {
+    const anyWindow = window as unknown as { createImageBitmap?: (f: Blob) => Promise<ImageBitmap> };
+    if (anyWindow.createImageBitmap) {
+      const bitmap = await anyWindow.createImageBitmap(file);
+      const size = { width: bitmap.width, height: bitmap.height };
+      bitmap.close?.();
+      return size;
+    }
+  } catch {
+    /* fall through to the <img> path */
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    return await new Promise<{ width: number; height: number } | null>((resolve) => {
+      const el = new Image();
+      el.onload = () => resolve({ width: el.naturalWidth, height: el.naturalHeight });
+      el.onerror = () => resolve(null);
+      el.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** How long a clip runs, read from its metadata. Null when we cannot tell. */
+export async function probeVideoDuration(file: Blob): Promise<number | null> {
+  const url = URL.createObjectURL(file);
+  try {
+    return await new Promise<number | null>((resolve) => {
+      const el = document.createElement("video");
+      el.preload = "metadata";
+      el.onloadedmetadata = () => resolve(Number.isFinite(el.duration) ? Number(el.duration.toFixed(2)) : null);
+      el.onerror = () => resolve(null);
+      el.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
  * Would this file benefit? Used to decide whether to bother at all — cheaper
  * than decoding, so it runs on every attachment.
  */

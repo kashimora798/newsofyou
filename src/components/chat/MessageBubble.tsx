@@ -31,12 +31,14 @@ interface MessageBubbleProps {
   onTeachAi?: (message: Tables<"messages">) => void;
   onAskCompanion?: (message: Tables<"messages">) => void;
   isPinned?: boolean;
+  /** Width/height/page count/preview for this message's media (Phase 9c). */
+  attachmentFor?: (url?: string | null) => { width?: number | null; height?: number | null; pages?: number | null; thumb_path?: string | null; duration?: number | null } | null;
 }
 
 const SWIPE_THRESHOLD = 60;
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned,
+  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned, attachmentFor,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -54,6 +56,26 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const hasVideo = message.video && message.vidUrl;
   const hasFile = !!(message as any).file_url;
   const hasGif = !!(message as any).gif_url;
+
+  // What we know about this attachment from `chat_attachments` (Phase 9c).
+  const mediaDetails = (hasImage || hasVideo ? attachmentFor?.(message.image_url ?? (message as any).vidUrl) : null) ?? null;
+  const mediaPreview = mediaDetails?.thumb_path && message.image_url
+    ? message.image_url.replace(/(\.[a-z0-9]+)(\?.*)?$/i, ".thumb$1$2")
+    : null;
+  const mediaRatio =
+    mediaDetails?.width && mediaDetails?.height ? `${mediaDetails.width} / ${mediaDetails.height}` : undefined;
+
+  // A photo that carries nothing else (no caption, no reply, no reactions) is
+  // drawn bare, so several of them in a row read as one cluster.
+  const barePhoto =
+    hasImage &&
+    !hasVideo &&
+    !hasGif &&
+    !hasFile &&
+    !(message.reply_to_id) &&
+    !(message.content ?? "").trim() &&
+    (reactions ?? []).length === 0 &&
+    !message.link_preview_active;
   const hasSticker = !!(message as any).sticker_url;
   const hasLinkPreview = message.link_preview_active && message.link_title;
 
@@ -422,7 +444,54 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
         )}
 
-        {/* Bubble */}
+        {/* A photo on its own: no bubble at all, just the picture with the time on
+            it — the way a messaging app shows media. Everything the bubble would
+            have carried (a caption, a reply, reactions) keeps the real bubble. */}
+        {barePhoto ? (
+          <div
+            className={`relative inline-block overflow-hidden rounded-[13px] ${isOwn ? "bubble-shadow-own" : "bubble-shadow-partner"}`}
+          >
+            <img
+              src={mediaPreview ?? message.image_url!}
+              alt="shared"
+              loading="lazy"
+              decoding="async"
+              className="block max-w-[min(300px,74vw)] cursor-pointer object-cover transition-opacity hover:opacity-95"
+              style={mediaRatio ? { aspectRatio: mediaRatio, width: "min(300px, 74vw)" } : { maxHeight: 380 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onImageClick?.(message.image_url!);
+              }}
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (mediaPreview && img.src !== message.image_url) {
+                  img.style.aspectRatio = mediaRatio ?? "";
+                  img.src = message.image_url!;
+                }
+              }}
+            />
+            {/* time + ticks, on the photo */}
+            <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-full bg-black/40 px-2 py-[3px] backdrop-blur-[2px]">
+              <span className="text-[10px] font-medium text-white/95">{formatMessageTime(message.created_at ?? "")}</span>
+              {isOwn && (
+                <span className="inline-flex">
+                  {message.seen ? (
+                    <CheckCheck className="h-3.5 w-3.5 text-white" />
+                  ) : message.delivered ? (
+                    <CheckCheck className="h-3.5 w-3.5 text-white/70" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5 text-white/70" />
+                  )}
+                </span>
+              )}
+            </div>
+            {isPinned && (
+              <span className="absolute left-1.5 top-1.5 rounded-full bg-black/40 px-1.5 py-0.5 text-[9px] text-white/90 backdrop-blur-[2px]">
+                pinned
+              </span>
+            )}
+          </div>
+        ) : (
         <div
           className={`rounded-[20px] px-3.5 py-2 ${
             isOwn
@@ -475,6 +544,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                   <Play className="h-6 w-6 fill-current ml-0.5" />
                 </div>
               </div>
+              {mediaDetails?.duration ? (
+                <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/50 px-2 py-[3px] text-[10px] text-white/95 backdrop-blur-[2px]">
+                  {Math.floor(Number(mediaDetails.duration) / 60)}:{String(Math.round(Number(mediaDetails.duration) % 60)).padStart(2, "0")}
+                </span>
+              ) : null}
             </div>
           )}
 
@@ -515,6 +589,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 fileName={(message as any).file_name ?? "file"}
                 fileType={(message as any).file_type ?? "application/octet-stream"}
                 fileSize={(message as any).file_size ?? 0}
+                pages={attachmentFor?.((message as any).file_url)?.pages ?? null}
+                previewUrl={attachmentFor?.((message as any).file_url)?.thumb_path ? message.file_url : null}
               />
             </div>
           )}
@@ -557,6 +633,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           {/* Time + Status */}
           <StatusRow isOwn={isOwn} message={message} />
         </div>
+        )}
 
         {/* Desktop hover actions */}
         <div className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-16" : "-right-16"} opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex items-center gap-0.5`}>

@@ -7,11 +7,15 @@ import ScrollToBottom from "./ScrollToBottom";
 import ImageLightbox from "./ImageLightbox";
 import SkyBackground from "./SkyBackground";
 import MessageListSkeleton from "./MessageListSkeleton";
-import { isSameDay } from "@/lib/dateUtils";
+import { formatMessageTime, isSameDay } from "@/lib/dateUtils";
+import { Check, CheckCheck } from "lucide-react";
+import { groupImageAlbums } from "@/lib/chatMedia";
+import { useChatAttachments } from "@/hooks/useChatAttachments";
+import MediaGrid from "./MediaGrid";
+import type { Tables } from "@/integrations/supabase/types";
 import { Loader2, Sparkles, X } from "lucide-react";
 import { useReactions } from "@/hooks/useReactions";
 
-import type { Tables } from "@/integrations/supabase/types";
 
 /** A note the twin wrote in his place while he was away (never a real message). */
 export interface TwinNote {
@@ -56,10 +60,22 @@ const MessageList: React.FC<MessageListProps> = ({
   const prevLengthRef = useRef(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [lightboxType, setLightboxType] = useState<"image" | "video">("image");
+  const [lightboxAlbum, setLightboxAlbum] = useState<string[] | null>(null);
   const [bookmarkMsg, setBookmarkMsg] = useState<Tables<"messages"> | null>(null);
 
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   const { reactions, toggleReaction } = useReactions(messageIds);
+
+  // Photos sent together are drawn as one cluster, like any messaging app does.
+  // `messages` itself is untouched — this is purely how the thread is rendered.
+  const items = useMemo(() => groupImageAlbums(messages), [messages]);
+
+  // Width/height/page counts for the visible media, in one round trip.
+  const attachmentUrls = useMemo(
+    () => messages.map((m) => m.image_url ?? (m as { file_url?: string | null }).file_url ?? null),
+    [messages],
+  );
+  const { forUrl: attachmentFor } = useChatAttachments(attachmentUrls);
 
   const replyMap = useMemo(() => {
     const map: Record<string, Tables<"messages">> = {};
@@ -166,14 +182,58 @@ const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {messages.map((msg, i) => {
-          const prev = i > 0 ? messages[i - 1] : null;
-          const showDate = i === 0 || !isSameDay(prev?.created_at ?? "", msg.created_at ?? "");
-          // Group consecutive messages from the same sender (tighter spacing),
-          // unless a date separator breaks the run.
-          const grouped = !showDate && !!prev && prev.user_id === msg.user_id;
+        {items.map((item, i) => {
+          const first = item.kind === "album" ? item.messages[0] : item.message;
+          const last = item.kind === "album" ? item.messages[item.messages.length - 1] : item.message;
+          const prevItem = i > 0 ? items[i - 1] : null;
+          const prevLast = prevItem ? (prevItem.kind === "album" ? prevItem.messages[prevItem.messages.length - 1] : prevItem.message) : null;
+          const showDate = i === 0 || !isSameDay(prevLast?.created_at ?? "", first.created_at ?? "");
+          const grouped = !showDate && !!prevLast && prevLast.user_id === first.user_id;
+
+          if (item.kind === "album") {
+            const isOwn = first.user_id === currentUserId;
+            const albumUrls = item.messages.map((m) => m.image_url!).filter(Boolean);
+            return (
+              <React.Fragment key={item.key}>
+                {showDate && <DateSeparator date={first.created_at ?? ""} />}
+                <div id={`msg-${first.id}`} className={`group relative flex flex-col ${isOwn ? "items-end" : "items-start"} ${grouped ? "mt-1" : "mt-3"}`}>
+                  <MediaGrid
+                    messages={item.messages}
+                    detailsFor={attachmentFor}
+                    isOwn={isOwn}
+                    onOpen={(url) => {
+                      setLightboxAlbum(albumUrls);
+                      setLightboxSrc(url);
+                      setLightboxType("image");
+                    }}
+                  />
+                  {/* time + ticks sit under the cluster, as they do when a photo
+                      has no caption */}
+                  <div className={`mt-1 flex items-center gap-1 ${isOwn ? "justify-end" : "justify-start"}`}>
+                    <span className="text-[10px] opacity-50">{formatMessageTime(last.created_at ?? "")}</span>
+                    {isOwn && (
+                      <span className="inline-flex">
+                        {last.seen ? (
+                          <CheckCheck className="h-3.5 w-3.5 text-seen" />
+                        ) : last.delivered ? (
+                          <CheckCheck className="h-3.5 w-3.5 opacity-40" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </span>
+                    )}
+                    <span className="text-[10px] opacity-40">
+                      {item.messages.length} photo{item.messages.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+              </React.Fragment>
+            );
+          }
+
+          const msg = item.message;
           return (
-            <React.Fragment key={msg.id}>
+            <React.Fragment key={item.key}>
               {showDate && <DateSeparator date={msg.created_at ?? ""} />}
               <div
                 id={`msg-${msg.id}`}
@@ -186,14 +246,15 @@ const MessageList: React.FC<MessageListProps> = ({
                   replyToMessage={msg.reply_to_id ? replyMap[msg.reply_to_id] ?? null : null}
                   onReply={onReply}
                   onReact={(emoji) => toggleReaction(msg.id, currentUserId, emoji)}
-                  onImageClick={(url) => { setLightboxSrc(url); setLightboxType("image"); }}
-                  onVideoClick={(url) => { setLightboxSrc(url); setLightboxType("video"); }}
+                  onImageClick={(url) => { setLightboxAlbum(null); setLightboxSrc(url); setLightboxType("image"); }}
+                  onVideoClick={(url) => { setLightboxAlbum(null); setLightboxSrc(url); setLightboxType("video"); }}
                   onScrollToMessage={scrollToMessage}
                   onBookmark={(msg) => setBookmarkMsg(msg)}
                   onPin={onPin}
                   isPinned={isMessagePinned?.(msg.id) ?? false}
                   onTeachAi={onTeachAi}
                   onAskCompanion={onAskCompanion}
+                  attachmentFor={attachmentFor}
                 />
               </div>
             </React.Fragment>
@@ -236,7 +297,17 @@ const MessageList: React.FC<MessageListProps> = ({
       </div>
 
       {showScrollBtn && <ScrollToBottom onClick={() => scrollToBottom()} />}
-      {lightboxSrc && <ImageLightbox src={lightboxSrc} type={lightboxType} onClose={() => setLightboxSrc(null)} />}
+      {lightboxSrc && (
+        <ImageLightbox
+          src={lightboxSrc}
+          type={lightboxType}
+          siblings={lightboxType === "image" ? lightboxAlbum ?? undefined : undefined}
+          onClose={() => {
+            setLightboxSrc(null);
+            setLightboxAlbum(null);
+          }}
+        />
+      )}
       {bookmarkMsg && <BookmarkDialog message={bookmarkMsg} onClose={() => setBookmarkMsg(null)} />}
     </div>
   );

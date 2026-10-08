@@ -1,7 +1,9 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2 } from "lucide-react";
 // Phase 9 — keep storage small without losing the picture (src/lib/media.ts).
-import { prepareImageUpload, shrinkMediaEnabled, worthCompressing } from "@/lib/imageCompress";
+import { prepareImageUpload, probeImageSize, probeVideoDuration, shrinkMediaEnabled, worthCompressing } from "@/lib/imageCompress";
+import { countPdfPages, isPdf } from "@/lib/pdfMeta";
+import { saveChatAttachment } from "@/hooks/useChatAttachments";
 import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaPanel from "./MediaPanel";
@@ -125,8 +127,25 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
     textareaRef.current?.focus();
   }, [onComposeHelp, composing, text]);
 
-  const uploadAndSendFile = async (input: File) => {
+  const uploadAndSendFile = async (files: File[]) => {
     setUploading(true);
+    try {
+      for (const file of files) {
+        await uploadOneFile(file);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /**
+   * One attachment, from the device to the thread.
+   *
+   * Order matters here: shrink → upload → *record what it is*. The record is
+   * keyed by the storage path, so the bubble can find the photo's real size, a
+   * document's page count and the little preview sibling on any device, forever.
+   */
+  const uploadOneFile = async (input: File) => {
 
     // 1. Shrink first (device-side, one master + optional 480px preview).
     //    A 4 MB phone photo usually lands around 400 KB at the same look; the
@@ -163,11 +182,44 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
     const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file);
 
     // The grid preview rides along under a sibling name — same path + .thumb.
-    // Nothing references it yet; it is there for lists, so opening a thread
-    // never has to pull full masters down.
+    // The thread uses it for clusters, so a wall of photos never pulls the
+    // full-size files down.
+    let thumbPath: string | null = null;
     if (!uploadError && thumb) {
-      const thumbPath = filePath.replace(/(\.[a-z0-9]+)$/i, ".thumb$1");
+      thumbPath = filePath.replace(/(\.[a-z0-9]+)$/i, ".thumb$1");
       await supabase.storage.from(bucket).upload(thumbPath, thumb).catch(() => undefined);
+    }
+
+    // Record what this attachment actually is (Phase 9c) — image size, a PDF's
+    // page count, a clip's length. All of it read on this device, none of it
+    // uploaded just to be measured.
+    if (!uploadError) {
+      void (async () => {
+        try {
+          if (isImage && !isAudio) {
+            const size = await probeImageSize(file);
+            await saveChatAttachment({
+              path: filePath,
+              kind: "image",
+              mime: file.type,
+              bytes: file.size,
+              width: size?.width ?? null,
+              height: size?.height ?? null,
+              thumbPath,
+            });
+          } else if (isVideo) {
+            const duration = await probeVideoDuration(file);
+            await saveChatAttachment({ path: filePath, kind: "video", mime: file.type, bytes: file.size, duration });
+          } else if (isAudio) {
+            await saveChatAttachment({ path: filePath, kind: "audio", mime: file.type, bytes: file.size });
+          } else {
+            const pages = isPdf(file.type, file.name) ? await countPdfPages(file) : null;
+            await saveChatAttachment({ path: filePath, kind: "document", mime: file.type, bytes: file.size, pages, thumbPath });
+          }
+        } catch {
+          /* the bubble simply shows a little less */
+        }
+      })();
     }
 
     if (!uploadError) {
@@ -192,16 +244,17 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
       onCancelReply();
       if (mediaNote) toast({ title: "Media shrunk before upload", description: mediaNote });
     } else {
-      toast({ title: "Failed to upload file ðŸ˜¢", description: uploadError.message, variant: "destructive" });
+      toast({ title: "Failed to upload file 😢", description: uploadError.message, variant: "destructive" });
     }
-
-    setUploading(false);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await uploadAndSendFile(file);
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    // Several photos at once become several messages — the thread draws them as
+    // one cluster (see chatMedia.ts), which is how it should look.
+    await uploadAndSendFile(picked);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -222,7 +275,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
 
     if (fileToUpload) {
       e.preventDefault();
-      await uploadAndSendFile(fileToUpload);
+      await uploadAndSendFile([fileToUpload]);
     }
   };
 
@@ -343,7 +396,14 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
                 <Plus className="h-5 w-5" />
               </motion.button>
 
-              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.csv" onChange={handleFileUpload} className="hidden" />
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
 
               <motion.button whileTap={{ scale: 0.88 }} onClick={() => { setShowMedia(!showMedia); closeAll(); if (!showMedia) setShowMedia(true); }} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${showMedia ? "bg-primary/10 text-primary" : "hover:bg-muted/60 text-muted-foreground"}`}>
                 <Smile className="h-5 w-5" />
