@@ -83,7 +83,7 @@ DECLARE
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not signed in'; END IF;
   IF NOT public.is_partner(auth.uid()) THEN RAISE EXCEPTION 'Not a participant'; END IF;
-  IF clean IS NULL THEN RAISE EXCEPTION 'A path is required';
+  IF clean IS NULL THEN RAISE EXCEPTION 'A path is required'; END IF;
   IF length(clean) > 300 THEN RAISE EXCEPTION 'That path is too long'; END IF;
 
   INSERT INTO public.chat_attachments AS a (

@@ -138,7 +138,7 @@ DECLARE
   row public.twin_actions%ROWTYPE;
 BEGIN
   SELECT * INTO row FROM public.twin_actions WHERE id = p_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'No such action';
+  IF NOT FOUND THEN RAISE EXCEPTION 'No such action'; END IF;
   IF row.user_id <> auth.uid() THEN RAISE EXCEPTION 'Only the person it was proposed to can decide'; END IF;
 
   IF row.status = 'proposed' AND row.expires_at < now() THEN

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin, Brain, Sparkles, MoreHorizontal, Play } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
@@ -14,11 +14,15 @@ import { QUICK_REACTIONS } from "@/lib/emojiData";
 import { DieFace } from "@/components/secrets/DieFace";
 import { decodeRps, RPS_EMOJI } from "@/lib/secretCommands";
 import { haptic } from "@/lib/haptics";
+import { getMessageFontSizeClass, getMessageFontStyle } from "@/lib/fontSettings";
 import type { Tables } from "@/integrations/supabase/types";
 
 interface MessageBubbleProps {
   message: Tables<"messages">;
   isOwn: boolean;
+  fontSize?: string;
+  customFontSize?: string;
+  isHandwriting?: boolean;
   reactions?: Tables<"message_reactions">[];
   replyToMessage?: Tables<"messages"> | null;
   onReply?: (message: Tables<"messages">) => void;
@@ -38,7 +42,7 @@ interface MessageBubbleProps {
 const SWIPE_THRESHOLD = 60;
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isOwn, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned, attachmentFor,
+  message, isOwn, fontSize = "medium", customFontSize, isHandwriting = false, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned, attachmentFor,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -78,6 +82,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     !message.link_preview_active;
   const hasSticker = !!(message as any).sticker_url;
   const hasLinkPreview = message.link_preview_active && message.link_title;
+
+  const fontSizeClass = useMemo(() => {
+    return getMessageFontSizeClass(fontSize, isHandwriting);
+  }, [fontSize, isHandwriting]);
+
+  const handwritingStyle = useMemo(() => {
+    return isHandwriting ? getMessageFontStyle(true, customFontSize) : undefined;
+  }, [isHandwriting, customFontSize]);
 
   const handleReact = useCallback((emoji: string) => {
     setReactionAnimation(emoji);
@@ -602,9 +614,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
               content={message.content}
               revealed={(message as any).revealed ?? false}
               isOwn={isOwn}
+              fontSizeClass={fontSizeClass}
+              isHandwriting={isHandwriting}
+              customFontSize={customFontSize}
             />
           ) : message.content ? (
-            <div className="text-[14.5px] whitespace-pre-wrap break-words leading-relaxed">
+            <div
+              style={handwritingStyle}
+              className={`whitespace-pre-wrap break-words leading-relaxed ${fontSizeClass} ${isHandwriting ? "font-handwriting" : ""}`}
+            >
               {formatMessageContent(message.content)}
             </div>
           ) : null}

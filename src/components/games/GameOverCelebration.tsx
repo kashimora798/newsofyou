@@ -53,6 +53,8 @@ interface GameOverCelebrationProps {
   onExit: () => void;
   onRematch: () => void;
   customMessage?: string;
+  /** What the numbers mean, e.g. "Guesses (lower wins)". Games already pass it; it was silently dropped before. */
+  scoreLabel?: string;
 }
 
 const GameOverCelebration: React.FC<GameOverCelebrationProps> = ({
@@ -64,6 +66,7 @@ const GameOverCelebration: React.FC<GameOverCelebrationProps> = ({
   onExit,
   onRematch,
   customMessage,
+  scoreLabel,
 }) => {
   const [rematchRequested, setRematchRequested] = useState(false);
   const { onDifferentGame } = useGameActions();
@@ -159,6 +162,9 @@ const GameOverCelebration: React.FC<GameOverCelebrationProps> = ({
               </p>
             </div>
           </motion.div>
+        )}
+        {scoreLabel && myScore !== undefined && opponentScore !== undefined && (
+          <p className="-mt-3 text-center text-[11px] text-muted-foreground">{scoreLabel}</p>
         )}
 
         {/* Actions */}

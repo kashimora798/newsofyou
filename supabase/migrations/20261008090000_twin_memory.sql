@@ -369,6 +369,8 @@ DECLARE
   last_run public.twin_nightly_runs%ROWTYPE;
   mins numeric;
 BEGIN
+  IF NOT coalesce(public.is_partner(auth.uid()), false) THEN RETURN NULL; END IF;
+
   SELECT * INTO cfg FROM public.twin_config WHERE id = 1;
   SELECT * INTO last_run FROM public.twin_nightly_runs ORDER BY ran_at DESC LIMIT 1;
 
@@ -385,8 +387,8 @@ BEGIN
     'minutes_since', round(mins),
     'last_run', to_jsonb(last_run),
     'can_force', auth.uid() = cfg.owner_user_id
-  )
-  WHERE public.is_partner(auth.uid());
+  );
+END;
 $$;
 REVOKE ALL ON FUNCTION public.twin_nightly_state(boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.twin_nightly_state(boolean) TO authenticated, service_role;

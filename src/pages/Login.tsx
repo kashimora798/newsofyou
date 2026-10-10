@@ -14,16 +14,6 @@ const Login: React.FC = () => {
   const [invalidUser, setInvalidUser] = useState(false);
   const [attemptsRemaining, setAttemptsRemaining] = useState(5);
 
-  if (authLoading || (user && roleLoading)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#050510" }}>
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: "hsl(160,60%,60%)" }} />
-      </div>
-    );
-  }
-
-  if (user) return <Navigate to={role === "partner" ? "/home" : "/you/dashboard"} replace />;
-
   const handleSubmit = useCallback(async (email: string, password: string) => {
     const result = await signIn(email, password);
     const isInvalid = result.error?.message === "INVALID_USER";
@@ -41,6 +31,16 @@ const Login: React.FC = () => {
 
     return result;
   }, [signIn]);
+
+  if (authLoading || (user && roleLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "#050510" }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: "hsl(160,60%,60%)" }} />
+      </div>
+    );
+  }
+
+  if (user) return <Navigate to={role === "partner" ? "/home" : "/you/dashboard"} replace />;
 
   const handleSuccess = () => {
     setAuroraIntensity(3);

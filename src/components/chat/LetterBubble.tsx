@@ -20,6 +20,7 @@ const FONTS = [
   { family: "Georgia, 'Times New Roman', serif" },
   { family: "'Palatino Linotype', 'Book Antiqua', serif" },
   { family: "system-ui, sans-serif" },
+  { family: "'MyHandwriting', 'Comic Neue', cursive, sans-serif" },
 ];
 
 type Phase = "sealed" | "playing_video" | "reading";
@@ -69,6 +70,10 @@ const LetterBubble: React.FC<LetterBubbleProps> = ({ message, isOwn }) => {
         content: message.content,
         savedAt: new Date().toISOString(),
         senderName: message.username ?? "Unknown",
+        paperIdx,
+        fontIdx,
+        inkColor,
+        decorations,
       });
       localStorage.setItem("saved_letters", JSON.stringify(saved));
       toast({ title: "💕 Letter kept safe!", description: "Saved to your letter collection." });
@@ -178,7 +183,7 @@ const LetterBubble: React.FC<LetterBubbleProps> = ({ message, isOwn }) => {
 
             {/* Letter content */}
             <div
-              className="flex-1 overflow-y-auto p-8 pt-12 relative"
+              className={`flex-1 overflow-y-auto p-8 pt-12 relative ${fontIdx === 3 ? "font-handwriting" : ""}`}
               style={{
                 background: paper.bg,
                 fontFamily: font.family,
@@ -189,7 +194,7 @@ const LetterBubble: React.FC<LetterBubbleProps> = ({ message, isOwn }) => {
               {decorations && <Flourish />}
 
               <div
-                className="text-base whitespace-pre-wrap leading-[2rem]"
+                className={`text-base whitespace-pre-wrap leading-[2rem] ${fontIdx === 3 ? "font-handwriting" : ""}`}
                 style={{
                   backgroundImage: "repeating-linear-gradient(transparent, transparent 31px, rgba(0,0,0,0.05) 31px, rgba(0,0,0,0.05) 32px)",
                   lineHeight: "2rem",

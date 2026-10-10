@@ -170,7 +170,7 @@ BEGIN
   IF NOT public.is_partner(auth.uid()) THEN RAISE EXCEPTION 'Not a participant'; END IF;
 
   SELECT * INTO s FROM public.ftf_sessions WHERE id = p_session;
-  IF NOT FOUND THEN RAISE EXCEPTION 'No such room';
+  IF NOT FOUND THEN RAISE EXCEPTION 'No such room'; END IF;
   IF auth.uid() <> s.started_by AND auth.uid() <> coalesce(s.partner_id, s.started_by) THEN
     RAISE EXCEPTION 'That room is not yours';
   END IF;
@@ -287,7 +287,7 @@ DECLARE
   stops boolean := flags && ARRAY['self_harm', 'abuse']::text[];
 BEGIN
   SELECT * INTO s FROM public.ftf_sessions WHERE id = p_session;
-  IF NOT FOUND THEN RAISE EXCEPTION 'No such room';
+  IF NOT FOUND THEN RAISE EXCEPTION 'No such room'; END IF;
   IF auth.uid() IS NOT NULL AND auth.uid() <> s.started_by AND auth.uid() <> coalesce(s.partner_id, s.started_by) THEN
     RAISE EXCEPTION 'That room is not yours';
   END IF;

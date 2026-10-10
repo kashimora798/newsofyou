@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useReminders } from "@/hooks/useReminders";
 import { usePartner } from "@/hooks/usePartner";
-import { ArrowLeft, Plus, Bell, Check, Trash2, Loader2, Clock } from "lucide-react";
+import { ArrowLeft, Plus, Bell, Check, Trash2, Loader2, Clock, Volume2 } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import BottomNav from "@/components/layout/BottomNav";
+import { toast } from "@/hooks/use-toast";
 
 const Reminders: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -18,6 +19,23 @@ const Reminders: React.FC = () => {
   const [remindDate, setRemindDate] = useState("");
   const [remindTime, setRemindTime] = useState("09:00");
   const [forPartner, setForPartner] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      const res = await Notification.requestPermission();
+      setNotificationPermission(res);
+      if (res === "granted") {
+        toast({ title: "🔔 Notifications enabled!", description: "You will receive desktop alerts when reminders are due." });
+      }
+    }
+  };
 
   if (authLoading) return <div className="flex h-dvh items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/login" replace />;
@@ -25,8 +43,60 @@ const Reminders: React.FC = () => {
   const handleAdd = async () => {
     if (!title.trim() || !remindDate) return;
     const remindAt = new Date(`${remindDate}T${remindTime}`).toISOString();
-    await addReminder(title.trim(), remindAt, forPartner ? partner?.id : undefined, note.trim() || undefined);
-    setTitle(""); setNote(""); setRemindDate(""); setRemindTime("09:00"); setForPartner(false); setShowAdd(false);
+    const partnerTargetId = partner?.user_id;
+
+    if (forPartner && !partnerTargetId) {
+      toast({
+        title: "Partner not found",
+        description: "Could not find partner account to send reminder.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const res = await addReminder(
+      title.trim(),
+      remindAt,
+      forPartner ? partnerTargetId : undefined,
+      note.trim() || undefined
+    );
+
+    if (res?.error) {
+      toast({
+        title: "Could not save reminder",
+        description: res.error.message || "Failed to create reminder.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: forPartner ? "🔔 Reminder sent to partner!" : "🔔 Reminder saved!",
+    });
+    setTitle("");
+    setNote("");
+    setRemindDate("");
+    setRemindTime("09:00");
+    setForPartner(false);
+    setShowAdd(false);
+  };
+
+  const handleComplete = async (id: string) => {
+    const res = await completeReminder(id);
+    if (res?.error) {
+      toast({ title: "Failed to update reminder", variant: "destructive" });
+    } else {
+      toast({ title: "✨ Reminder completed!" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const res = await deleteReminder(id);
+    if (res?.error) {
+      toast({ title: "Failed to delete reminder", variant: "destructive" });
+    } else {
+      toast({ title: "Reminder removed" });
+    }
   };
 
   const upcoming = reminders.filter((r) => !r.is_completed && !isPast(parseISO(r.remind_at)));
@@ -48,6 +118,21 @@ const Reminders: React.FC = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {notificationPermission === "default" && (
+          <div className="flex items-center justify-between p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs">
+            <div className="flex items-center gap-2">
+              <Volume2 className="h-4 w-4 text-blue-500 shrink-0" />
+              <span className="text-foreground">Get alerted when reminders are due</span>
+            </div>
+            <button
+              onClick={requestNotificationPermission}
+              className="px-2.5 py-1 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 transition-colors shrink-0"
+            >
+              Enable
+            </button>
+          </div>
+        )}
+
         {showAdd && (
           <div className="bg-card rounded-xl border border-border p-4 space-y-3">
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Reminder title..." className="w-full text-sm bg-muted rounded-lg px-3 py-2 outline-none placeholder:text-muted-foreground" />
@@ -73,19 +158,19 @@ const Reminders: React.FC = () => {
             {overdue.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-destructive uppercase tracking-wider mb-2">⚠️ Overdue</h3>
-                {overdue.map((r) => <ReminderCard key={r.id} reminder={r} userId={user.id} onComplete={completeReminder} onDelete={deleteReminder} isOverdue />)}
+                {overdue.map((r) => <ReminderCard key={r.id} reminder={r} userId={user.id} onComplete={handleComplete} onDelete={handleDelete} isOverdue />)}
               </div>
             )}
             {upcoming.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Upcoming</h3>
-                {upcoming.map((r) => <ReminderCard key={r.id} reminder={r} userId={user.id} onComplete={completeReminder} onDelete={deleteReminder} />)}
+                {upcoming.map((r) => <ReminderCard key={r.id} reminder={r} userId={user.id} onComplete={handleComplete} onDelete={handleDelete} />)}
               </div>
             )}
             {completed.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Done</h3>
-                {completed.map((r) => <ReminderCard key={r.id} reminder={r} userId={user.id} onComplete={completeReminder} onDelete={deleteReminder} isDone />)}
+                {completed.map((r) => <ReminderCard key={r.id} reminder={r} userId={user.id} onComplete={handleComplete} onDelete={handleDelete} isDone />)}
               </div>
             )}
             {reminders.length === 0 && (

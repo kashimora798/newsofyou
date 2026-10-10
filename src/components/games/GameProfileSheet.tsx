@@ -118,7 +118,7 @@ const BADGES: BadgeDef[] = [
       const perfectWins = sessions.filter(s => 
         s.game_type === "sudoku_speedrun" && 
         s.winner_id === uid && 
-        s.board_state?.scores?.[uid] === 16
+        (s.board_state as any)?.scores?.[uid] === 16
       ).length;
       return { unlocked: perfectWins >= 1, progress: `${perfectWins}/1` };
     }
@@ -134,7 +134,7 @@ const BADGES: BadgeDef[] = [
       const match = sessions.some(s => 
         s.game_type === "tap_duel" && 
         s.winner_id === uid && 
-        s.board_state?.scores?.[uid] >= 4
+        (s.board_state as any)?.scores?.[uid] >= 4
       );
       return { unlocked: match, progress: match ? "1/1" : "0/1" };
     }
@@ -150,7 +150,7 @@ const BADGES: BadgeDef[] = [
       const maxChain = sessions
         .filter(s => s.game_type === "word_chain")
         .reduce((max, s) => {
-          const words = s.board_state?.words || [];
+          const words = (s.board_state as any)?.words || [];
           return words.length > max ? words.length : max;
         }, 0);
 
@@ -169,7 +169,7 @@ const BADGES: BadgeDef[] = [
       let perfectWin = false;
 
       for (const game of hangmanWins) {
-        const board = game.board_state;
+        const board = game.board_state as any;
         if (board && board.word && Array.isArray(board.guessed)) {
           const isGuesser = board.setter !== uid;
           if (isGuesser) {
@@ -198,8 +198,8 @@ const BADGES: BadgeDef[] = [
     check: (sessions, uid) => {
       const solvedInThree = sessions.some(s => 
         s.game_type === "wordle_duel" && 
-        s.board_state?.scores?.[uid] > 0 && 
-        s.board_state?.scores?.[uid] <= 3
+        (s.board_state as any)?.scores?.[uid] > 0 && 
+        (s.board_state as any)?.scores?.[uid] <= 3
       );
       return { unlocked: solvedInThree, progress: solvedInThree ? "1/1" : "0/1" };
     }
@@ -214,7 +214,7 @@ const BADGES: BadgeDef[] = [
     check: (sessions) => {
       const hitBullseye = sessions.some(s => {
         if (s.game_type !== "number_ninja") return false;
-        const history = s.board_state?.history || [];
+        const history = (s.board_state as any)?.history || [];
         return history.some((round: any) => round.mine !== null && round.mine === round.data);
       });
       return { unlocked: hitBullseye, progress: hitBullseye ? "1/1" : "0/1" };
@@ -230,8 +230,8 @@ const BADGES: BadgeDef[] = [
     check: (sessions) => {
       const firstTryWin = sessions.some(s => 
         s.game_type === "emoji_story" && 
-        s.board_state?.solved === true && 
-        s.board_state?.guesses?.length === 1
+        (s.board_state as any)?.solved === true && 
+        (s.board_state as any)?.guesses?.length === 1
       );
       return { unlocked: firstTryWin, progress: firstTryWin ? "1/1" : "0/1" };
     }
@@ -247,7 +247,7 @@ const BADGES: BadgeDef[] = [
       const maxMatches = sessions
         .filter(s => s.game_type === "this_or_that_rapid")
         .reduce((max, s) => {
-          const matches = s.board_state?.scores?.matches || 0;
+          const matches = (s.board_state as any)?.scores?.matches || 0;
           return matches > max ? matches : max;
         }, 0);
 
@@ -302,7 +302,7 @@ const BADGES: BadgeDef[] = [
       const maxLvl = sessions.some(s => 
         s.game_type === "memory_matrix" && 
         s.winner_id === uid && 
-        s.board_state?.scores?.[uid] === 100
+        (s.board_state as any)?.scores?.[uid] === 100
       );
       return { unlocked: maxLvl, progress: maxLvl ? "1/1" : "0/1" };
     }
@@ -333,7 +333,7 @@ const BADGES: BadgeDef[] = [
       const maxLen = sessions
         .filter(s => s.game_type === "story_battle")
         .reduce((max, s) => {
-          const sentences = s.board_state?.story || [];
+          const sentences = (s.board_state as any)?.story || [];
           return sentences.length > max ? sentences.length : max;
         }, 0);
 

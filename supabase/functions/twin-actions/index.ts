@@ -209,7 +209,7 @@ function parseTwinAnswer(raw: string, fallback: string): ParsedTwinAnswer {
     for (const a of obj.actions.slice(0, 2)) {
       const type = clean((a as { type?: unknown })?.type);
       if (!ALLOWED_ACTIONS.has(type)) continue;
-      const payload = { ...(a as Record<string, unknown>), type };
+      const payload: { type: string; [k: string]: unknown } = { ...(a as Record<string, unknown>), type };
       // never let the model stuff a novel into an action
       for (const key of ["text", "title", "body", "summary"]) {
         if (typeof payload[key] === "string") payload[key] = (payload[key] as string).slice(0, 400);

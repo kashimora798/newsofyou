@@ -11,6 +11,7 @@ import OfflineBanner from "@/components/layout/OfflineBanner";
 import PartnerRoute from "@/components/layout/PartnerRoute";
 import AdminRoute from "@/components/layout/AdminRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
+import { RemindersProvider } from "@/contexts/RemindersContext";
 
 // Eagerly loaded (critical path)
 // The decoy portal is the landing page — it stays eager so `/` paints in one
@@ -84,55 +85,57 @@ const App = () => (
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <AuthProvider>
           <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <OfflineBanner />
-            <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  {/* The public face of myanshika.xyz: the school portal sign-in. */}
-                  <Route path="/" element={<DecoyLogin />} />
-                  {/* Behind the decoy credential — a local, fake study portal. */}
-                  <Route path="/study" element={<StudyApp />} />
-                  {/* The real door. Reached from the front page's "Faculty & alumni" link. */}
-                  <Route path="/real" element={<SecretLogin />} />
-                  {/* Design preview of the Home scene — development builds only. */}
-                  {import.meta.env.DEV && <Route path="/dev/scene" element={<DevScene />} />}
-                  {import.meta.env.DEV && <Route path="/dev/book" element={<DevBook />} />}
-                  <Route path="/login" element={<NotFound />} />
-                  <Route path="/you" element={<Navigate to="/you/login" replace />} />
-                  <Route path="/you/login" element={<HiddenLogin />} />
-                  <Route path="/you/dashboard" element={<AdminRoute allowNonAdmin><AdminDashboard /></AdminRoute>} />
-                  <Route path="/you/twin" element={<OwnerRoute><AdminTwin /></OwnerRoute>} />
-                  <Route path="/you/control" element={<AdminRoute><Chat /></AdminRoute>} />
-                  <Route path="/chat" element={<Chat />} />
-                  <Route path="/home" element={<P><Home /></P>} />
-                  <Route path="/profile" element={<Navigate to="/settings" replace />} />
-                  <Route path="/settings" element={<P><SettingsPage /></P>} />
-                  <Route path="/stats" element={<P><Stats /></P>} />
-                  <Route path="/scheduled-messages" element={<P><ScheduledMessages /></P>} />
-                  <Route path="/custom-stickers" element={<P><CustomStickers /></P>} />
-                  <Route path="/custom-touch-reactions" element={<P><CustomTouchReactions /></P>} />
-                  <Route path="/achievements" element={<P><Achievements /></P>} />
-                  <Route path="/book" element={<P><Book /></P>} />
-                  <Route path="/book/print" element={<P><BookPrint /></P>} />
-                  <Route path="/book/:date" element={<P><BookPageView /></P>} />
-                  <Route path="/twin" element={<P><TwinChat /></P>} />
-                  <Route path="/face-to-face" element={<P><FaceToFace /></P>} />
-                  <Route path="/letter-collection" element={<P><LetterCollection /></P>} />
-                  <Route path="/bookmarks" element={<P><Bookmarks /></P>} />
-                  <Route path="/reminders" element={<P><Reminders /></P>} />
-                  <Route path="/calendar" element={<P><SharedCalendar /></P>} />
-                  <Route path="/compliments" element={<P><ComplimentBox /></P>} />
-                  <Route path="/daily-checklist" element={<P><DailyChecklist /></P>} />
-                  <Route path="/games" element={<P><Games /></P>} />
-                  <Route path="/wrapped" element={<P><Wrapped /></P>} />
-                  <Route path="/garden" element={<P><SecretGarden /></P>} />
-                  <Route path="/forest" element={<P><Forest /></P>} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
+            <RemindersProvider>
+              <Toaster />
+              <Sonner />
+              <OfflineBanner />
+              <BrowserRouter>
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    {/* The public face of myanshika.xyz: the school portal sign-in. */}
+                    <Route path="/" element={<DecoyLogin />} />
+                    {/* Behind the decoy credential — a local, fake study portal. */}
+                    <Route path="/study" element={<StudyApp />} />
+                    {/* The real door. Reached from the front page's "Faculty & alumni" link. */}
+                    <Route path="/real" element={<SecretLogin />} />
+                    {/* Design preview of the Home scene — development builds only. */}
+                    {import.meta.env.DEV && <Route path="/dev/scene" element={<DevScene />} />}
+                    {import.meta.env.DEV && <Route path="/dev/book" element={<DevBook />} />}
+                    <Route path="/login" element={<NotFound />} />
+                    <Route path="/you" element={<Navigate to="/you/login" replace />} />
+                    <Route path="/you/login" element={<HiddenLogin />} />
+                    <Route path="/you/dashboard" element={<AdminRoute allowNonAdmin><AdminDashboard /></AdminRoute>} />
+                    <Route path="/you/twin" element={<OwnerRoute><AdminTwin /></OwnerRoute>} />
+                    <Route path="/you/control" element={<AdminRoute><Chat /></AdminRoute>} />
+                    <Route path="/chat" element={<Chat />} />
+                    <Route path="/home" element={<P><Home /></P>} />
+                    <Route path="/profile" element={<Navigate to="/settings" replace />} />
+                    <Route path="/settings" element={<P><SettingsPage /></P>} />
+                    <Route path="/stats" element={<P><Stats /></P>} />
+                    <Route path="/scheduled-messages" element={<P><ScheduledMessages /></P>} />
+                    <Route path="/custom-stickers" element={<P><CustomStickers /></P>} />
+                    <Route path="/custom-touch-reactions" element={<P><CustomTouchReactions /></P>} />
+                    <Route path="/achievements" element={<P><Achievements /></P>} />
+                    <Route path="/book" element={<P><Book /></P>} />
+                    <Route path="/book/print" element={<P><BookPrint /></P>} />
+                    <Route path="/book/:date" element={<P><BookPageView /></P>} />
+                    <Route path="/twin" element={<P><TwinChat /></P>} />
+                    <Route path="/face-to-face" element={<P><FaceToFace /></P>} />
+                    <Route path="/letter-collection" element={<P><LetterCollection /></P>} />
+                    <Route path="/bookmarks" element={<P><Bookmarks /></P>} />
+                    <Route path="/reminders" element={<P><Reminders /></P>} />
+                    <Route path="/calendar" element={<P><SharedCalendar /></P>} />
+                    <Route path="/compliments" element={<P><ComplimentBox /></P>} />
+                    <Route path="/daily-checklist" element={<P><DailyChecklist /></P>} />
+                    <Route path="/games" element={<P><Games /></P>} />
+                    <Route path="/wrapped" element={<P><Wrapped /></P>} />
+                    <Route path="/garden" element={<P><SecretGarden /></P>} />
+                    <Route path="/forest" element={<P><Forest /></P>} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </RemindersProvider>
           </TooltipProvider>
         </AuthProvider>
       </ThemeProvider>

@@ -6,14 +6,11 @@ import {
   CalendarDays,
   CheckSquare,
   Gamepad2,
-  Hand,
   Handshake,
   Heart,
   Mail,
   Send,
   Sparkles,
-  Sticker,
-  TreePine,
   Trophy,
 } from "lucide-react";
 
@@ -35,7 +32,6 @@ export const EXPLORE_LINKS: ExploreLink[] = [
   { path: "/twin", icon: Sparkles, label: "His AI", hue: 342 },
   { path: "/face-to-face", icon: Handshake, label: "Face to Face", hue: 8 },
   { path: "/book", icon: BookOpen, label: "Our Book", hue: 344 },
-  { path: "/forest", icon: TreePine, label: "Our Tree", hue: 152 },
   { path: "/games", icon: Gamepad2, label: "Games", hue: 26 },
   { path: "/stats", icon: BarChart3, label: "Stats", hue: 205 },
   { path: "/bookmarks", icon: Bookmark, label: "Saved", hue: 45 },
@@ -46,6 +42,4 @@ export const EXPLORE_LINKS: ExploreLink[] = [
   { path: "/achievements", icon: Trophy, label: "Trophies", hue: 48 },
   { path: "/letter-collection", icon: Mail, label: "Letters", hue: 350 },
   { path: "/scheduled-messages", icon: Send, label: "Scheduled", hue: 192 },
-  { path: "/custom-stickers", icon: Sticker, label: "Stickers", hue: 296 },
-  { path: "/custom-touch-reactions", icon: Hand, label: "Touch", hue: 176 },
 ];

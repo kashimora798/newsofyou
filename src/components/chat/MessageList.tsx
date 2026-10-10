@@ -48,10 +48,15 @@ interface MessageListProps {
   /** e.g. "Kratagya's AI" — the note is never presented as a message from him. */
   twinLabel?: string;
   onTwinNoteDismiss?: (id: number) => void;
+  fontSize?: string;
+  customFontSize?: string;
+  currentHandwritingFont?: boolean;
+  partnerHandwritingFont?: boolean;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
   messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap, twinNotes, twinLabel, onTwinNoteDismiss,
+  fontSize = "medium", customFontSize, currentHandwritingFont = false, partnerHandwritingFont = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -229,6 +234,10 @@ const MessageList: React.FC<MessageListProps> = ({
           }
 
           const msg = item.message;
+          const isOwn = msg.user_id === currentUserId;
+          // If the handwriting setting is turned off, every message reverts to the default font.
+          // When turned on, messages render with Anshika's Magic.
+          const isHandwriting = Boolean(currentHandwritingFont);
           return (
             <React.Fragment key={item.key}>
               {showDate && <DateSeparator date={msg.created_at ?? ""} />}
@@ -238,7 +247,10 @@ const MessageList: React.FC<MessageListProps> = ({
               >
                 <MessageBubble
                   message={msg}
-                  isOwn={msg.user_id === currentUserId}
+                  isOwn={isOwn}
+                  fontSize={fontSize}
+                  customFontSize={customFontSize}
+                  isHandwriting={isHandwriting}
                   reactions={reactions[msg.id] ?? []}
                   replyToMessage={msg.reply_to_id ? replyMap[msg.reply_to_id] ?? null : null}
                   onReply={onReply}

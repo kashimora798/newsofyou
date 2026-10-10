@@ -18,8 +18,8 @@ export default {
       },
     },
     extend: {
-      /* The brief's font trio (build-plan §3):
-         serif for display, humanist sans for body, handwriting for the twin.
+      /* The brief's font trio (build-plan §3): serif for display, humanist sans
+         for body, and the owner's handwriting for the twin and chat messages.
          `font-heading` was used across the app but never defined, so headings
          silently fell back to the sans stack — this gives it (and `font-serif`)
          the real display face. */
@@ -27,6 +27,7 @@ export default {
         sans: ["Nunito", "-apple-system", "BlinkMacSystemFont", "'SF Pro Text'", "sans-serif"],
         heading: ["'Playfair Display'", "Lora", "Georgia", "serif"],
         serif: ["'Playfair Display'", "Lora", "Georgia", "serif"],
+        handwriting: ["MyHandwriting", "Caveat", "Comic Neue", "cursive", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",

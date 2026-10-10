@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut, Bot, ShieldCheck, ImageDown } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut, Bot, ShieldCheck, ImageDown, PenLine } from "lucide-react";
 import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -15,6 +15,14 @@ import { DECOY_SKINS, type DecoySkin } from "@/lib/decoySkins";
 import { useTwinConsent } from "@/hooks/useTwinConsent";
 import { shrinkMediaEnabled, setShrinkMedia } from "@/lib/imageCompress";
 import DecoyLoginSettings from "@/components/settings/DecoyLoginSettings";
+import {
+  getMessageFontSizeClass,
+  DEFAULT_CUSTOM_FONT_SIZE_PX,
+  DEFAULT_CUSTOM_FONT_SIZE_STR,
+  CUSTOM_FONT_SIZE_PRESETS,
+  getSavedCustomFontSize,
+  parseCustomFontSizeNumber,
+} from "@/lib/fontSettings";
 
 const SettingsPage: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
@@ -124,7 +132,13 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   const [avatarUploading, setAvatarUploading] = useState(false);
 
   // settings
-  const [fontSize, setFontSize] = useState("medium");
+  const [fontSize, setFontSize] = useState(() => {
+    try { return localStorage.getItem("app_font_size") || "medium"; } catch { return "medium"; }
+  });
+  const [useHandwritingFont, setUseHandwritingFont] = useState(() => {
+    try { return localStorage.getItem("app_use_handwriting_font") === "true"; } catch { return false; }
+  });
+  const [customFontSize, setCustomFontSize] = useState<string>(() => getSavedCustomFontSize());
   const [wallpaper, setWallpaper] = useState("none");
   const [dynamicWallpaper, setDynamicWallpaper] = useState(false);
   const [messageEffects, setMessageEffects] = useState(true);
@@ -145,6 +159,11 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
     if (currentUser) {
       setName(currentUser.name ?? "");
       setBio(currentUser.bio ?? "");
+      if ((currentUser as any).use_handwriting_font !== undefined) {
+        const hw = !!(currentUser as any).use_handwriting_font;
+        setUseHandwritingFont(hw);
+        try { localStorage.setItem("app_use_handwriting_font", String(hw)); } catch {}
+      }
     }
   }, [currentUser]);
 
@@ -156,7 +175,15 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
         .eq("user_id", userId)
         .maybeSingle();
       if (data) {
-        setFontSize(data.font_size);
+        if (data.font_size) {
+          setFontSize(data.font_size);
+          try { localStorage.setItem("app_font_size", data.font_size); } catch {}
+        }
+        if ((data as any).use_handwriting_font !== undefined) {
+          const hw = !!(data as any).use_handwriting_font;
+          setUseHandwritingFont(hw);
+          try { localStorage.setItem("app_use_handwriting_font", String(hw)); } catch {}
+        }
         setWallpaper(data.wallpaper_url ?? "none");
         setDynamicWallpaper((data as any).dynamic_wallpaper ?? false);
         setMessageEffects((data as any).message_effects ?? true);
@@ -208,7 +235,33 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
   };
 
   const handleThemeChange = (newTheme: string) => { setTheme(newTheme); saveSettings({ theme: newTheme }); };
-  const handleFontChange = (newSize: string) => { setFontSize(newSize); saveSettings({ font_size: newSize }); };
+  const handleFontChange = (newSize: string) => {
+    setFontSize(newSize);
+    try { localStorage.setItem("app_font_size", newSize); } catch {}
+    saveSettings({ font_size: newSize });
+  };
+  const handleHandwritingToggle = async () => {
+    const nextVal = !useHandwritingFont;
+    setUseHandwritingFont(nextVal);
+    try {
+      localStorage.setItem("app_use_handwriting_font", String(nextVal));
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("use_handwriting_font_changed"));
+    } catch {}
+    await saveSettings({ use_handwriting_font: nextVal });
+    try {
+      await supabase.from("user_status").update({ use_handwriting_font: nextVal } as any).eq("user_id", userId);
+    } catch (e) {
+      console.error("Failed to update user_status handwriting font:", e);
+    }
+  };
+  const handleCustomFontSizeChange = (newSize: string) => {
+    setCustomFontSize(newSize);
+    try {
+      localStorage.setItem("app_custom_font_size", newSize);
+      window.dispatchEvent(new Event("storage"));
+    } catch {}
+  };
   const handleWallpaperChange = (value: string) => {
     setWallpaper(value); setDynamicWallpaper(false);
     saveSettings({ wallpaper_url: value === "none" ? null : value, dynamic_wallpaper: false });
@@ -374,9 +427,9 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
         </section>
 
-        {/* ── Text size (segmented control) ── */}
+        {/* ── Text size & Font Style ── */}
         <section>
-          <SectionLabel>Text Size</SectionLabel>
+          <SectionLabel>Text Size &amp; Typography</SectionLabel>
           <div className="flex p-1 rounded-[14px] bg-muted/60 ring-1 ring-border/30">
             {fontSizes.map((f) => (
               <button
@@ -389,6 +442,141 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
                 {f.label}
               </button>
             ))}
+          </div>
+
+          <div className="mt-3">
+            <Group>
+              <Row
+                label="Anshika's Magic"
+                sub="Write messages in Anshika's Magic handwriting style"
+                icon={<PenLine className="h-5 w-5 text-primary" />}
+                onClick={handleHandwritingToggle}
+                trailing={<Toggle on={useHandwritingFont} onChange={handleHandwritingToggle} />}
+              />
+            </Group>
+          </div>
+
+          {/* Custom font size options for Anshika's Magic */}
+          {useHandwritingFont && (
+            <div className="mt-3 p-4 rounded-[18px] bg-card ring-1 ring-border/40 space-y-3.5 shadow-sm animate-scale-in">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <PenLine className="h-4 w-4 text-primary" />
+                    <span className="text-[14px] font-semibold text-foreground">
+                      Anshika's Magic Font Size
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-muted-foreground mt-0.5">
+                    Configure chat message size for custom handwriting
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-[12px] font-bold px-2.5 py-0.5 rounded-full bg-primary text-primary-foreground shadow-xs">
+                    {customFontSize}
+                  </span>
+                  <span className="text-[10px] font-medium text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                    Default: {DEFAULT_CUSTOM_FONT_SIZE_STR}
+                  </span>
+                </div>
+              </div>
+
+              {/* Presets row */}
+              <div>
+                <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground mb-1.5">
+                  <span>Quick Presets</span>
+                  {customFontSize !== DEFAULT_CUSTOM_FONT_SIZE_STR && (
+                    <button
+                      type="button"
+                      onClick={() => handleCustomFontSizeChange(DEFAULT_CUSTOM_FONT_SIZE_STR)}
+                      className="text-primary hover:underline font-semibold"
+                    >
+                      Reset to Default ({DEFAULT_CUSTOM_FONT_SIZE_STR})
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-6 gap-1.5">
+                  {CUSTOM_FONT_SIZE_PRESETS.map((preset) => {
+                    const isSelected = customFontSize === preset;
+                    const isDefault = preset === DEFAULT_CUSTOM_FONT_SIZE_STR;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleCustomFontSizeChange(preset)}
+                        className={`flex flex-col items-center justify-center py-2 px-1 rounded-[12px] border text-center transition-all active:scale-95 ${
+                          isSelected
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm ring-1 ring-primary/40 font-bold"
+                            : "bg-muted/40 text-foreground border-border/40 hover:bg-muted/70 font-medium"
+                        }`}
+                      >
+                        <span className="text-[12px] leading-none">{preset}</span>
+                        {isDefault && (
+                          <span className={`text-[9px] mt-1 font-semibold leading-none ${
+                            isSelected ? "text-primary-foreground/90" : "text-primary"
+                          }`}>
+                            Default
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Slider for fine adjustment */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                  <span>Slider Adjustment</span>
+                  <span className="font-semibold text-foreground bg-muted/60 px-2 py-0.5 rounded-md">
+                    {customFontSize}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="14"
+                  max="28"
+                  step="1"
+                  value={parseCustomFontSizeNumber(customFontSize)}
+                  onChange={(e) => handleCustomFontSizeChange(`${e.target.value}px`)}
+                  className="w-full accent-primary cursor-pointer h-2 rounded-lg bg-muted appearance-none"
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground/75 px-0.5">
+                  <span>14px (Compact)</span>
+                  <span className="font-semibold text-primary">20px (Default)</span>
+                  <span>28px (Extra Large)</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Interactive Live Message Preview */}
+          <div className="mt-3 p-3.5 rounded-[16px] bg-card ring-1 ring-border/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Message Preview
+              </span>
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {useHandwritingFont
+                  ? `Anshika's Magic · ${customFontSize} (Default: ${DEFAULT_CUSTOM_FONT_SIZE_STR})`
+                  : `Default · ${fontSize.charAt(0).toUpperCase() + fontSize.slice(1)}`}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5 pt-1">
+              <div
+                style={useHandwritingFont ? { fontSize: customFontSize, lineHeight: "1.4" } : undefined}
+                className={`self-end rounded-[20px] rounded-br-[6px] px-3.5 py-2 bg-bubble-own text-bubble-own-foreground bubble-shadow-own max-w-[85%] transition-all ${
+                  useHandwritingFont ? "font-handwriting" : ""
+                } ${getMessageFontSizeClass(fontSize, useHandwritingFont)}`}
+              >
+                Hey! This is how your sent messages will look. ✨
+              </div>
+              <p className="text-[11px] text-muted-foreground/80 px-1 pt-1">
+                {useHandwritingFont
+                  ? `✓ Styled with Anshika's Magic at ${customFontSize} (Default is 20px). Chat messages will render in this size.`
+                  : "Your messages will be styled with the default system font."}
+              </p>
+            </div>
           </div>
         </section>
 

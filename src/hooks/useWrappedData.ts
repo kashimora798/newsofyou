@@ -54,8 +54,24 @@ export function useWrappedData(userId: string) {
             .eq("status", "completed"),
           getStreakData(userId),
           supabase.from("compliments").select("content").limit(20),
-          supabase.from("bookmarks").select("content").limit(20),
+          supabase.from("bookmarks").select("message_id, note").limit(20),
         ]);
+
+        // `bookmarks` has no text column: it points at a message (message_id) and may
+        // carry a personal note. Show the bookmarked message, falling back to the note.
+        let randomBookmark: string | null = null;
+        if (bkmks?.length) {
+          const pick = bkmks[Math.floor(Math.random() * bkmks.length)];
+          if (pick.message_id) {
+            const { data: bm } = await supabase
+              .from("messages")
+              .select("content")
+              .eq("id", pick.message_id)
+              .maybeSingle();
+            randomBookmark = bm?.content?.trim() || null;
+          }
+          if (!randomBookmark) randomBookmark = pick.note?.trim() || null;
+        }
 
         const b = (basic ?? {}) as any;
         const a = (adv ?? {}) as any;
@@ -142,7 +158,7 @@ export function useWrappedData(userId: string) {
           forestCount: a.keyword_counts?.love ?? 0,
           longestStreak: streak?.longestStreak ?? 0,
           randomCompliment: compls?.length ? compls[Math.floor(Math.random() * compls.length)].content : null,
-          randomBookmark: bkmks?.length ? bkmks[Math.floor(Math.random() * bkmks.length)].content : null,
+          randomBookmark,
         };
 
         if (!cancelled) {

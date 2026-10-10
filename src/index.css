@@ -10,19 +10,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Handwriting ───────────────────────────────────────────────────────────
+   One `.font-handwriting` for the whole app: the owner's own font
+   ("Anshika's Magic", MyHandwriting) with Caveat as the fallback, so the twin
+   greetings and the Book look right even if the font file fails to load.
+   `--font-handwriting` is kept for anything that wants the stack as a variable. */
 :root {
-  /* Handwritten face used by twin greetings and the Book. Swap `Caveat` for a
-     self-hosted @font-face once the owner's handwriting font is ready —
-     everything else keeps working. */
-  --font-handwriting: 'Caveat', 'Segoe Script', 'Bradley Hand', cursive;
+  --font-handwriting: 'MyHandwriting', 'Caveat', 'Comic Neue', 'Segoe Script', cursive;
 }
 
-@layer utilities {
-  .font-handwriting {
-    font-family: var(--font-handwriting);
-    font-weight: 500;
-    letter-spacing: 0.01em;
-  }
+@font-face {
+  font-family: 'MyHandwriting';
+  src: url('/fonts/MyHandwriting-Regular.woff2') format('woff2'),
+       url('/fonts/MyHandwriting-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-handwriting {
+  font-family: var(--font-handwriting) !important;
+  letter-spacing: 0.015em;
+}
+
+/* Ensure handwriting font is preserved across custom chat themes */
+[class*="theme-"] .font-handwriting,
+[class*="theme-"] .font-handwriting * {
+  font-family: var(--font-handwriting) !important;
 }
 
 @layer base {
