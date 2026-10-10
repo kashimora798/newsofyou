@@ -1022,6 +1022,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
+
 interface GuardVerdict {
   risk: "low" | "medium" | "high";
   reason: string;

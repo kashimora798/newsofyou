@@ -1030,6 +1030,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 

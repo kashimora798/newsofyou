@@ -121,6 +121,7 @@ function safetyStop(text: string): { stop: boolean; flags: GuardFlag[] } {
 // ── END INLINE: safety.ts ──
 // ── END GENERATED BLOCK ──
 
+
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/embed.ts) ──
 // ── BEGIN INLINE: embed.ts ──
 const EMBED_DIM = 384;
@@ -204,6 +205,7 @@ function toPgVector(vec: number[]): string {
 }
 // ── END INLINE: embed.ts ──
 // ── END GENERATED BLOCK ──
+
 
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
 const corsHeaders = {
@@ -1229,6 +1231,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
+
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/twinChat.ts) ──
 // ── BEGIN INLINE: twinChat.ts ──
 /**
@@ -1499,6 +1502,7 @@ export {
 };
 // ── END INLINE: twinChat.ts ──
 // ── END GENERATED BLOCK ──
+
 
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/actions.ts) ──
 // ── BEGIN INLINE: actions.ts ──
@@ -1887,6 +1891,7 @@ export {
 };
 // ── END INLINE: actions.ts ──
 // ── END GENERATED BLOCK ──
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

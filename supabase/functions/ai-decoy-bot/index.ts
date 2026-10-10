@@ -1022,6 +1022,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
+
 // A genuinely-working AI assistant for the decoy disguise. Looks like a real
 // AI app to any onlooker. Input: { messages: [{role, content}], persona }.
 Deno.serve(async (req) => {

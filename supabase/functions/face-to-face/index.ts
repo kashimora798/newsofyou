@@ -310,6 +310,7 @@ export {
 // ── END INLINE: ftf.ts ──
 // ── END GENERATED BLOCK ──
 
+
 // ── BEGIN GENERATED BLOCK (source: supabase/functions/_shared/llm.ts) ──
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1333,6 +1334,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
   return { userId, supabase, config };
 }
 // ── END GENERATED BLOCK ──
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

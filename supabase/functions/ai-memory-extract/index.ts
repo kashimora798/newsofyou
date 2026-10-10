@@ -1022,6 +1022,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
+
 // ai-memory-extract — "remember what matters in our chat" (Phase 5, reworked).
 //
 //   POST { partnerId? }  →  { added, heuristic, llm, highlights, llm_calls }
@@ -1515,6 +1516,7 @@ export {
 };
 // ── END INLINE: memory.ts ──
 // ── END GENERATED BLOCK ──
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

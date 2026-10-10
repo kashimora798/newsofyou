@@ -1022,6 +1022,7 @@ async function requireOwner(req: Request): Promise<{ userId: string; supabase: a
 }
 // ── END GENERATED BLOCK ──
 
+
 // Helps the user write a message to their partner, using stored memories and
 // recent chat context. Input: { draft, partnerId }. Output: { suggestion }.
 Deno.serve(async (req) => {
