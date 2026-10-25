@@ -3,6 +3,8 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/mediaStorage";
+import { IMAGE_PRESETS } from "@/lib/mediaCompression";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
 import BottomNav from "@/components/layout/BottomNav";
@@ -56,10 +58,9 @@ const ProfileView: React.FC<{ userId: string }> = ({ userId }) => {
     setUploading(true);
     const ext = file.name.split(".").pop();
     const path = `avatars/${userId}_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
-      await supabase.from("user_status").update({ profileurl: data.publicUrl }).eq("user_id", userId);
+    const { publicUrl, error } = await uploadMedia("chat-images", path, file, { image: IMAGE_PRESETS.avatar });
+    if (!error && publicUrl) {
+      await supabase.from("user_status").update({ profileurl: publicUrl }).eq("user_id", userId);
     }
     setUploading(false);
   };
