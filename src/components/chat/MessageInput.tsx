@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/mediaStorage";
+import { IMAGE_PRESETS } from "@/lib/mediaCompression";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaPanel from "./MediaPanel";
 import ReplyPreview from "./ReplyPreview";
@@ -142,30 +144,33 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
 
     const bucket = isImage || isVideo || isAudio ? "chat-images" : "documents";
 
-    const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file);
+    // Everything goes to the dedicated storage project. Photos are compressed first
+    // (GIFs are skipped automatically so animations survive).
+    const { publicUrl, error: uploadError } = await uploadMedia(bucket, filePath, file, {
+      image: isImage ? IMAGE_PRESETS.chat : undefined,
+    });
 
-    if (!uploadError) {
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    if (!uploadError && publicUrl) {
       const extras: any = {};
       if (replyTo) extras.reply_to_id = replyTo.id;
 
       const isGif = file.type === "image/gif" || fileExt === "gif";
 
       if (isAudio) {
-        await onSend(text.trim() || "", { ...extras, file_url: urlData.publicUrl, file_name: file.name || `audio.${fileExt}`, file_type: file.type, file_size: file.size, message_type: "audio" });
+        await onSend(text.trim() || "", { ...extras, file_url: publicUrl, file_name: file.name || `audio.${fileExt}`, file_type: file.type, file_size: file.size, message_type: "audio" });
       } else if (isVideo) {
-        await onSend(text.trim() || "", { ...extras, video: true, vidUrl: urlData.publicUrl, message_type: "video" });
+        await onSend(text.trim() || "", { ...extras, video: true, vidUrl: publicUrl, message_type: "video" });
       } else if (isGif) {
-        await onSend(text.trim() || "", { ...extras, gif_url: urlData.publicUrl, message_type: "gif" });
+        await onSend(text.trim() || "", { ...extras, gif_url: publicUrl, message_type: "gif" });
       } else if (isImage) {
-        await onSend(text.trim() || "", { ...extras, image_url: urlData.publicUrl, message_type: "image" });
+        await onSend(text.trim() || "", { ...extras, image_url: publicUrl, message_type: "image" });
       } else {
-        await onSend(text.trim() || "", { ...extras, file_url: urlData.publicUrl, file_name: file.name || `file.${fileExt}`, file_type: file.type, file_size: file.size, message_type: "file" });
+        await onSend(text.trim() || "", { ...extras, file_url: publicUrl, file_name: file.name || `file.${fileExt}`, file_type: file.type, file_size: file.size, message_type: "file" });
       }
       setText("");
       onCancelReply();
     } else {
-      toast({ title: "Failed to upload file ðŸ˜¢", description: uploadError.message, variant: "destructive" });
+      toast({ title: "Failed to upload file ðŸ˜¢", description: uploadError?.message ?? "Upload failed", variant: "destructive" });
     }
 
     setUploading(false);

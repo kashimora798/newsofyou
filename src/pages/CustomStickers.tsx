@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/mediaStorage";
+import { IMAGE_PRESETS } from "@/lib/mediaCompression";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -60,12 +62,11 @@ const StickersView: React.FC<{ userId: string }> = ({ userId }) => {
     const uploads = validFiles.map(async (file) => {
       const ext = file.name.split(".").pop();
       const path = `custom-stickers/${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("chat-images").upload(path, file);
-      if (!error) {
-        const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);
+      const { publicUrl, error } = await uploadMedia("chat-images", path, file, { image: IMAGE_PRESETS.sticker });
+      if (!error && publicUrl) {
         await supabase.from("custom_stickers").insert({
           user_id: userId,
-          sticker_url: urlData.publicUrl,
+          sticker_url: publicUrl,
           label: file.name.replace(/\.[^.]+$/, ""),
         } as any);
         return true;

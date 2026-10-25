@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Loader2, Send, Scissors, Film, Wand2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/mediaStorage";
+import { IMAGE_PRESETS } from "@/lib/mediaCompression";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
@@ -76,20 +78,21 @@ const AiStickerStudio: React.FC<AiStickerStudioProps> = ({ onSend }) => {
 
       setBusy("saving");
       const path = `custom-stickers/${user.id}/ai_${Date.now()}_${Math.random().toString(36).slice(2)}.png`;
-      const { error: upErr } = await supabase.storage.from("chat-images").upload(path, cutout, {
+      // Cutout has transparency; WebP keeps the alpha channel while shrinking the file a lot.
+      const { publicUrl, error: upErr } = await uploadMedia("chat-images", path, cutout, {
+        image: IMAGE_PRESETS.sticker,
         contentType: "image/png",
       });
-      if (upErr) throw upErr;
-      const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);
+      if (upErr || !publicUrl) throw upErr ?? new Error("Upload failed");
 
       await supabase.from("custom_stickers").insert({
         user_id: user.id,
-        sticker_url: urlData.publicUrl,
+        sticker_url: publicUrl,
         label: prompt.trim().slice(0, 40),
         source: "ai",
       } as any);
 
-      setFinalUrl(urlData.publicUrl);
+      setFinalUrl(publicUrl);
       haptic.success();
       toast({ title: "Sticker saved! ✨" });
     } catch (e: any) {

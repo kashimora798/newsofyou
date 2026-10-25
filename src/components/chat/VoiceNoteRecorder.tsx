@@ -18,7 +18,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, X, Send } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/mediaStorage";
+import { voiceBitrateFor } from "@/lib/mediaCompression";
 import { toast } from "@/hooks/use-toast";
 
 // ─── Audio format detection ────────────────────────────────────────────────────
@@ -195,7 +196,13 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
       const mimeType = getSupportedMimeType();
       mimeTypeRef.current = mimeType;
 
-      const mr = new MediaRecorder(processedStream, mimeType ? { mimeType } : undefined);
+      // Low encoder bitrate = much smaller files. Speech in mono Opus at 24 kbps
+      // sounds natural; this changes only the bitrate, never pitch/speed/effects.
+      const recorderOptions: MediaRecorderOptions = {
+        audioBitsPerSecond: voiceBitrateFor(mimeType),
+      };
+      if (mimeType) recorderOptions.mimeType = mimeType;
+      const mr = new MediaRecorder(processedStream, recorderOptions);
       mediaRecorderRef.current = mr;
       chunksRef.current = [];
 
@@ -249,24 +256,17 @@ export const VoiceNoteRecorder: React.FC<VoiceNoteRecorderProps> = ({
 
     try {
       const filePath = `voice_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("chat-images")
-        .upload(filePath, blob, {
-          contentType: mimeType.split(";")[0], // e.g. "audio/webm"
-          upsert: false
-        });
+      const { publicUrl, error: uploadError } = await uploadMedia("chat-images", filePath, blob, {
+        contentType: mimeType.split(";")[0], // e.g. "audio/webm"
+      });
 
-      if (uploadError) {
+      if (uploadError || !publicUrl) {
         console.error("[VoiceNoteRecorder] Upload error:", uploadError);
-        throw uploadError;
+        throw uploadError ?? new Error("Upload failed");
       }
 
-      const { data: urlData } = supabase.storage
-        .from("chat-images")
-        .getPublicUrl(filePath);
-
       const extras: any = {
-        file_url: urlData.publicUrl,
+        file_url: publicUrl,
         file_type: mimeType,
         file_name: `voice_note_${seconds}s.${ext}`,
         file_size: blob.size,

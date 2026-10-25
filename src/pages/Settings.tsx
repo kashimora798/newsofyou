@@ -3,6 +3,8 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/mediaStorage";
+import { IMAGE_PRESETS } from "@/lib/mediaCompression";
 import { ArrowLeft, Sun, Moon, Monitor, Loader2, Check, Upload, X, Clock, ChevronRight, Sticker, Heart, Trophy, Mail, Camera, LogOut, PenLine } from "lucide-react";
 import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
@@ -217,10 +219,9 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
     setAvatarUploading(true);
     const ext = file.name.split(".").pop();
     const path = `avatars/${userId}_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data } = supabase.storage.from("chat-images").getPublicUrl(path);
-      await supabase.from("user_status").update({ profileurl: data.publicUrl }).eq("user_id", userId);
+    const { publicUrl, error } = await uploadMedia("chat-images", path, file, { image: IMAGE_PRESETS.avatar });
+    if (!error && publicUrl) {
+      await supabase.from("user_status").update({ profileurl: publicUrl }).eq("user_id", userId);
     }
     setAvatarUploading(false);
   };
@@ -273,10 +274,9 @@ const SettingsView: React.FC<{ userId: string }> = ({ userId }) => {
     setUploading(true);
     const ext = file.name.split(".").pop();
     const path = `wallpapers/${userId}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("chat-images").upload(path, file);
-    if (!error) {
-      const { data: urlData } = supabase.storage.from("chat-images").getPublicUrl(path);
-      const url = urlData.publicUrl;
+    const { publicUrl, error } = await uploadMedia("chat-images", path, file, { image: IMAGE_PRESETS.wallpaper });
+    if (!error && publicUrl) {
+      const url = publicUrl;
       setWallpaper(url); setDynamicWallpaper(false);
       saveSettings({ wallpaper_url: url, dynamic_wallpaper: false });
     }
