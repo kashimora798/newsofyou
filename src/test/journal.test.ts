@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONTENT_H, MAX_BLOCK_LINES, buildBlocks, buildHighlighter, chunkText, dayKeyOf, groupByMonth, monthCells, normalizeStyle,
   ordinalWord, paginate, seeded, summarizeDays, wrapLines, type Block,
+  CHUNK_MONTHS, chunkRange, chunksToCover, mergeDaySummaries, normalizeFontPrefs, resolveFont,
 } from "@/lib/journal";
 
 const ME = "u-me";
@@ -158,5 +159,53 @@ describe("index helpers", () => {
     expect(ordinalWord(3)).toBe("third");
     expect(seeded("a")()).toBe(seeded("a")());
     expect(dayKeyOf(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+  });
+});
+
+describe("recent-first loading windows", () => {
+  const now = new Date(2026, 6, 20, 15, 0); // 20 Jul 2026
+
+  it("chunk 0 is open-ended and covers the current + previous months", () => {
+    const r = chunkRange(0, now);
+    expect(r.to).toBeNull();
+    expect(new Date(r.from).getTime()).toBe(new Date(2026, 4, 1).getTime()); // 1 May
+  });
+
+  it("older chunks are contiguous and never overlap", () => {
+    for (let i = 1; i < 5; i++) {
+      expect(chunkRange(i, now).to).toBe(chunkRange(i - 1, now).from);
+    }
+    expect(CHUNK_MONTHS).toBe(3);
+  });
+
+  it("chunksToCover reaches back far enough for a deep-linked day", () => {
+    expect(chunksToCover("2026-07-03", now)).toBe(1);
+    expect(chunksToCover("2026-05-01", now)).toBe(1);
+    expect(chunksToCover("2026-04-30", now)).toBe(2);
+    expect(chunksToCover("2025-07-20", now)).toBe(5);
+  });
+
+  it("mergeDaySummaries sums duplicates and sorts oldest → newest", () => {
+    const out = mergeDaySummaries([
+      [{ key: "2026-07-03", count: 2, photos: 1, audio: 0 }],
+      [{ key: "2026-06-01", count: 1, photos: 0, audio: 1 }, { key: "2026-07-03", count: 3, photos: 0, audio: 0 }],
+    ]);
+    expect(out.map((d) => d.key)).toEqual(["2026-06-01", "2026-07-03"]);
+    expect(out[1]).toMatchObject({ count: 5, photos: 1 });
+  });
+});
+
+describe("journal font", () => {
+  it("falls back to defaults for junk values", () => {
+    expect(normalizeFontPrefs({ font: "nope", size: 3 })).toEqual({ font: "caveat", size: "medium" });
+    expect(normalizeFontPrefs({ font: "lora", size: "large" })).toEqual({ font: "lora", size: "large" });
+  });
+
+  it("bigger text fits fewer characters per line", () => {
+    const m = resolveFont({ font: "caveat", size: "medium" });
+    const l = resolveFont({ font: "caveat", size: "large" });
+    expect(m.charsPerLine).toBe(33);
+    expect(l.charsPerLine).toBeLessThan(m.charsPerLine);
+    expect(l.fontSize).toBeGreaterThan(m.fontSize);
   });
 });

@@ -20,7 +20,8 @@ export function reservedForFirstPage(ctx: DayContext) {
   return HEADER_H + rememberHeight(Math.min(ctx.facts.length, 3));
 }
 
-const HAND = "Caveat, 'MyHandwriting', 'Comic Neue', cursive";
+// the chosen journal font is injected as CSS variables by the Journal page
+const HAND = "var(--journal-hand, Caveat, 'MyHandwriting', 'Comic Neue', cursive)";
 const TYPE = "'Special Elite', 'Courier New', monospace";
 const SCRIPT = "'Kaushan Script', 'Pacifico', cursive";
 
@@ -280,7 +281,7 @@ const TextBlock: React.FC<{ block: Extract<Block, { kind: "text" }>; c: BlockCtx
         <p
           key={e.id}
           className="whitespace-pre-wrap break-words"
-          style={{ fontFamily: HAND, fontSize: 21, lineHeight: `${LINE_H}px`, color: ink, marginTop: i ? 3 : 0, fontWeight: 500 }}
+          style={{ fontFamily: HAND, fontSize: "var(--journal-text-size, 21px)", lineHeight: `${LINE_H}px`, color: ink, marginTop: i ? 3 : 0, fontWeight: 500 }}
         >
           {e.highlight ? (
             <span
