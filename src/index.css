@@ -1050,3 +1050,42 @@ button, a, [role="button"] {
     animation: apple-backdrop-in 0.2s ease-out both;
   }
 }
+
+/* ───────────────────────────────────────────────────────────
+   Chat polish — cleaner, calmer, faster
+   ─────────────────────────────────────────────────────────── */
+@layer utilities {
+  .scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+}
+
+/* Softer, more modern bubbles: roomier text, a small "tail" corner, hairline edge. */
+.chat-row [class*="bg-bubble-own"],
+.chat-row [class*="bg-bubble-partner"] {
+  line-height: 1.38;
+  letter-spacing: -0.003em;
+  box-shadow: 0 0.5px 0 hsl(var(--foreground) / 0.04), 0 6px 14px -10px hsl(var(--foreground) / 0.18);
+}
+
+/* Photos & albums sit flush inside the bubble. */
+.chat-row img { -webkit-user-drag: none; user-select: none; }
+
+/* Message rows paint independently of the rest of the list (cheaper scroll + reflow). */
+.chat-row { contain: layout style; }
+
+/* Composer: pill field with a gentle focus glow instead of a hard ring. */
+.glass-chat-input textarea {
+  transition: box-shadow 0.18s ease, background-color 0.18s ease;
+}
+.glass-chat-input textarea:focus {
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+}
+
+/* Emoji-heavy UI should use the colour emoji font first. */
+.emoji-font, [data-e] {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up, .animate-fade-in, .animate-scale-in { animation: none !important; }
+}

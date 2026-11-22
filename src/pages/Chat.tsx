@@ -90,7 +90,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
   const partner = usePartner(userId);
   const currentUser = useCurrentUser(userId);
   const partnerAwayMessage = usePartnerAwayMessage(partner?.user_id, partner?.is_online, partner?.last_seen);
-  const { messages, loading, loadingMore, hasMore, loadMore, sendMessage } = useMessages(userId);
+  const { messages, loading, loadingMore, hasMore, loadMore, sendMessage, sendImages } = useMessages(userId);
   const { partnerTyping, partnerRecording, handleTyping, handleRecording, setTyping } = useTyping(userId, currentUser?.name ?? undefined);
   const [replyTo, setReplyTo] = useState<Tables<"messages"> | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -363,78 +363,96 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
       return error;
     }
 
-    await setTyping(false);
+    void setTyping(false); // don't make the send wait on the typing indicator
     const error = await sendMessage(content, currentUser?.name ?? "Unknown", {
       use_handwriting_font: useHandwritingFont,
       ...extras,
     });
 
-    // Rich text triggers (sorry → mending heart, i'm angry → fire, are you there
-    // → heartbeat, same → mirror): sent as a normal message but also fire a
-    // full-screen overlay on both screens.
-    const rich = !extras?.message_type && content ? detectRichTrigger(content) : null;
-    if (!error && rich) {
-      setSecretEvent({ type: rich, senderName: "You" });
-    }
+    // Everything below is secondary (overlays, prizes, push-style animations for an
+    // offline partner). Run it in the background so the composer is free immediately.
+    if (error) return error;
+    void (async () => {
+      // Rich text triggers (sorry → mending heart, i'm angry → fire, are you there
+      // → heartbeat, same → mirror): sent as a normal message but also fire a
+      // full-screen overlay on both screens.
+      const rich = !extras?.message_type && content ? detectRichTrigger(content) : null;
+      if (!error && rich) {
+        setSecretEvent({ type: rich, senderName: "You" });
+      }
 
-    // Easter egg: naming all 8 planets in order unlocks the galaxy theme.
-    if (!error && !extras?.message_type && content && detectPlanetSequence(content)) {
-      unlockGalaxyTheme();
-    }
+      // Easter egg: naming all 8 planets in order unlocks the galaxy theme.
+      if (!error && !extras?.message_type && content && detectPlanetSequence(content)) {
+        unlockGalaxyTheme();
+      }
 
-    // Mystery prize on every 50th message in the conversation. Tied to the real
-    // total count so it's deterministic; the prize index derives from the
-    // milestone so both partners would see the same prize.
-    if (!error) {
-      const { count } = await supabase
-        .from("messages")
-        .select("id", { count: "exact", head: true });
-      if (count && count % 50 === 0) {
-        const prizeDef = MYSTERY_PRIZES[(count / 50 - 1) % MYSTERY_PRIZES.length];
-        const prize = { ...prizeDef, milestone: count };
-        setSecretEvent({ type: "mysteryprize", prize, senderName: "You" });
-        if (partner) {
+      // Mystery prize on every 50th message in the conversation. Tied to the real
+      // total count so it's deterministic; the prize index derives from the
+      // milestone so both partners would see the same prize.
+      if (!error) {
+        const { count } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true });
+        if (count && count % 50 === 0) {
+          const prizeDef = MYSTERY_PRIZES[(count / 50 - 1) % MYSTERY_PRIZES.length];
+          const prize = { ...prizeDef, milestone: count };
+          setSecretEvent({ type: "mysteryprize", prize, senderName: "You" });
+          if (partner) {
+            await supabase.from("pending_animations").insert({
+              target_user_id: partner.user_id,
+              animation_type: "secret_event",
+              animation_data: { type: "mysteryprize", prize },
+              sender_name: currentUser?.name ?? "Partner",
+            } as any);
+          }
+        }
+      }
+
+      if (!error && partner && !partner.is_online) {
+        const msgType = extras?.message_type;
+        if (msgType === "touch_reaction") {
+          await supabase.from("pending_animations").insert({
+            target_user_id: partner.user_id,
+            animation_type: "touch_reaction",
+            animation_data: { emotion: content },
+            sender_name: currentUser?.name ?? "Partner",
+          } as any);
+        } else if (rich) {
           await supabase.from("pending_animations").insert({
             target_user_id: partner.user_id,
             animation_type: "secret_event",
-            animation_data: { type: "mysteryprize", prize },
+            animation_data: { type: rich },
             sender_name: currentUser?.name ?? "Partner",
           } as any);
+        } else if (content) {
+          const detected = detectEffect(content);
+          if (detected) {
+            await supabase.from("pending_animations").insert({
+              target_user_id: partner.user_id,
+              animation_type: "keyword_effect",
+              animation_data: { effect: detected, content },
+              sender_name: currentUser?.name ?? "Partner",
+            } as any);
+          }
         }
       }
-    }
-
-    if (!error && partner && !partner.is_online) {
-      const msgType = extras?.message_type;
-      if (msgType === "touch_reaction") {
-        await supabase.from("pending_animations").insert({
-          target_user_id: partner.user_id,
-          animation_type: "touch_reaction",
-          animation_data: { emotion: content },
-          sender_name: currentUser?.name ?? "Partner",
-        } as any);
-      } else if (rich) {
-        await supabase.from("pending_animations").insert({
-          target_user_id: partner.user_id,
-          animation_type: "secret_event",
-          animation_data: { type: rich },
-          sender_name: currentUser?.name ?? "Partner",
-        } as any);
-      } else if (content) {
-        const detected = detectEffect(content);
-        if (detected) {
-          await supabase.from("pending_animations").insert({
-            target_user_id: partner.user_id,
-            animation_type: "keyword_effect",
-            animation_data: { effect: detected, content },
-            sender_name: currentUser?.name ?? "Partner",
-          } as any);
-        }
-      }
-    }
+    })().catch((e) => console.error("[Chat] post-send effects failed:", e));
 
     return error;
   };
+
+  // Photos: instant local preview, parallel upload, one insert (albums when 2+).
+  const handleSendImages = useCallback(
+    async (files: File[], caption: string, extras?: any) => {
+      void setTyping(false);
+      return sendImages(files, caption, currentUser?.name ?? "Unknown", {
+        use_handwriting_font: useHandwritingFont,
+        ...extras,
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sendImages, currentUser?.name, useHandwritingFont]
+  );
 
   // Highlight matched message IDs for the message list
   const scrollToMessage = useCallback((messageId: string) => {
@@ -726,6 +744,7 @@ const ChatView: React.FC<{ userId: string; role: "partner" | "demo" | "admin"; c
             />
             <MessageInput
               onSend={handleSend}
+              onSendImages={handleSendImages}
               onTyping={handleTyping}
               onRecording={handleRecording}
               userId={userId}

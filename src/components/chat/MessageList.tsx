@@ -10,6 +10,7 @@ import MessageListSkeleton from "./MessageListSkeleton";
 import { isSameDay } from "@/lib/dateUtils";
 import { Loader2 } from "lucide-react";
 import { useReactions } from "@/hooks/useReactions";
+import { groupMessages, type ChatItem } from "@/lib/album";
 
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -37,6 +38,119 @@ interface MessageListProps {
   partnerHandwritingFont?: boolean;
 }
 
+const EMPTY: Tables<"message_reactions">[] = [];
+
+interface RowHandlers {
+  onReply: (m: Tables<"messages">) => void;
+  onReact: (messageId: string, emoji: string) => void;
+  onImage: (url: string) => void;
+  onVideo: (url: string) => void;
+  onScrollTo: (id: string) => void;
+  onBookmark: (m: Tables<"messages">) => void;
+  onPin?: (m: Tables<"messages">) => void;
+  onTeachAi?: (m: Tables<"messages">) => void;
+  onAskCompanion?: (m: Tables<"messages">) => void;
+}
+
+interface RowProps {
+  item: ChatItem;
+  grouped: boolean;
+  showDate: boolean;
+  isOwn: boolean;
+  fontSize: string;
+  customFontSize?: string;
+  isHandwriting: boolean;
+  reactions: Tables<"message_reactions">[];
+  replyTo: Tables<"messages"> | null;
+  pinned: boolean;
+  /** stable ref — handlers are read at call time, so the row never re-renders just because a callback identity changed */
+  h: React.MutableRefObject<RowHandlers>;
+  hasPin: boolean;
+  hasTeach: boolean;
+  hasAsk: boolean;
+}
+
+function sameItem(a: ChatItem, b: ChatItem): boolean {
+  if (a.kind === "single" && b.kind === "single") return a.message === b.message;
+  if (a.kind === "album" && b.kind === "album") {
+    return a.messages.length === b.messages.length && a.messages.every((m, i) => m === b.messages[i]);
+  }
+  return false;
+}
+
+function rowPropsEqual(a: RowProps, b: RowProps): boolean {
+  return (
+    sameItem(a.item, b.item) &&
+    a.grouped === b.grouped &&
+    a.showDate === b.showDate &&
+    a.isOwn === b.isOwn &&
+    a.fontSize === b.fontSize &&
+    a.customFontSize === b.customFontSize &&
+    a.isHandwriting === b.isHandwriting &&
+    a.reactions === b.reactions &&
+    a.replyTo === b.replyTo &&
+    a.pinned === b.pinned &&
+    a.hasPin === b.hasPin &&
+    a.hasTeach === b.hasTeach &&
+    a.hasAsk === b.hasAsk
+  );
+}
+
+/**
+ * One chat row. Memoised: typing indicators, new messages elsewhere, scroll
+ * state etc. no longer re-render every bubble in the conversation.
+ */
+const MessageRow = React.memo(
+  function MessageRow({ item, grouped, showDate, isOwn, fontSize, customFontSize, isHandwriting, reactions, replyTo, pinned, h, hasPin, hasTeach, hasAsk }: RowProps) {
+    const msg = item.kind === "album" ? item.last : item.message;
+    const stable = useMemo(
+      () => ({
+        onReply: (m: Tables<"messages">) => h.current.onReply(m),
+        onReact: (emoji: string) => h.current.onReact(msg.id, emoji),
+        onImage: (u: string) => h.current.onImage(u),
+        onVideo: (u: string) => h.current.onVideo(u),
+        onScrollTo: (id: string) => h.current.onScrollTo(id),
+        onBookmark: (m: Tables<"messages">) => h.current.onBookmark(m),
+        onPin: (m: Tables<"messages">) => h.current.onPin?.(m),
+        onTeachAi: (m: Tables<"messages">) => h.current.onTeachAi?.(m),
+        onAskCompanion: (m: Tables<"messages">) => h.current.onAskCompanion?.(m),
+      }),
+      [h, msg.id]
+    );
+    return (
+      <>
+        {showDate && <DateSeparator date={msg.created_at ?? ""} />}
+        <div
+          id={`msg-${msg.id}`}
+          className={`group relative chat-row ${grouped ? "mt-[3px]" : "mt-3"}`}
+        >
+          <MessageBubble
+            message={msg}
+            album={item.kind === "album" && item.messages.length > 1 ? item.messages : undefined}
+            isOwn={isOwn}
+            fontSize={fontSize}
+            customFontSize={customFontSize}
+            isHandwriting={isHandwriting}
+            reactions={reactions}
+            replyToMessage={replyTo}
+            onReply={stable.onReply}
+            onReact={stable.onReact}
+            onImageClick={stable.onImage}
+            onVideoClick={stable.onVideo}
+            onScrollToMessage={stable.onScrollTo}
+            onBookmark={stable.onBookmark}
+            onPin={hasPin ? stable.onPin : undefined}
+            isPinned={pinned}
+            onTeachAi={hasTeach ? stable.onTeachAi : undefined}
+            onAskCompanion={hasAsk ? stable.onAskCompanion : undefined}
+          />
+        </div>
+      </>
+    );
+  },
+  rowPropsEqual
+);
+
 const MessageList: React.FC<MessageListProps> = ({
   messages, currentUserId, loading, loadingMore, hasMore, onLoadMore, partnerTyping, partnerRecording, onReply, wallpaper, useSkyBackground, typingText, onPin, isMessagePinned, onTeachAi, onAskCompanion, onEmptyDoubleTap,
   fontSize = "medium", customFontSize, currentHandwritingFont = false, partnerHandwritingFont = false,
@@ -50,7 +164,13 @@ const MessageList: React.FC<MessageListProps> = ({
   const [lightboxType, setLightboxType] = useState<"image" | "video">("image");
   const [bookmarkMsg, setBookmarkMsg] = useState<Tables<"messages"> | null>(null);
 
-  const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
+  const messageIds = useMemo(() => messages.filter((m) => !m.id.startsWith("tmp_")).map((m) => m.id), [messages]);
+  const items = useMemo(() => groupMessages(messages), [messages]);
+  // Every photo in the loaded chat, in order — the lightbox swipes through these.
+  const galleryImages = useMemo(
+    () => messages.filter((m) => m.message_type === "image" && m.image_url && !m.id.startsWith("tmp_")).map((m) => m.image_url as string),
+    [messages]
+  );
   const { reactions, toggleReaction } = useReactions(messageIds);
 
   const replyMap = useMemo(() => {
@@ -58,6 +178,20 @@ const MessageList: React.FC<MessageListProps> = ({
     messages.forEach((m) => { map[m.id] = m; });
     return map;
   }, [messages]);
+
+  const handlersRef = useRef<RowHandlers>({} as RowHandlers);
+  handlersRef.current = {
+    onReply,
+    onReact: (messageId, emoji) => toggleReaction(messageId, currentUserId, emoji),
+    onImage: (url) => { setLightboxSrc(url); setLightboxType("image"); },
+    onVideo: (url) => { setLightboxSrc(url); setLightboxType("video"); },
+    onScrollTo: (id) => scrollToMessageRef.current(id),
+    onBookmark: (m) => setBookmarkMsg(m),
+    onPin,
+    onTeachAi,
+    onAskCompanion,
+  };
+  const scrollToMessageRef = useRef<(id: string) => void>(() => {});
 
   const scrollToBottom = useCallback((smooth = true) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "instant" });
@@ -71,6 +205,8 @@ const MessageList: React.FC<MessageListProps> = ({
       setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
     }
   }, []);
+
+  scrollToMessageRef.current = scrollToMessage;
 
   const isInitialLoad = useRef(true);
   const loadMoreLock = useRef(false);
@@ -158,45 +294,34 @@ const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {messages.map((msg, i) => {
-          const prev = i > 0 ? messages[i - 1] : null;
-          const showDate = i === 0 || !isSameDay(prev?.created_at ?? "", msg.created_at ?? "");
+        {items.map((item, i) => {
+          const msg = item.kind === "album" ? item.last : item.message;
+          const first = item.kind === "album" ? item.messages[0] : item.message;
+          const prevItem = i > 0 ? items[i - 1] : null;
+          const prev = prevItem ? (prevItem.kind === "album" ? prevItem.last : prevItem.message) : null;
+          const showDate = i === 0 || !isSameDay(prev?.created_at ?? "", first.created_at ?? "");
           // Group consecutive messages from the same sender (tighter spacing),
           // unless a date separator breaks the run.
-          const grouped = !showDate && !!prev && prev.user_id === msg.user_id;
-          const isOwn = msg.user_id === currentUserId;
-          // If handwriting setting is turned off, every message reverts to the default font.
-          // When turned on, messages render with Anshika's Magic.
-          const isHandwriting = Boolean(currentHandwritingFont);
-
+          const grouped = !showDate && !!prev && prev.user_id === first.user_id;
           return (
-            <React.Fragment key={msg.id}>
-              {showDate && <DateSeparator date={msg.created_at ?? ""} />}
-              <div
-                id={`msg-${msg.id}`}
-                className={`group relative ${grouped ? "mt-1" : "mt-3"}`}
-              >
-                <MessageBubble
-                  message={msg}
-                  isOwn={isOwn}
-                  fontSize={fontSize}
-                  customFontSize={customFontSize}
-                  isHandwriting={isHandwriting}
-                  reactions={reactions[msg.id] ?? []}
-                  replyToMessage={msg.reply_to_id ? replyMap[msg.reply_to_id] ?? null : null}
-                  onReply={onReply}
-                  onReact={(emoji) => toggleReaction(msg.id, currentUserId, emoji)}
-                  onImageClick={(url) => { setLightboxSrc(url); setLightboxType("image"); }}
-                  onVideoClick={(url) => { setLightboxSrc(url); setLightboxType("video"); }}
-                  onScrollToMessage={scrollToMessage}
-                  onBookmark={(msg) => setBookmarkMsg(msg)}
-                  onPin={onPin}
-                  isPinned={isMessagePinned?.(msg.id) ?? false}
-                  onTeachAi={onTeachAi}
-                  onAskCompanion={onAskCompanion}
-                />
-              </div>
-            </React.Fragment>
+            <MessageRow
+              key={item.key}
+              item={item}
+              grouped={grouped}
+              showDate={showDate}
+              isOwn={msg.user_id === currentUserId}
+              fontSize={fontSize}
+              customFontSize={customFontSize}
+              // If handwriting setting is turned off, every message reverts to the default font.
+              isHandwriting={Boolean(currentHandwritingFont)}
+              reactions={reactions[msg.id] ?? EMPTY}
+              replyTo={msg.reply_to_id ? replyMap[msg.reply_to_id] ?? null : null}
+              pinned={isMessagePinned?.(msg.id) ?? false}
+              h={handlersRef}
+              hasPin={!!onPin}
+              hasTeach={!!onTeachAi}
+              hasAsk={!!onAskCompanion}
+            />
           );
         })}
 
@@ -207,7 +332,7 @@ const MessageList: React.FC<MessageListProps> = ({
       </div>
 
       {showScrollBtn && <ScrollToBottom onClick={() => scrollToBottom()} />}
-      {lightboxSrc && <ImageLightbox src={lightboxSrc} type={lightboxType} onClose={() => setLightboxSrc(null)} />}
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} type={lightboxType} images={galleryImages} onClose={() => setLightboxSrc(null)} />}
       {bookmarkMsg && <BookmarkDialog message={bookmarkMsg} onClose={() => setBookmarkMsg(null)} />}
     </div>
   );

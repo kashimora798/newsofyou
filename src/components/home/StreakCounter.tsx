@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getStreakCelebratedDate, setStreakCelebratedDate } from "@/hooks/useSecretAchievements";
 import StreakCelebration from "@/components/home/StreakCelebration";
-import { getStreakData } from "@/hooks/useStreakState";
+import { getStreakData, localDateStr } from "@/hooks/useStreakState";
 import { format } from "date-fns";
 
 const StreakCounter: React.FC = () => {
@@ -26,7 +26,7 @@ const StreakCounter: React.FC = () => {
 
       // Show celebration only once per calendar day, not every session
       if (data.currentStreak > 0) {
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = localDateStr();
         const lastCelebratedDate = await getStreakCelebratedDate(user.id);
         if (lastCelebratedDate !== todayStr) {
           setShowCelebration(true);
