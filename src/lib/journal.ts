@@ -328,8 +328,8 @@ export function wrapLines(text: string, perLine = CHARS_PER_LINE): string[] {
 }
 
 /** Split a very long message into chunks of at most `maxLines` estimated lines. */
-export function chunkText(text: string, maxLines = MAX_BLOCK_LINES): string[] {
-  const lines = wrapLines(text);
+export function chunkText(text: string, maxLines = MAX_BLOCK_LINES, perLine = CHARS_PER_LINE): string[] {
+  const lines = wrapLines(text, perLine);
   if (lines.length <= maxLines) return [text];
   const chunks: string[] = [];
   for (let i = 0; i < lines.length; i += maxLines) chunks.push(lines.slice(i, i + maxLines).join(" ").trim());
@@ -369,6 +369,8 @@ export interface BuildOptions {
   dayKey: string;
   currentUserId: string | undefined;
   highlighter: HighlightIndex;
+  /** estimated characters per handwritten line (depends on the chosen font) */
+  charsPerLine?: number;
 }
 
 const isTextual = (m: Message) => {
@@ -377,7 +379,7 @@ const isTextual = (m: Message) => {
 };
 
 /** Turn the day's raw messages into ordered, height-estimated journal blocks. */
-export function buildBlocks(messages: Message[], { dayKey, currentUserId, highlighter }: BuildOptions): Block[] {
+export function buildBlocks(messages: Message[], { dayKey, currentUserId, highlighter, charsPerLine = CHARS_PER_LINE }: BuildOptions): Block[] {
   const usable = messages.filter((m) => {
     if ((m as { isReact?: boolean | null }).isReact) return false;
     if (m.id.startsWith("tmp_")) return false;
@@ -411,7 +413,7 @@ export function buildBlocks(messages: Message[], { dayKey, currentUserId, highli
 
   const pushText = (m: Message, text: string, cont: boolean) => {
     const mine = m.user_id === currentUserId;
-    const lines = wrapLines(text).length;
+    const lines = wrapLines(text, charsPerLine).length;
     const hl = highlighter.forMessage(m);
     if (run && (run.mine !== mine || runLines + lines > MAX_BLOCK_LINES)) flush();
     if (!run) {
@@ -498,7 +500,7 @@ export function buildBlocks(messages: Message[], { dayKey, currentUserId, highli
       continue;
     }
     if (isTextual(m)) {
-      const chunks = chunkText(m.content!.trim());
+      const chunks = chunkText(m.content!.trim(), MAX_BLOCK_LINES, charsPerLine);
       chunks.forEach((c, i) => pushText(m, c, i > 0));
     }
   }
@@ -623,4 +625,92 @@ export function monthCells(year: number, month: number): (string | null)[] {
 
 export function plural(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+/* ───────────────────────── font choices ───────────────────────── */
+
+export const JOURNAL_FONTS = {
+  caveat: { label: "Caveat", note: "neat & airy (default)", css: "Caveat, 'MyHandwriting', 'Comic Neue', cursive", size: 21, cpl: 33 },
+  anshika: { label: "Anshika's Magic", note: "your chat handwriting", css: "'MyHandwriting', 'Comic Neue', cursive", size: 20, cpl: 28 },
+  comic: { label: "Comic Neue", note: "playful & round", css: "'Comic Neue', 'Comic Sans MS', cursive", size: 19, cpl: 30 },
+  lora: { label: "Lora", note: "classic book serif", css: "Lora, Georgia, serif", size: 17, cpl: 32 },
+  nunito: { label: "Nunito", note: "clean & easy to read", css: "Nunito, system-ui, sans-serif", size: 17, cpl: 32 },
+  typewriter: { label: "Typewriter", note: "old-school diary", css: "'Special Elite', 'Courier New', monospace", size: 15, cpl: 30 },
+} as const;
+export type JournalFontKey = keyof typeof JOURNAL_FONTS;
+
+export const FONT_SIZES = {
+  small: { label: "Small", scale: 0.9 },
+  medium: { label: "Medium", scale: 1 },
+  large: { label: "Large", scale: 1.12 },
+} as const;
+export type FontSizeKey = keyof typeof FONT_SIZES;
+
+export interface JournalFontPrefs {
+  font: JournalFontKey;
+  size: FontSizeKey;
+}
+export const DEFAULT_FONT_PREFS: JournalFontPrefs = { font: "caveat", size: "medium" };
+
+export function normalizeFontPrefs(raw: Partial<Record<keyof JournalFontPrefs, unknown>> | null | undefined): JournalFontPrefs {
+  const r = raw ?? {};
+  return {
+    font: (typeof r.font === "string" && r.font in JOURNAL_FONTS ? r.font : DEFAULT_FONT_PREFS.font) as JournalFontKey,
+    size: (typeof r.size === "string" && r.size in FONT_SIZES ? r.size : DEFAULT_FONT_PREFS.size) as FontSizeKey,
+  };
+}
+
+/** Everything the layout needs to know about the chosen font. */
+export function resolveFont(prefs: JournalFontPrefs) {
+  const f = JOURNAL_FONTS[prefs.font];
+  const scale = FONT_SIZES[prefs.size].scale;
+  return {
+    css: f.css as string,
+    fontSize: Math.round(f.size * scale * 10) / 10,
+    // bigger text → fewer characters fit on a line (never fewer than 14)
+    charsPerLine: Math.max(14, Math.floor(f.cpl / scale)),
+  };
+}
+
+/* ───────────────────────── recent-first loading windows ───────────────────────── */
+
+/** Months covered by one "load more" step. */
+export const CHUNK_MONTHS = 3;
+
+/**
+ * Time window for chunk `i` (0 = newest). Chunk 0 is the current month plus the
+ * previous ones; the newest chunk is open-ended at the top so brand-new
+ * messages are always included. Boundaries are local month starts, so a
+ * calendar day is never split across two chunks.
+ */
+export function chunkRange(i: number, now: Date = new Date()): { from: string; to: string | null } {
+  const start = (offset: number) => new Date(now.getFullYear(), now.getMonth() + offset, 1).toISOString();
+  return {
+    from: start(-(CHUNK_MONTHS * (i + 1) - 1)),
+    to: i === 0 ? null : start(-(CHUNK_MONTHS * i - 1)),
+  };
+}
+
+/** How many chunks are needed so that `dayKey` is inside the loaded window. */
+export function chunksToCover(dayKey: string, now: Date = new Date()): number {
+  const [y, m] = dayKey.split("-").map(Number);
+  const back = now.getFullYear() * 12 + now.getMonth() - (y * 12 + (m - 1));
+  return Math.max(1, Math.ceil((back + 1) / CHUNK_MONTHS));
+}
+
+/** Merge day summaries from several windows (same day → counts are summed). */
+export function mergeDaySummaries(lists: DaySummary[][]): DaySummary[] {
+  const map = new Map<string, DaySummary>();
+  for (const list of lists) {
+    for (const d of list) {
+      const cur = map.get(d.key);
+      if (!cur) map.set(d.key, { ...d });
+      else {
+        cur.count += d.count;
+        cur.photos += d.photos;
+        cur.audio += d.audio;
+      }
+    }
+  }
+  return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
 }

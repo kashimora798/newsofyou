@@ -1,20 +1,21 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Dices, Loader2, Palette } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Dices, Loader2, Palette, Type } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAiMemory } from "@/hooks/useAiMemory";
 import { useBookmarks } from "@/hooks/useBookmarks";
-import { useJournalDayMessages, useJournalIndex, useJournalStyles } from "@/hooks/useJournal";
+import { useJournalDayMessages, useJournalFont, useJournalIndex, useJournalStyles } from "@/hooks/useJournal";
 import {
-  DEFAULT_STYLE, PAGE_H, PAGE_W, autoAccent, buildBlocks, buildHighlighter, dayKeyOf, describeDay, paginate,
+  DEFAULT_STYLE, PAGE_H, PAGE_W, autoAccent, buildBlocks, buildHighlighter, dayKeyOf, describeDay, paginate, resolveFont,
   type Block, type JournalDayStyle, type JournalPage as JPage,
 } from "@/lib/journal";
 import JournalPageView, { reservedForFirstPage, type DayContext } from "@/components/journal/JournalPage";
 import JournalContents from "@/components/journal/JournalContents";
 import JournalCover from "@/components/journal/JournalCover";
 import DayCustomizer from "@/components/journal/DayCustomizer";
+import FontPicker from "@/components/journal/FontPicker";
 import ImageLightbox from "@/components/chat/ImageLightbox";
 
 const COVER_PAD = 14;
@@ -47,7 +48,19 @@ const Journal: React.FC = () => {
 const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { days, months, dayMap, loading: indexLoading, error: indexError } = useJournalIndex();
+  const deepLinkDay = useMemo(() => {
+    const d = params.get("d");
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+    // only the day we landed on matters for the first window
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const {
+    days, months, dayMap, loading: indexLoading, error: indexError,
+    hasMore, loadOlder, loadAll, loadingOlder, loadedMonths,
+  } = useJournalIndex(deepLinkDay);
+  const { prefs: fontPrefs, setFont } = useJournalFont();
+  const font = useMemo(() => resolveFont(fontPrefs), [fontPrefs]);
+  const [fontOpen, setFontOpen] = useState(false);
   const { styleFor, hasStyle, saveStyle } = useJournalStyles(userId);
   const { memories } = useAiMemory();
   const { bookmarks } = useBookmarks();
@@ -108,7 +121,7 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
 
   const dayData = useMemo(() => {
     if (!currentDay || !dayQuery.data) return null;
-    const blocks: Block[] = buildBlocks(dayQuery.data, { dayKey: currentDay, currentUserId: userId, highlighter });
+    const blocks: Block[] = buildBlocks(dayQuery.data, { dayKey: currentDay, currentUserId: userId, highlighter, charsPerLine: font.charsPerLine });
 
     // "remember" sticky: facts saved that day, then bookmark notes / flagged messages
     const facts: string[] = memories.filter((m) => dayKeyOf(m.created_at) === currentDay).map((m) => m.fact);
@@ -130,7 +143,7 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
     const pages: JPage[] = paginate(blocks, { firstReserved: reservedForFirstPage(ctx) });
     const photos = blocks.flatMap((b) => (b.kind === "photo" ? [b.url] : b.kind === "album" ? b.urls : []));
     return { ctx, pages, photos };
-  }, [currentDay, dayQuery.data, userId, highlighter, memories, dayMap, hasStyle, styleFor]);
+  }, [currentDay, dayQuery.data, userId, highlighter, memories, dayMap, hasStyle, styleFor, font.charsPerLine]);
 
   // draft (live preview) overrides the saved style
   const effectiveCtx: DayContext | null = dayData ? { ...dayData.ctx, style: draft ?? dayData.ctx.style } : null;
@@ -168,6 +181,8 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
     setParams({}, { replace: true });
   }, [setParams]);
 
+  const pendingPrev = useRef<string | null>(null);
+
   const goNext = useCallback(() => {
     if (view.type === "cover") return;
     if (view.type === "contents") return;
@@ -193,8 +208,29 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
     const i = dayKeys.indexOf(view.day);
     const prev = i > 0 ? dayKeys[i - 1] : null;
     if (prev) openDay(prev, -1, -1);
-    else openContents();
-  }, [view, pageIdx, step, dayKeys, openDay, openContents]);
+    else if (hasMore) {
+      // nothing older is loaded yet → fetch the next window and continue once it lands
+      pendingPrev.current = view.day;
+      toast("Fetching older pages…");
+      loadOlder();
+    } else openContents();
+  }, [view, pageIdx, step, dayKeys, openDay, openContents, hasMore, loadOlder]);
+
+  // after "older" windows finish loading, carry on to the page the reader was heading for
+  useEffect(() => {
+    const from = pendingPrev.current;
+    if (!from || loadingOlder) return;
+    const i = dayKeys.indexOf(from);
+    if (i > 0) {
+      pendingPrev.current = null;
+      openDay(dayKeys[i - 1], -1, -1);
+    } else if (hasMore) {
+      loadOlder(); // that window was empty — keep digging
+    } else {
+      pendingPrev.current = null;
+      openContents();
+    }
+  }, [dayKeys, loadingOlder, hasMore, loadOlder, openDay, openContents]);
 
   const surprise = useCallback(() => {
     if (!dayKeys.length) return;
@@ -260,6 +296,8 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
           mode={mode} months={months} dayMap={dayMap} styleFor={styleFor} hasStyle={hasStyle}
           selectedMonth={selectedMonth} onSelectMonth={setSelectedMonth} onOpenDay={(d) => openDay(d, 1, 0)}
           onSurprise={surprise} totals={totals}
+          hasMore={hasMore} loadingOlder={loadingOlder} loadedMonths={loadedMonths}
+          onLoadOlder={loadOlder} onLoadAll={loadAll}
         />,
       );
     }
@@ -303,7 +341,11 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
     : label;
 
   return (
-    <div className="journal-desk flex h-dvh flex-col" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div
+      className="journal-desk flex h-dvh flex-col"
+      style={{ ["--journal-hand" as string]: font.css, ["--journal-text-size" as string]: `${font.fontSize}px` } as React.CSSProperties}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+    >
       <header className="z-30 flex shrink-0 items-center gap-2 px-3 pb-2 pt-4">
         <button type="button" onClick={() => navigate("/home")} aria-label="Back to home" className="rounded-full bg-card/80 p-2 shadow-sm backdrop-blur hover:bg-card">
           <ArrowLeft className="h-5 w-5" />
@@ -320,6 +362,8 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
                 <Palette className="h-4 w-4 text-primary" /> <span className="hidden sm:inline">Decorate</span>
               </button>
             )}
+            <button type="button" onClick={() => setFontOpen(true)} aria-label="Change journal font"
+              className="rounded-full bg-card/80 p-2 shadow-sm backdrop-blur hover:bg-card"><Type className="h-5 w-5" /></button>
             <button type="button" onClick={surprise} disabled={!dayKeys.length} aria-label="Open a random day"
               className="rounded-full bg-card/80 p-2 shadow-sm backdrop-blur hover:bg-card disabled:opacity-50"><Dices className="h-5 w-5" /></button>
             <button type="button" onClick={openContents} aria-label="Contents"
@@ -380,6 +424,8 @@ const JournalView: React.FC<{ userId: string }> = ({ userId }) => {
       </div>
 
       <div className="h-3 shrink-0" />
+
+      <FontPicker open={fontOpen} value={fontPrefs} onChange={setFont} onClose={() => setFontOpen(false)} />
 
       <DayCustomizer
         open={!!draft && !!currentDay}

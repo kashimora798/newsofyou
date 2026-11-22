@@ -43,10 +43,18 @@ export interface ContentsProps {
   onOpenDay: (day: string) => void;
   onSurprise: () => void;
   totals: { days: number; messages: number; photos: number };
+  /** older chats exist that haven't been loaded yet */
+  hasMore?: boolean;
+  loadingOlder?: boolean;
+  loadedMonths?: number | null;
+  onLoadOlder?: () => void;
+  onLoadAll?: () => void;
 }
 
 /** Left page: the table of contents — every month the journal covers. */
-const MonthsPage: React.FC<ContentsProps & { side: "left" | "single" }> = ({ months, selectedMonth, onSelectMonth, totals, side }) => {
+const MonthsPage: React.FC<ContentsProps & { side: "left" | "single" }> = ({
+  months, selectedMonth, onSelectMonth, totals, side, hasMore, loadingOlder, loadedMonths, onLoadOlder, onLoadAll,
+}) => {
   const byYear = useMemo(() => {
     const m = new Map<number, MonthGroup[]>();
     for (const g of months) m.set(g.year, [...(m.get(g.year) ?? []), g]);
@@ -92,6 +100,25 @@ const MonthsPage: React.FC<ContentsProps & { side: "left" | "single" }> = ({ mon
             })}
           </div>
         ))}
+        {(hasMore || loadingOlder) && (
+          <div className="mb-2 mt-1 flex flex-col items-start gap-1.5">
+            <p style={{ fontFamily: HAND, fontSize: 16, color: "#8a8296" }}>
+              {loadedMonths ? `showing the latest ${loadedMonths} months…` : "loading the rest…"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={loadingOlder} onClick={onLoadOlder}
+                className="rounded-full border border-dashed px-3 py-1 disabled:opacity-50"
+                style={{ fontFamily: TYPE, fontSize: 11, color: "#c8324d", borderColor: "#c8324d" }}>
+                {loadingOlder ? "turning pages…" : "↓ older months"}
+              </button>
+              <button type="button" disabled={loadingOlder} onClick={onLoadAll}
+                className="rounded-full border border-dashed px-3 py-1 disabled:opacity-50"
+                style={{ fontFamily: TYPE, fontSize: 11, color: "#6b6275", borderColor: "#8a8296" }}>
+                load everything
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <Sprig size={54} className="absolute bottom-3 left-3 z-10 opacity-90" style={{ transform: "rotate(-20deg)" }} />
     </Sheet>
@@ -100,7 +127,7 @@ const MonthsPage: React.FC<ContentsProps & { side: "left" | "single" }> = ({ mon
 
 /** Right page: calendar of the selected month, plus jump-to-date. */
 const CalendarPage: React.FC<ContentsProps & { side: "right" | "single"; onBack?: () => void }> = ({
-  side, months, dayMap, styleFor, hasStyle, selectedMonth, onSelectMonth, onOpenDay, onSurprise, onBack,
+  side, months, dayMap, styleFor, hasStyle, selectedMonth, onSelectMonth, onOpenDay, onSurprise, onBack, hasMore, onLoadOlder,
 }) => {
   const [jump, setJump] = useState("");
   const idx = months.findIndex((m) => m.key === selectedMonth);
@@ -130,7 +157,7 @@ const CalendarPage: React.FC<ContentsProps & { side: "right" | "single"; onBack?
           <p style={{ fontFamily: TYPE, fontSize: 12, letterSpacing: ".2em", color: "#8a8296" }}>{year}</p>
         </div>
         <div className="flex gap-1 pb-1">
-          <button type="button" disabled={idx <= 0} onClick={() => onSelectMonth(months[idx - 1].key)} aria-label="Previous month"
+          <button type="button" disabled={idx < 0 || (idx === 0 && !hasMore)} onClick={() => (idx > 0 ? onSelectMonth(months[idx - 1].key) : onLoadOlder?.())} aria-label="Previous month"
             className="rounded-full border border-[#3b7dc4]/40 p-1.5 text-[#3b7dc4] disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
           <button type="button" disabled={idx < 0 || idx >= months.length - 1} onClick={() => onSelectMonth(months[idx + 1].key)} aria-label="Next month"
             className="rounded-full border border-[#3b7dc4]/40 p-1.5 text-[#3b7dc4] disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
