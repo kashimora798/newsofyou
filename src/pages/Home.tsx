@@ -11,7 +11,7 @@ import { getThemeById } from "@/lib/chatThemes";
 import { daysTogether } from "@/lib/anniversary";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatLastSeen } from "@/lib/dateUtils";
-import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2, BarChart3, Mail, Send, Compass, Sparkles } from "lucide-react";
+import { LogOut, Loader2, ChevronRight, Bookmark, Bell, CalendarDays, Heart, CheckSquare, Trophy, Gamepad2, BarChart3, Mail, Send, Compass, Sparkles, BookHeart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import BottomNav from "@/components/layout/BottomNav";
 import StreakCounter from "@/components/home/StreakCounter";
@@ -26,6 +26,7 @@ import ComplimentPopup from "@/components/home/ComplimentPopup";
 import { useCompliments } from "@/hooks/useCompliments";
 import DailyChecklistWidget from "@/components/home/DailyChecklistWidget";
 import AnniversaryBanner from "@/components/home/AnniversaryBanner";
+import JournalCard from "@/components/home/JournalCard";
 
 // Stagger animation variants
 const container = {
@@ -149,6 +150,7 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
   const themeConfig = getThemeById(chatTheme);
 
   const quickLinks = [
+    { path: "/journal", icon: BookHeart, label: "Journal", color: "text-rose-500", bg: "bg-rose-500/10" },
     { path: "/games", icon: Gamepad2, label: "Games", color: "text-orange-500", bg: "bg-orange-500/10" },
     { path: "/stats", icon: BarChart3, label: "Stats", color: "text-sky-500", bg: "bg-sky-500/10" },
     { path: "/bookmarks", icon: Bookmark, label: "Bookmarks", color: "text-amber-500", bg: "bg-amber-500/10" },
@@ -307,6 +309,11 @@ const HomeView: React.FC<{ userId: string; onSignOut: () => void }> = ({ userId,
               <span className="text-muted-foreground"> days together 💞</span>
             </p>
           </div>
+        </motion.div>
+
+        {/* Auto Journal — chats as a scrapbook e-book */}
+        <motion.div variants={item}>
+          <JournalCard />
         </motion.div>
 
         {/* Daily Checklist */}

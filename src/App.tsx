@@ -37,6 +37,7 @@ const Games = lazy(() => import("./pages/Games"));
 const Wrapped = lazy(() => import("./pages/Wrapped"));
 const SecretGarden = lazy(() => import("./pages/SecretGarden"));
 const Forest = lazy(() => import("./pages/Forest"));
+const Journal = lazy(() => import("./pages/Journal"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -104,6 +105,7 @@ const App = () => (
                     <Route path="/wrapped" element={<P><Wrapped /></P>} />
                     <Route path="/garden" element={<P><SecretGarden /></P>} />
                     <Route path="/forest" element={<P><Forest /></P>} />
+                    <Route path="/journal" element={<P><Journal /></P>} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </Suspense>

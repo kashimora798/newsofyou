@@ -4,6 +4,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Silkscreen&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;700&family=Kaushan+Script&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital@0;1&display=swap');
 
 @tailwind base;
@@ -1088,4 +1089,36 @@ button, a, [role="button"] {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-slide-up, .animate-fade-in, .animate-scale-in { animation: none !important; }
+}
+
+
+/* ───────────── Auto Journal (e-book) ───────────── */
+.journal-desk {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,255,255,.55), transparent 60%),
+    repeating-linear-gradient(45deg, rgba(140,110,80,.05) 0 2px, transparent 2px 6px),
+    linear-gradient(160deg, #efe3d1 0%, #e6d5bd 55%, #dcc8ab 100%);
+}
+.dark .journal-desk {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255,200,150,.08), transparent 60%),
+    linear-gradient(160deg, #2a221d 0%, #211b17 100%);
+}
+.journal-book {
+  background: linear-gradient(135deg, #8d3d52 0%, #6e2a40 55%, #561f33 100%);
+  box-shadow: 0 22px 40px -12px rgba(50,20,30,.55), 0 0 0 1px rgba(0,0,0,.2), inset 0 0 0 2px rgba(255,220,200,.1);
+}
+.journal-book > div:not(.pointer-events-none) {
+  box-shadow: 2px 3px 0 -1px #f3ead9, 4px 6px 0 -2px #e6dac2;
+}
+.journal-scroll { scrollbar-width: thin; scrollbar-color: rgba(120,90,60,.3) transparent; }
+.journal-reel { transform-box: fill-box; transform-origin: center; }
+.journal-reel-spin { animation: journal-spin 1.8s linear infinite; }
+.journal-blink { animation: journal-blink 1s ease-in-out infinite; }
+.journal-float { display: inline-block; animation: journal-float 4s ease-in-out infinite; }
+@keyframes journal-spin { to { transform: rotate(360deg); } }
+@keyframes journal-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes journal-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+@media (prefers-reduced-motion: reduce) {
+  .journal-reel-spin, .journal-blink, .journal-float { animation: none; }
 }
