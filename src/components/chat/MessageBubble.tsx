@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
-import { Check, CheckCheck, Copy, Reply, SmilePlus, Music, Bookmark, Pin, Brain, Sparkles, MoreHorizontal, Play } from "lucide-react";
+import { Check, CheckCheck, Clock, Copy, Reply, SmilePlus, Music, Bookmark, Pin, Brain, Sparkles, MoreHorizontal, Play } from "lucide-react";
 import { formatMessageTime, formatFullDate } from "@/lib/dateUtils";
 import { formatMessageContent } from "@/lib/formatMessage";
 import FileBubble from "./FileBubble";
@@ -14,6 +14,8 @@ import { QUICK_REACTIONS } from "@/lib/emojiData";
 import { DieFace } from "@/components/secrets/DieFace";
 import { decodeRps, RPS_EMOJI } from "@/lib/secretCommands";
 import { haptic } from "@/lib/haptics";
+import { jumboEmojiCount } from "@/lib/album";
+import AlbumGrid from "./AlbumGrid";
 import { getMessageFontSizeClass, getMessageFontStyle } from "@/lib/fontSettings";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -35,12 +37,14 @@ interface MessageBubbleProps {
   onTeachAi?: (message: Tables<"messages">) => void;
   onAskCompanion?: (message: Tables<"messages">) => void;
   isPinned?: boolean;
+  /** when set, this bubble represents a whole photo album (message = last row, carries caption/status) */
+  album?: Tables<"messages">[];
 }
 
 const SWIPE_THRESHOLD = 60;
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isOwn, fontSize = "medium", customFontSize, isHandwriting = false, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned,
+  message, isOwn, fontSize = "medium", customFontSize, isHandwriting = false, reactions = [], replyToMessage, onReply, onReact, onImageClick, onVideoClick, onScrollToMessage, onBookmark, onPin, onTeachAi, onAskCompanion, isPinned, album,
 }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState(false);
@@ -54,12 +58,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const hapticTriggered = useRef(false);
 
   const msgType = (message as any).message_type ?? "text";
-  const hasImage = !!message.image_url;
+  const hasImage = !!message.image_url && !album;
   const hasVideo = message.video && message.vidUrl;
   const hasFile = !!(message as any).file_url;
   const hasGif = !!(message as any).gif_url;
   const hasSticker = !!(message as any).sticker_url;
   const hasLinkPreview = message.link_preview_active && message.link_title;
+  const albumUrls = useMemo(
+    () => (album ? album.map((m) => m.image_url).filter((u): u is string => !!u) : []),
+    [album]
+  );
+  const isSending = (message as any).status === "sending";
+  const jumbo = msgType === "text" && !hasImage && !hasGif && !hasFile && !message.reply_to_id && !hasLinkPreview ? jumboEmojiCount(message.content) : 0;
 
   const fontSizeClass = useMemo(() => {
     return getMessageFontSizeClass(fontSize, isHandwriting);
@@ -436,8 +446,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Bubble */}
         <div
-          className={`rounded-[20px] px-3.5 py-2 ${
-            isOwn
+          className={`rounded-[20px] ${albumUrls.length > 0 ? "p-1.5" : "px-3.5 py-2"} ${
+            jumbo
+              ? "bg-transparent shadow-none px-1"
+              : isOwn
               ? "bg-bubble-own text-bubble-own-foreground rounded-br-[6px] bubble-shadow-own"
               : "bg-bubble-partner text-bubble-partner-foreground rounded-bl-[6px] bubble-shadow-partner"
           }`}
@@ -449,7 +461,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
               className="mb-1.5 px-2.5 py-1.5 rounded-xl bg-muted/40 border-l-2 border-primary/60 text-xs cursor-pointer hover:bg-muted/60 transition-colors"
             >
               <p className="font-semibold text-primary text-[10px]">{replyToMessage?.username ?? "..."}</p>
-              <p className="text-muted-foreground truncate">{replyToMessage?.content || "📎 Attachment"}</p>
+              <p className="text-muted-foreground truncate">{replyToMessage?.content || (replyToMessage?.image_url ? "📷 Photo" : (replyToMessage as any)?.gif_url ? "GIF" : "📎 Attachment")}</p>
             </div>
           )}
 
@@ -458,13 +470,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             <img src={(message as any).gif_url} alt="GIF" className="rounded-xl mb-1.5 max-h-56 w-auto object-cover" loading="lazy" />
           )}
 
+          {/* Photo album (2+ photos stacked) */}
+          {albumUrls.length > 0 && (
+            <AlbumGrid urls={albumUrls} sending={isSending} onOpen={(u) => onImageClick?.(u)} />
+          )}
+
           {/* Image */}
           {hasImage && (
             <img
               src={message.image_url!}
               alt="shared"
-              className="rounded-xl mb-1.5 max-h-64 w-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
+              className="rounded-xl mb-1.5 max-h-64 min-h-[120px] min-w-[160px] w-auto object-cover bg-muted/40 cursor-pointer hover:opacity-90 transition-opacity"
               loading="lazy"
+              decoding="async"
               onClick={(e) => { e.stopPropagation(); onImageClick?.(message.image_url!); }}
             />
           )}
@@ -545,7 +563,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           ) : message.content ? (
             <div
               style={handwritingStyle}
-              className={`whitespace-pre-wrap break-words leading-relaxed ${fontSizeClass} ${isHandwriting ? "font-handwriting" : ""}`}
+              className={`whitespace-pre-wrap break-words leading-relaxed ${jumbo ? (jumbo === 1 ? "text-[56px]" : jumbo === 2 ? "text-[46px]" : "text-[38px]") + " !leading-[1.1]" : fontSizeClass} ${isHandwriting ? "font-handwriting" : ""}`}
             >
               {formatMessageContent(message.content)}
             </div>
@@ -612,7 +630,9 @@ const StatusRow: React.FC<{ isOwn: boolean; message: Tables<"messages"> }> = ({ 
     <span className="text-[10px] opacity-50">{formatMessageTime(message.created_at ?? "")}</span>
     {isOwn && (
       <span className="inline-flex">
-        {message.seen ? (
+        {(message as any).status === "sending" ? (
+          <Clock className="h-3 w-3 opacity-40" />
+        ) : message.seen ? (
           <CheckCheck className="h-3.5 w-3.5 text-seen" />
         ) : message.delivered ? (
           <CheckCheck className="h-3.5 w-3.5 opacity-40" />
@@ -670,4 +690,4 @@ const QuickReactionBar: React.FC<{
   </div>
 );
 
-export default MessageBubble;
+export default React.memo(MessageBubble);

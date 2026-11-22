@@ -1,10 +1,11 @@
-import React, { useState, useRef, useCallback } from "react";
-import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2 } from "lucide-react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { Send, Paperclip, Smile, Clock, Heart, Plus, X, Lock, Mail, Flame, Handshake, Sparkles, Loader2, Image as ImageIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadMedia } from "@/lib/mediaStorage";
 import { IMAGE_PRESETS } from "@/lib/mediaCompression";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaPanel from "./MediaPanel";
+import { preloadEmojiData } from "./EmojiPicker";
 import ReplyPreview from "./ReplyPreview";
 import SchedulePicker from "./SchedulePicker";
 import TouchReactionPicker from "./TouchReactionPicker";
@@ -17,6 +18,8 @@ import { VoiceNoteRecorder, MicButton } from "./VoiceNoteRecorder";
 
 interface MessageInputProps {
   onSend: (content: string, extras?: any) => Promise<any>;
+  /** photos (1 or many) — shown instantly, uploaded in parallel, stacked as an album */
+  onSendImages?: (files: File[], caption: string, extras?: any) => Promise<any>;
   onTyping: () => void;
   onRecording?: (isRecording: boolean) => void;
   userId: string;
@@ -32,8 +35,14 @@ interface MessageInputProps {
   customFontSize?: string;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecording, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel, useHandwritingFont = false, customFontSize }) => {
-  const [text, setText] = useState("");
+const MessageInput: React.FC<MessageInputProps> = ({ onSend, onSendImages, onTyping, onRecording, userId, replyTo, onCancelReply, onOpenLetter, onOpenProposal, onComposeHelp, placeholder = "Type a message...", secretPlaceholder = "Write a secret message...", sendLabel, useHandwritingFont = false, customFontSize }) => {
+  const DRAFT_KEY = "newsofyou_chat_draft";
+  const [text, setText] = useState(() => {
+    try { return sessionStorage.getItem(DRAFT_KEY) ?? ""; } catch { return ""; }
+  });
+  const [tray, setTray] = useState<{ id: string; file: File; url: string }[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -45,6 +54,56 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep an unsent draft across tab switches / reloads.
+  useEffect(() => {
+    try {
+      if (text) sessionStorage.setItem(DRAFT_KEY, text);
+      else sessionStorage.removeItem(DRAFT_KEY);
+    } catch { /* ignore */ }
+  }, [text]);
+
+  // Size the box for a restored draft.
+  useEffect(() => { if (text) setTimeout(adjustHeight, 0); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Free blob URLs when the component goes away.
+  const trayRef = useRef(tray);
+  trayRef.current = tray;
+  useEffect(() => () => trayRef.current.forEach((t) => URL.revokeObjectURL(t.url)), []);
+
+  const MAX_TRAY = 30;
+  const addToTray = useCallback((files: File[]) => {
+    setTray((prev) => {
+      const room = MAX_TRAY - prev.length;
+      const add = files.slice(0, Math.max(0, room)).map((file) => ({
+        id: Math.random().toString(36).slice(2),
+        file,
+        url: URL.createObjectURL(file),
+      }));
+      if (files.length > room) toast({ title: `Up to ${MAX_TRAY} photos at a time` });
+      return [...prev, ...add];
+    });
+    setShowMore(false);
+    setShowMedia(false);
+  }, []);
+
+  const removeFromTray = (id: string) =>
+    setTray((prev) => {
+      const gone = prev.find((t) => t.id === id);
+      if (gone) URL.revokeObjectURL(gone.url);
+      return prev.filter((t) => t.id !== id);
+    });
+
+  /** Photos (not GIFs) → preview tray. Everything else → sent one by one. */
+  const routeFiles = useCallback(async (files: File[]) => {
+    const photos = files.filter((f) => f.type.startsWith("image/") && f.type !== "image/gif");
+    const others = files.filter((f) => !photos.includes(f));
+    if (photos.length) {
+      if (onSendImages) addToTray(photos);
+      else others.push(...photos);
+    }
+    for (const f of others) await uploadAndSendFile(f);
+  }, [onSendImages, addToTray]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSchedule = useCallback(async (date: Date) => {
     const trimmed = text.trim();
@@ -80,20 +139,35 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed && !uploading) return;
-    setSending(true);
+    const photos = tray;
+    if (!trimmed && photos.length === 0) return;
     const extras: any = {};
     if (replyTo) extras.reply_to_id = replyTo.id;
-    if (secretMode) extras.message_type = "secret";
-    await onSend(trimmed, extras);
-    setSecretMode(false);
+    if (secretMode && photos.length === 0) extras.message_type = "secret";
+
+    // ⚡ Clear the box instantly — the message is already on screen (optimistic).
+    // If the send fails, the draft is put back.
+    const savedText = text;
     setText("");
+    setTray([]);
+    setSecretMode(false);
     onCancelReply();
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
-    setSending(false);
     setShowMedia(false);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     textareaRef.current?.focus();
-  }, [text, onSend, uploading, replyTo, onCancelReply, secretMode]);
+
+    let error: any = null;
+    if (photos.length > 0 && onSendImages) {
+      error = await onSendImages(photos.map((t) => t.file), trimmed, extras);
+      photos.forEach((t) => URL.revokeObjectURL(t.url));
+    } else {
+      error = await onSend(trimmed, extras);
+    }
+    if (error && photos.length === 0) {
+      setText((cur) => cur || savedText);
+      toast({ title: "Message not sent", description: "Check your connection and try again.", variant: "destructive" });
+    }
+  }, [text, tray, onSend, onSendImages, replyTo, onCancelReply, secretMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -177,36 +251,44 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await uploadAndSendFile(file);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length) await routeFiles(files);
   };
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData.items;
-    let fileToUpload: File | null = null;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    const files: File[] = [];
+    for (const item of Array.from(e.clipboardData.items)) {
       if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          fileToUpload = file;
-          break;
-        }
+        const f = item.getAsFile();
+        if (f) files.push(f);
       }
     }
-
-    if (fileToUpload) {
+    if (files.length) {
       e.preventDefault();
-      await uploadAndSendFile(fileToUpload);
+      await routeFiles(files);
     }
   };
 
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) await routeFiles(files);
+  };
+
   const handleEmojiSelect = (emoji: string) => {
-    setText((prev) => prev + emoji);
-    textareaRef.current?.focus();
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+    // restore the caret right after the inserted emoji (don't steal focus on touch → keeps the panel open)
+    requestAnimationFrame(() => {
+      if (el && document.activeElement === el) {
+        const pos = start + emoji.length;
+        el.setSelectionRange(pos, pos);
+      }
+    });
   };
 
   const handleGifSelect = async (gifUrl: string) => {
@@ -286,6 +368,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
               {showMore && (
                 <motion.div key="more" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="px-3 pb-1 overflow-hidden">
                   <div className="flex gap-1.5 glass rounded-[20px] p-2 shadow-lg items-center">
+                    <MoreBtn icon={<ImageIcon className="h-5 w-5" />} label="Photos" onClick={() => { imageInputRef.current?.click(); closeAll(); }} />
                     <MoreBtn icon={<Paperclip className="h-5 w-5" />} label="File" onClick={() => { fileInputRef.current?.click(); closeAll(); }} />
                     <MoreBtn icon={<Heart className="h-5 w-5" />} label="Touch" onClick={() => { closeAll(); setShowTouchReactions(true); }} />
                     <MoreBtn icon={<Clock className="h-5 w-5" />} label="Schedule" onClick={() => { closeAll(); setShowSchedule(true); }} />
@@ -293,6 +376,35 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
                     <MoreBtn icon={<Handshake className="h-5 w-5" />} label="Pact" onClick={() => { onOpenProposal?.(); closeAll(); }} />
                     <MoreBtn icon={<Flame className="h-5 w-5" />} label="Lantern" onClick={() => { (window as any).__skyLanternComposer?.show?.(); closeAll(); }} />
                     <button onClick={() => setShowMore(false)} className="ml-auto h-6 w-6 flex items-center justify-center rounded-full bg-muted/50 hover:bg-muted transition-colors"><X className="h-3.5 w-3.5 text-muted-foreground" /></button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Photo tray — WhatsApp-style preview before sending */}
+            <AnimatePresence>
+              {tray.length > 0 && (
+                <motion.div key="tray" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} className="px-3 pb-1.5 overflow-hidden">
+                  <div className="glass rounded-[20px] p-2 shadow-lg">
+                    <div className="flex items-center justify-between px-1.5 pb-1.5">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        {tray.length} photo{tray.length > 1 ? "s" : ""} · {tray.length > 1 ? "sent as an album" : "ready to send"}
+                      </span>
+                      <button onClick={() => { tray.forEach((t) => URL.revokeObjectURL(t.url)); setTray([]); }} className="text-[11px] text-muted-foreground hover:text-foreground">Clear</button>
+                    </div>
+                    <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+                      {tray.map((t) => (
+                        <div key={t.id} className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl bg-muted">
+                          <img src={t.url} alt="" className="h-full w-full object-cover" draggable={false} />
+                          <button onClick={() => removeFromTray(t.id)} className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white" aria-label="Remove photo">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={() => imageInputRef.current?.click()} className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground hover:bg-muted/50" aria-label="Add more photos">
+                        <Plus className="h-5 w-5" />
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -316,14 +428,20 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
             </AnimatePresence>
 
             {/* Main input bar */}
-            <div className="glass-chat-input flex items-end gap-2 px-3 py-2.5">
+            <div
+              className={`glass-chat-input flex items-end gap-2 px-3 py-2.5 transition-colors ${dragging ? "bg-primary/10 ring-2 ring-primary/40 ring-inset" : ""}`}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+            >
               <motion.button whileTap={{ scale: 0.88, rotate: showMore ? -45 : 0 }} onClick={() => { setShowMore(!showMore); if (showMore) { setShowTouchReactions(false); setShowSchedule(false); } }} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${showMore ? "bg-primary/10 text-primary" : "hover:bg-muted/60 text-muted-foreground"}`} style={{ transform: showMore ? "rotate(45deg)" : undefined }}>
                 <Plus className="h-5 w-5" />
               </motion.button>
 
-              <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.csv" onChange={handleFileUpload} className="hidden" />
+              <input ref={fileInputRef} type="file" multiple accept="image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.csv" onChange={handleFileUpload} className="hidden" />
+              <input ref={imageInputRef} type="file" multiple accept="image/*,video/*" onChange={handleFileUpload} className="hidden" />
 
-              <motion.button whileTap={{ scale: 0.88 }} onClick={() => { setShowMedia(!showMedia); closeAll(); if (!showMedia) setShowMedia(true); }} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${showMedia ? "bg-primary/10 text-primary" : "hover:bg-muted/60 text-muted-foreground"}`}>
+              <motion.button whileTap={{ scale: 0.88 }} onPointerEnter={preloadEmojiData} onTouchStart={preloadEmojiData} onClick={() => { setShowMedia(!showMedia); closeAll(); if (!showMedia) setShowMedia(true); }} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${showMedia ? "bg-primary/10 text-primary" : "hover:bg-muted/60 text-muted-foreground"}`}>
                 <Smile className="h-5 w-5" />
               </motion.button>
 
@@ -359,8 +477,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSend, onTyping, onRecordi
 
               {/* Send ↔ Mic animated swap */}
               <AnimatePresence mode="wait" initial={false}>
-                {text.trim() || uploading ? (
-                  <motion.button key="send" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ type: "spring", stiffness: 500, damping: 28 }} whileTap={{ scale: 0.88 }} whileHover={{ scale: 1.05 }} onClick={handleSend} disabled={(!text.trim() && !uploading) || sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-30 transition-all shadow-sm shadow-primary/20">
+                {text.trim() || uploading || tray.length > 0 ? (
+                  <motion.button key="send" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} transition={{ type: "spring", stiffness: 500, damping: 28 }} whileTap={{ scale: 0.88 }} whileHover={{ scale: 1.05 }} onClick={handleSend} disabled={(!text.trim() && !uploading && tray.length === 0) || sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-30 transition-all shadow-sm shadow-primary/20">
                     <Send className="h-[18px] w-[18px]" />
                   </motion.button>
                 ) : (

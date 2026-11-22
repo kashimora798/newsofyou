@@ -51,22 +51,24 @@ const MediaPanel: React.FC<MediaPanelProps> = ({ onEmojiSelect, onGifSelect, onS
         </div>
       )}
 
-      {/* Tab bar */}
-      <div className="flex gap-0.5 px-3 pb-1 overflow-x-auto scrollbar-thin">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-t-lg transition-colors whitespace-nowrap flex items-center gap-1 ${
-              activeTab === tab
-                ? "bg-card text-foreground border border-b-0 border-border"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab === "AI" && <Sparkles className="h-3 w-3" />}
-            {tab}
-          </button>
-        ))}
+      {/* Tab bar — segmented pill control */}
+      <div className="flex gap-1 px-3 pb-2 overflow-x-auto scrollbar-none">
+        <div className="flex gap-0.5 rounded-full bg-muted/60 p-0.5 mx-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3.5 py-1 text-xs font-medium rounded-full transition-all whitespace-nowrap flex items-center gap-1 ${
+                activeTab === tab
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab === "AI" && <Sparkles className="h-3 w-3" />}
+              {tab}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Content */}

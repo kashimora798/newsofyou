@@ -1,45 +1,58 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Reaction = Tables<"message_reactions">;
 
+const isRealId = (id: string) => !id.startsWith("tmp_");
+const CHUNK = 80; // keeps the `in (...)` URL comfortably short
+
 export function useReactions(messageIds: string[]) {
   const [reactions, setReactions] = useState<Record<string, Reaction[]>>({});
+  // Ids whose reactions we've already loaded — we only ever fetch the NEW ones.
+  const fetchedRef = useRef<Set<string>>(new Set());
 
+  // Incremental fetch: a new message used to trigger a refetch of every reaction
+  // for every loaded message. Now it's one small query for just the new ids.
+  const idsKey = messageIds.join(",");
   useEffect(() => {
-    if (messageIds.length === 0) return;
+    const fresh = messageIds.filter((id) => isRealId(id) && !fetchedRef.current.has(id));
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => fetchedRef.current.add(id));
 
-    const fetchReactions = async () => {
-      const { data } = await supabase
-        .from("message_reactions")
-        .select("*")
-        .in("message_id", messageIds);
-      if (data) {
-        const grouped: Record<string, Reaction[]> = {};
-        data.forEach((r) => {
-          if (!grouped[r.message_id]) grouped[r.message_id] = [];
-          grouped[r.message_id].push(r);
-        });
-        setReactions(grouped);
+    (async () => {
+      for (let i = 0; i < fresh.length; i += CHUNK) {
+        const { data } = await supabase
+          .from("message_reactions")
+          .select("*")
+          .in("message_id", fresh.slice(i, i + CHUNK));
+        if (data && data.length) {
+          setReactions((prev) => {
+            const next = { ...prev };
+            for (const r of data) {
+              const list = next[r.message_id] ?? [];
+              if (!list.some((x) => x.user_id === r.user_id && x.emoji === r.emoji)) {
+                next[r.message_id] = [...list, r];
+              }
+            }
+            return next;
+          });
+        }
       }
-    };
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
-    fetchReactions();
-
+  // One realtime subscription for the lifetime of the chat (was re-created per message).
+  useEffect(() => {
     const channel = supabase
       .channel("reactions-realtime")
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "message_reactions",
-      }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload) => {
         if (payload.eventType === "INSERT") {
           const r = payload.new as Reaction;
           setReactions((prev) => {
-            // Deduplicate — don't add if already present
             const existing = prev[r.message_id] ?? [];
-            if (existing.some(x => x.user_id === r.user_id && x.emoji === r.emoji)) return prev;
+            if (existing.some((x) => x.user_id === r.user_id && x.emoji === r.emoji)) return prev;
             return { ...prev, [r.message_id]: [...existing, r] };
           });
         } else if (payload.eventType === "DELETE") {
@@ -53,9 +66,8 @@ export function useReactions(messageIds: string[]) {
         }
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
-  }, [messageIds.join(",")]);
+  }, []);
 
   const toggleReaction = useCallback(async (messageId: string, userId: string, emoji: string) => {
     const existingSame = reactions[messageId]?.find(
